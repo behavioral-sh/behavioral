@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { bProgram } from '../b-program/b-program.ts'
 import { behavioralHome } from '../faculties/behavioral-home.ts'
+import type { bProgram } from './b-program.ts'
 
 /**
  * The host config shape — the {@link bProgram} options a `config.ts` may

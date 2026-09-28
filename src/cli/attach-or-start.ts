@@ -9,7 +9,7 @@ import { createSocketHost, instanceSocketPath } from './socket-host.ts'
  * lazily — an attaching process never pays for the composition graph.
  */
 const defaultCreateRuntime = async (): Promise<HostRuntime> => {
-  const { bProgram } = await import('../b-program/b-program.ts')
+  const { bProgram } = await import('./b-program.ts')
   const { loadConfig } = await import('./load-config.ts')
   return bProgram(await loadConfig())
 }
