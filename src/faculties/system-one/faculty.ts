@@ -1,24 +1,37 @@
 /**
- * The bundled System One provider — the DEFAULT TypeSafe / OpenRouter
+ * The System One faculty worker entry — the bundled TypeSafe / OpenRouter
  * Decisions implementation.
  *
  * @remarks
- * This file is a provider ENTRY: it defines `typesafeRespond` (one decision
- * call per input) and hands it to `configSystemOne`, which wires the process.
- * A third party writes their own entry the same way; the wire contract does
- * not change.
+ * One file, one faculty: `typesafeRespond` (the 429/529-retrying decision
+ * call) and the top-level `createWorker` bootstrap. A third party writes
+ * their own entry the same way — a `respond` behind `createWorker` — and the
+ * wire contract does not change.
  *
- * The endpoint is read once from environment data by `configSystemOne`; the
+ * The endpoint is read ONCE from environment data (`envData` — the host
+ * seeds worker-threads environment data before constructing the Worker); the
  * secret never enters a request message. Retries cover the API's rate-limit
  * statuses (429/529), honoring `retry-after` when present — the faculty the
  * vendor SDKs provide, implemented here so the faculty owns its transport.
  *
+ * The bootstrap gates on SCOPE: importing this entry in the main thread
+ * wires nothing (`createWorker` no-ops outside a worker global) and the
+ * `respond` stays importable by specs.
+ *
  * @packageDocumentation
  */
 
-import { configSystemOne, type SystemOneRespond } from './config.ts'
-import { validateSystemOneOutput } from './schemas.ts'
-import type { SystemOneOutput } from './types.ts'
+import { createWorker, type FacultyRespond } from '../create-worker.ts'
+import { envData } from '../env-data.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { validateSystemOneCancelEvent, validateSystemOneRequestEvent } from '../faculties.types.ts'
+import { validateSystemOneInput, validateSystemOneOutput } from './schemas.ts'
+import {
+  SYSTEM_ONE_ENDPOINT_KEY,
+  type SystemOneEndpointConfig,
+  type SystemOneInput,
+  type SystemOneOutput,
+} from './types.ts'
 
 /** Statuses worth retrying with backoff (the API's rate-limit/overload contract). */
 const RETRY_STATUSES = new Set([429, 529])
@@ -55,7 +68,10 @@ const describeHttpError = async (res: Response): Promise<string> => {
   return `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`
 }
 
-const typesafeRespond: SystemOneRespond = async (input, { endpoint, signal }) => {
+const typesafeRespond: FacultyRespond<SystemOneInput, SystemOneEndpointConfig> = async (
+  input,
+  { data: endpoint, signal },
+) => {
   const model = input.model ?? endpoint.model
   if (model === undefined) return { isError: true, message: 'no model configured for the system one endpoint' }
   const headers: Record<string, string> = {
@@ -81,7 +97,13 @@ const typesafeRespond: SystemOneRespond = async (input, { endpoint, signal }) =>
   return { isError: true, message: 'decision request exhausted retries' }
 }
 
-// The process entry: wire only when spawned (an in-process import wires nothing).
-if (import.meta.main) {
-  configSystemOne(typesafeRespond)
-}
+// The worker entry: wire only inside a worker global (an in-process import wires nothing).
+export const wiring = createWorker<SystemOneInput, SystemOneEndpointConfig>({
+  respond: typesafeRespond,
+  validateRequest: validateSystemOneRequestEvent,
+  validateCancel: validateSystemOneCancelEvent,
+  validateInput: validateSystemOneInput,
+  requestKind: FACULTY_MESSAGE_KINDS.system_one_request,
+  resultKind: FACULTY_MESSAGE_KINDS.system_one_request_result,
+  data: (envData(SYSTEM_ONE_ENDPOINT_KEY) ?? {}) as SystemOneEndpointConfig,
+})

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
 import { validateSystemOneInput } from '../schemas.ts'
 import { SYSTEM_ONE_ENDPOINT_KEY } from '../types.ts'
 import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-server.ts'
@@ -10,12 +10,14 @@ import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-serv
 // system one worker — the event-wire surface
 // ================================================================
 
+// The worker construction stays a bundler-visible literal at the call site —
+// the same factory shape the composition's useWorker wiring takes.
 const spawnSystemOne = (endpoint: { url: string; apiKey?: string; model?: string }) =>
-  spawnFaculty({
-    file: 'system-one/faculty.ts',
+  spawnFacultyWorker({
+    url: new URL('../faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_one_request,
     resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
-    env: { [SYSTEM_ONE_ENDPOINT_KEY]: JSON.stringify(endpoint) },
+    env: { [SYSTEM_ONE_ENDPOINT_KEY]: endpoint },
   })
 
 const questions = {
