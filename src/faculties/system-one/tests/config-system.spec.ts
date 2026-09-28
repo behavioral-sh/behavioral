@@ -3,20 +3,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { useSystemOne } from '../system-one/config.ts'
-import { useSystemTwo } from '../system-two/config.ts'
+import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
+import { behavioral } from '../../../behavioral/behavioral.ts'
+import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
+import { useSystemOne } from '../config.ts'
 
 /**
- * The config helpers' `entry` resolution — the custom-provider seam:
+ * `configSystemOne`'s `entry` resolution — the custom-provider seam:
  *
  * - a RELATIVE entry resolves against BEHAVIORAL_HOME (where `init` scaffolds
  *   user provider entries), not the package's spawn cwd;
  * - an ABSOLUTE entry is used verbatim;
- * - absent entry keeps the bundled provider (covered by the faculty specs).
+ * - absent entry keeps the bundled Decisions provider (the faculty spec).
  *
  * Each case runs a real provider entry process (a custom `respond` returning a
  * marker answer) through the real host helper — the wire contract is unchanged.
@@ -32,36 +31,21 @@ const addThreadsWithStep =
     program.step()
   }
 
-/** One faculty's wiring: the request kind, the host helper, and a valid request input. */
-const FACULTY = {
-  systemOne: {
-    kind: FACULTY_MESSAGE_KINDS.system_one_request,
-    input: { state: 'x', questions: { q: { type: 'noul', instructions: 'x' } } },
-    wire: (entry: string) => useSystemOne({ endpoint: { url: 'http://unused.local', model: 'm' }, entry }),
-    factory: 'configSystemOne',
-    module: 'system-one/config.ts',
-  },
-  systemTwo: {
-    kind: FACULTY_MESSAGE_KINDS.system_two_request,
-    input: { provider: 'custom', modelId: 'm', input: [] },
-    wire: (entry: string) => useSystemTwo({ endpoints: { custom: { url: 'http://unused.local' } }, entry }),
-    factory: 'configSystemTwo',
-    module: 'system-two/config.ts',
-  },
-} as const
+const KIND = FACULTY_MESSAGE_KINDS.system_one_request
+const INPUT = { state: 'x', questions: { q: { type: 'noul', instructions: 'x' } } }
 
 /** Write a custom provider entry returning a marker answer; returns its home-relative path. */
-const writeCustomEntry = (home: string, file: string, respondLine: string, faculty: keyof typeof FACULTY): string => {
+const writeCustomEntry = (home: string, file: string, respondLine: string): string => {
   mkdirSync(join(home, 'providers'), { recursive: true })
   // The import spec is an absolute file URL — robust in any environment (no
   // global-link assumption in the test runner).
-  const target = resolve(import.meta.dir, '..', FACULTY[faculty].module)
+  const target = resolve(import.meta.dir, '..', 'config.ts')
   writeFileSync(
     join(home, 'providers', file),
     [
-      `import { ${FACULTY[faculty].factory} } from '${pathToFileURL(target).href}'`,
+      `import { configSystemOne } from '${pathToFileURL(target).href}'`,
       `const respond = async () => (${respondLine})`,
-      `if (import.meta.main) ${FACULTY[faculty].factory}(respond)`,
+      `if (import.meta.main) configSystemOne(respond)`,
       '',
     ].join('\n'),
   )
@@ -69,30 +53,27 @@ const writeCustomEntry = (home: string, file: string, respondLine: string, facul
 }
 
 /** Wire the faculty through the real host helper, send one request, await its result. */
-const spawnAndCall = async ({
-  entry,
-  faculty,
-}: {
-  entry: string
-  faculty: keyof typeof FACULTY
-}): Promise<{ ok?: boolean; result?: { model?: string }; error?: { message?: string } }> => {
+const spawnAndCall = async (
+  entry: string,
+): Promise<{ ok?: boolean; result?: { model?: string }; error?: { message?: string } }> => {
   const program = behavioral()
   const traces: Trace[] = []
-  const { kind, input, wire } = FACULTY[faculty]
-  const handle = wire(entry)(addThreadsWithStep(program))
+  const handle = useSystemOne({ endpoint: { url: 'http://unused.local', model: 'm' }, entry })(
+    addThreadsWithStep(program),
+  )
   try {
     program.useTrace((trace: Trace) => {
       traces.push(trace)
       if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
       const selected = (trace as SelectionTrace).selected
       const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
-      if (event.type === kind) handle.send(event)
+      if (event.type === KIND) handle.send(event)
     })
     const id = 'entry-check'
     program.addThread({
       label: 'caller',
       once: true,
-      rules: [{ request: { type: kind, detail: { id, input: input as JsonObject } } }],
+      rules: [{ request: { type: KIND, detail: { id, input: INPUT as JsonObject } } }],
     })
     program.trigger({ type: 'entry_check_pump', detail: {} })
 
@@ -101,7 +82,7 @@ const spawnAndCall = async ({
       const found = selectionsOf(traces).find((t) => {
         const detail = t.selected.detail as { id?: string } | undefined
         return (
-          (t.selected.type === `${kind}_result` && detail?.id === id) ||
+          (t.selected.type === `${KIND}_result` && detail?.id === id) ||
           t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error
         )
       })
@@ -116,7 +97,7 @@ const spawnAndCall = async ({
   }
 }
 
-describe('config helpers — custom provider entry resolution', () => {
+describe('configSystemOne — custom provider entry resolution', () => {
   let home: string
   const previousHome = process.env.BEHAVIORAL_HOME
 
@@ -136,9 +117,8 @@ describe('config helpers — custom provider entry resolution', () => {
       home,
       'my-one.faculty.ts',
       "{ model: 'custom-one', answers: { marker: { type: 'noul', noul: 0.5 } } }",
-      'systemOne',
     )
-    const detail = await spawnAndCall({ entry, faculty: 'systemOne' })
+    const detail = await spawnAndCall(entry)
     expect(detail.ok).toBe(true)
     expect(detail.result?.model).toBe('custom-one')
   })
@@ -148,17 +128,9 @@ describe('config helpers — custom provider entry resolution', () => {
       home,
       'abs-one.faculty.ts',
       "{ model: 'abs-one', answers: { marker: { type: 'noul', noul: 0.5 } } }",
-      'systemOne',
     )
-    const detail = await spawnAndCall({ entry: resolve(home, entry), faculty: 'systemOne' })
+    const detail = await spawnAndCall(resolve(home, entry))
     expect(detail.ok).toBe(true)
     expect(detail.result?.model).toBe('abs-one')
-  })
-
-  test('systemTwo resolves a relative entry against the home too', async () => {
-    const entry = writeCustomEntry(home, 'my-two.faculty.ts', "{ model: 'custom-two', answers: {} }", 'systemTwo')
-    const detail = await spawnAndCall({ entry, faculty: 'systemTwo' })
-    expect(detail.ok).toBe(true)
-    expect(detail.result?.model).toBe('custom-two')
   })
 })
