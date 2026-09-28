@@ -33,7 +33,7 @@ import {
 } from '../faculties/system-one/threads.ts'
 import { useFaculty } from '../faculties/use-faculty.ts'
 import type { Faculty } from '../faculties.ts'
-import { ueid } from '../utils.ts'
+import { uuid } from '../utils.ts'
 import {
   pluginThreadRegistryKey,
   readPluginThreadRegistry,
@@ -569,7 +569,7 @@ export const bProgram = ({
     if (uiMounted && candidate.type === UI_RENDER_TRIGGER_TYPE && candidate.ingress === true) {
       addThreads(
         uiPipelineThreads({
-          id: `ui-${ueid()}`,
+          id: `ui-${uuid()}`,
           detail: (candidate.detail ?? {}) as JsonObject,
           ...(ui?.provider === undefined ? {} : { provider: ui.provider }),
           ...(ui?.modelId === undefined ? {} : { modelId: ui.modelId }),

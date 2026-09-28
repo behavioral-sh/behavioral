@@ -1,4 +1,4 @@
-import { randomUUIDv7 } from 'bun'
+import { uuid } from '../utils/uuid.ts'
 import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 import {
   type AddThread,
@@ -104,9 +104,8 @@ const createSubject = (): SendTrace => {
  * nothing else.
  */
 export const behavioral = (options?: { sessionId?: string }) => {
-  // The trace-identity axis: a CSPRNG, monotonic (sortable) UUID v7 — not the
-  // correlation-id `ueid`, which leans on `Math.random`.
-  const instanceId = `bp_${randomUUIDv7()}`
+  // The trace-identity axis: a CSPRNG, monotonic (sortable) UUID v7.
+  const instanceId = uuid('bp_')
   /** @internal Host session identity — accepted at factory time, never minted. */
   const sessionId = options?.sessionId ?? instanceId
   /**

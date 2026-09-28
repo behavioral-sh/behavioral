@@ -25,7 +25,6 @@
  */
 
 import type { JSONSchemaType } from 'ajv'
-import { randomUUIDv7 } from 'bun'
 import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type {
   BPEvent,
@@ -52,6 +51,7 @@ import {
   resumePendingThreadsForSelectedEvent,
   useThread,
 } from '../../behavioral/behavioral.utils.ts'
+import { uuid } from '../../utils/uuid.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import { type FrontierRequestEvent, validateFrontierRequestEvent } from '../faculties.types.ts'
 import { emit, wireInbound } from '../process-lane.ts'
@@ -235,7 +235,7 @@ type DeadlockFinding = {
  *   checked for enablement at the corresponding step.
  * @param args.space - Optional space stamp applied to all thread rules.
  * @param args.instanceId - Instance id stamped on synthetic interrupt/transform
- *   traces emitted during resumption. Defaults to a minted `bp_${randomUUIDv7()}`.
+ *   traces emitted during resumption. Defaults to a minted `bp_` UUIDv7.
  * @param args.sessionId - Host session id stamped on the same traces alongside
  *   `instanceId`. Defaults to the `instanceId` — the faculty never mints one.
  * @returns The replay result containing the pending set and final frontier.
@@ -248,7 +248,7 @@ const replayToFrontierRaw = ({
   threads,
   messages = [],
   space,
-  instanceId = `bp_${randomUUIDv7()}`,
+  instanceId = uuid('bp_'),
   sessionId,
 }: {
   threads: Thread[]
@@ -735,7 +735,7 @@ type ExploreFrontiersArgs = {
   maxDepth?: number
   /** Space stamp applied to all thread rules. */
   space?: string
-  /** Instance id stamped on synthetic traces. Defaults to a minted `bp_${randomUUIDv7()}` — pass the analyzed kernel's id to make joins natural. */
+  /** Instance id stamped on synthetic traces. Defaults to a minted `bp_` UUIDv7 — pass the analyzed kernel's id to make joins natural. */
   instanceId?: string
   /** Host session id stamped on synthetic traces alongside `instanceId`. Defaults to the `instanceId` — the faculty never mints one. */
   sessionId?: string
@@ -783,7 +783,7 @@ const exploreFrontiersRaw = ({
   selectionPolicy = 'all-enabled',
   maxDepth,
   space,
-  instanceId = `bp_${randomUUIDv7()}`,
+  instanceId = uuid('bp_'),
   sessionId,
 }: ExploreFrontiersArgs): ExploreFrontiersResult => {
   if (strategy !== 'bfs' && strategy !== 'dfs') {

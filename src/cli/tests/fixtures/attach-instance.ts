@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
 import type { SelectionTrace, Trace } from '../../../behavioral/behavioral.types.ts'
+import { uuid } from '../../../utils/uuid.ts'
 import { attachOrStart } from '../../attach-or-start.ts'
 import type { HostRuntime } from '../../serve.ts'
 
@@ -16,7 +17,7 @@ import type { HostRuntime } from '../../serve.ts'
  * fully real, including the cross-process wire.
  */
 /** The echo runtime's minted per-process identity — minted once at module scope so the spec can record it. */
-const instanceId = Bun.randomUUIDv7()
+const instanceId = uuid()
 
 const echoRuntime = (): HostRuntime => {
   const listeners = new Set<(trace: Trace) => void>()

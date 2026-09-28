@@ -162,7 +162,7 @@ describe('ui capture — the pipeline-keyed raw run consumer', () => {
       expect(session.runs).toHaveLength(1)
       const run = session.runs[0]!
       // The run is keyed by the MINTED pipeline id — never a time window.
-      expect(run.pipeline).toMatch(/^ui-[a-z0-9]+$/)
+      expect(run.pipeline).toMatch(/^ui-[0-9a-f-]+$/)
       // The standing Thread set rides thread_added for free.
       const labels = run.threads.map((t) => t.label)
       expect(labels).toContain('ui/render-gate')

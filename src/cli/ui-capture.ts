@@ -42,7 +42,7 @@ import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import { ueid } from '../utils.ts'
+import { uuid } from '../utils.ts'
 import { UI_RENDER_TRIGGER_TYPE } from './ui-threads.ts'
 
 /**
@@ -66,7 +66,7 @@ const normalizeThread = (thread: Thread): Thread => {
 
 /** One captured ui-pipeline run: the lineage key, the standing Thread set, the position-tagged re-entries, the run's selections. */
 export type UiRun = {
-  /** The minted pipeline id — the run's lineage key (`ui-<ueid>`). */
+  /** The minted pipeline id — the run's lineage key (`ui-<uuid>`). */
   pipeline: string
   startedAt: number
   threads: Thread[]
@@ -80,14 +80,14 @@ export type UiRun = {
  * (`ui/pipeline:<pid>/<leg>`), the engine's transform re-entry
  * (`Transform(ui/pipeline:<pid>/<leg> => target)`), and the faculty result
  * re-entry (`on_<type>_<pid>-<leg>`). The correlation suffixes are the same
- * legs the pipeline composes (ueid is base36 — no underscores in a pid).
+ * legs the pipeline composes (uuid is hex + hyphens — no underscores in a pid).
  */
 const pipelineOfThread = (thread: Thread): string | undefined => {
   const mint = /^ui\/pipeline:([^/]+)\//.exec(thread.label)
   if (mint !== null) return mint[1]
   const transform = /Transform\(ui\/pipeline:([^/]+)\//.exec(thread.label)
   if (transform !== null) return transform[1]
-  const reentry = /_(ui-[a-z0-9]+-(?:scale|tenant|gen|render|style))$/.exec(thread.label)
+  const reentry = /_(ui-[0-9a-f-]+-(?:scale|tenant|gen|render|style))$/.exec(thread.label)
   if (reentry !== null) return reentry[1]!.slice(0, -(reentry[1]!.length - reentry[1]!.lastIndexOf('-')))
   return undefined
 }
@@ -244,7 +244,7 @@ const replayThreads = (run: UiRun, upTo: number): Thread[] => [
 export const uiReplayRequest = (run: UiRun, upTo = run.messages.length): BPEvent => ({
   type: FACULTY_MESSAGE_KINDS.frontier_request,
   detail: {
-    id: `ui-replay-${ueid()}`,
+    id: `ui-replay-${uuid()}`,
     op: 'replay',
     // Threads are pure data (they serialize as JSON) but their listener
     // schemas aren't statically JsonValue — the same cast the composition's
