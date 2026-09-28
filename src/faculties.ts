@@ -7,7 +7,8 @@
  * config surface (`configSystemTwo` for a provider entry; `useSystemTwo` for
  * the host). The default root threads (`facultiesThreads`) is internal — the
  * composition always mounts it — and is intentionally NOT exported. The runtime
- * composition itself (`bProgram`) lives in `src/cli/b-program.ts`.
+ * composition itself (`bProgram`) lives in `src/b-program/b-program.ts` (the
+ * `src/b-program.ts` boundary).
  *
  * @packageDocumentation
  */

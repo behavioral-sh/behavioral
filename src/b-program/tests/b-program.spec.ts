@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import { readPluginThreadRegistry } from '../../cli/plugin-thread-registry.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   SecurityCancelEventSchema,
@@ -26,7 +27,6 @@ import { useSystemTwo } from '../../faculties/system-two/config.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/system-two/tests/fixtures/model-server.ts'
 import { useFaculty } from '../../faculties/use-faculty.ts'
 import { bProgram } from '../b-program.ts'
-import { readPluginThreadRegistry } from '../plugin-thread-registry.ts'
 
 /**
  * bProgram — the runtime composition — through its REAL surface: the

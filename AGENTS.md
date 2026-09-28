@@ -152,7 +152,13 @@ types + JSON schemas/validators (`faculties.types.ts`), the override thread
 threads (`shellThreads`), their schemas/types, `useFaculty`, and the
 System One/Two config surface (`configSystemOne`/`useSystemOne`,
 `configSystemTwo`/`useSystemTwo`) — what a
-`config.ts` imports to compose. (`facultiesThreads`, the default root threads, is internal.) The runtime composition itself is `src/cli/b-program.ts`.
+`config.ts` imports to compose. (`facultiesThreads`, the default root threads, is internal.)
+**`src/b-program/`** — the composition home (`src/b-program.ts` boundary, the `src/controller.ts`
+precedent): the host-agnostic runtime composition `bProgram` (`b-program/b-program.ts` — the
+in-process engine + frontier embed, the capability spawns, the thread mounts) and its specs
+(`tests/`). The bProgram worker entry (the browser's per-tab composition worker) joins this home
+with the browser-shape work; the `src/cli/` boundary shrinks to host entries (serve,
+attach-or-start, socket-host), config/init, and the TUI.
 **`src/behavioral/`** — the pure language layer: types, constants, utils, the interpreter core
 (`behavioral.ts`), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
 nothing outside behavioral/ speaks its wire). Zero process entries that speak the faculty wire —

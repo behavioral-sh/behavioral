@@ -2,6 +2,12 @@ import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import { behavioral } from '../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
 import { validateThread } from '../behavioral/behavioral.types.ts'
+import {
+  pluginThreadRegistryKey,
+  readPluginThreadRegistry,
+  writePluginThreadRegistry,
+} from '../cli/plugin-thread-registry.ts'
+import { UI_RENDER_TRIGGER_TYPE, uiPipelineThreads, uiThreads } from '../cli/ui-threads.ts'
 import { behavioralHome } from '../faculties/behavioral-home.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import { eventGuardEntries, facultiesThreads, guardThreads } from '../faculties/faculties.threads.ts'
@@ -34,12 +40,6 @@ import {
 import { useFaculty } from '../faculties/use-faculty.ts'
 import type { Actuator } from '../faculties.ts'
 import { uuid } from '../utils.ts'
-import {
-  pluginThreadRegistryKey,
-  readPluginThreadRegistry,
-  writePluginThreadRegistry,
-} from './plugin-thread-registry.ts'
-import { UI_RENDER_TRIGGER_TYPE, uiPipelineThreads, uiThreads } from './ui-threads.ts'
 
 /*
  * The runtime composition — IN-PROCESS. The engine is behavioral() in the
