@@ -1,21 +1,22 @@
 /**
- * The bundled System Two provider — the DEFAULT Open Responses implementation.
+ * The System Two faculty worker entry — the bundled Open Responses
+ * implementation.
  *
  * @remarks
- * This file is a provider ENTRY: it defines `openResponsesRespond` (one
- * `/responses` call per input) and hands it to `configSystemTwo`, which wires
- * the process (inbound lane, result envelope, cancel/timeout). A third party
- * writes their own entry the same way with a different `respond`; the wire
- * contract does not change.
+ * One file, one faculty: `openResponsesRespond` (one `/responses` call per
+ * input) and the top-level `createWorker` bootstrap (inbound lane, result
+ * envelope, cancel/timeout). A third party writes their own entry the same
+ * way with a different `respond`; the wire contract does not change.
  *
- * `detail.input` is validated against `validateSystemTwoInput` inside
- * `configSystemTwo`; stream events are assembled internally and never posted —
- * no consumer exists (MINIMAL: router-published delta trace when one does).
+ * `detail.input` is validated against `validateSystemTwoInput` by the
+ * bootstrap; stream events are assembled internally and never posted — no
+ * consumer exists (MINIMAL: router-published delta trace when one does).
  *
- * Endpoint config (URLs + resolved API keys + extra headers) is delivered via
- * environment data before the process is spawned and read once by
- * `configSystemTwo` — secrets never enter a request message or the
- * model-facing schema.
+ * Endpoint config (URLs + resolved API keys + extra headers) is delivered
+ * via environment data (`envData` — the host seeds worker-threads
+ * environment data before constructing the Worker) and read once by the
+ * bootstrap — secrets never enter a request message or the model-facing
+ * schema.
  *
  * MINIMAL: no request-level concurrency cap — the host/threads decide how many
  * calls to have in flight. Upgrade path: an executor-side queue if a runaway
@@ -24,7 +25,10 @@
  * @packageDocumentation
  */
 
-import { configSystemTwo, type SystemTwoRespond } from './config.ts'
+import { createWorker, type FacultyRespond } from '../create-worker.ts'
+import { envData } from '../env-data.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { validateSystemTwoCancelEvent, validateSystemTwoRequestEvent } from '../faculties.types.ts'
 import {
   ErrorSchema,
   type KnownStreamEvent,
@@ -37,8 +41,10 @@ import {
   StreamEventLaxSchema,
   type Usage,
   UsageSchema,
+  validateSystemTwoInput,
 } from './schemas.ts'
-import type { SystemTwoEndpointConfig, SystemTwoInput, SystemTwoOutput } from './types.ts'
+import type { SystemTwoEndpointConfig, SystemTwoEndpoints, SystemTwoInput, SystemTwoOutput } from './types.ts'
+import { SYSTEM_TWO_ENDPOINTS_KEY } from './types.ts'
 
 // ---------------------------------------------------------------------------
 // Wire helpers
@@ -238,7 +244,10 @@ const assembleResponse = (events: OpenResponsesStreamEvent[], knownEvents: Known
 // The provider: one Open Responses call per input
 // ---------------------------------------------------------------------------
 
-const openResponsesRespond: SystemTwoRespond = async (input, { endpoints, signal }) => {
+const openResponsesRespond: FacultyRespond<SystemTwoInput, SystemTwoEndpoints> = async (
+  input,
+  { data: endpoints, signal },
+) => {
   const endpoint = endpoints[input.provider]
   if (!endpoint) return { isError: true, message: `[Error: unknown provider "${input.provider}"]` }
   try {
@@ -265,14 +274,20 @@ const openResponsesRespond: SystemTwoRespond = async (input, { endpoints, signal
       ...(parsed.data.error != null && { error: parsed.data.error }),
     }
   } catch (error) {
-    // An abort (timeout/cancel) propagates so configSystemTwo maps the stop
+    // An abort (timeout/cancel) propagates so the bootstrap maps the stop
     // reason to its message; any other throw is transport/parse error data.
     if (signal.aborted) throw error
     return { isError: true, message: error instanceof Error ? error.message : String(error) }
   }
 }
 
-// The process entry: wire only when spawned (an in-process import wires nothing).
-if (import.meta.main) {
-  configSystemTwo(openResponsesRespond)
-}
+// The worker entry: wire only inside a worker global (an in-process import wires nothing).
+export const wiring = createWorker<SystemTwoInput, SystemTwoEndpoints>({
+  respond: openResponsesRespond,
+  validateRequest: validateSystemTwoRequestEvent,
+  validateCancel: validateSystemTwoCancelEvent,
+  validateInput: validateSystemTwoInput,
+  requestKind: FACULTY_MESSAGE_KINDS.system_two_request,
+  resultKind: FACULTY_MESSAGE_KINDS.system_two_request_result,
+  data: (envData(SYSTEM_TWO_ENDPOINTS_KEY) ?? {}) as SystemTwoEndpoints,
+})

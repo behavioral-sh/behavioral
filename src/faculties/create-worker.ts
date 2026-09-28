@@ -32,11 +32,20 @@ const isWorkerScope = (): boolean => {
   return bun === undefined || bun.isMainThread !== true
 }
 
-/** The faculty's call: one validated input in, one result (or error data) out. */
+/**
+ * The faculty's call: one validated input in, one result (or error data) out.
+ *
+ * The result is structurally discriminated by the envelope: `{ isError: true,
+ * message }` (any extra fields ride the error payload) → the error branch;
+ * anything else → the ok branch, JSON-serialized verbatim. The type is
+ * deliberately `unknown` — a faculty's typed output (e.g. SystemTwoOutput's
+ * `OutputItem[]`) is not a JsonObject, and the wire boundary is the
+ * faculty's output validator, not this signature.
+ */
 export type FacultyRespond<I = JsonObject, D = JsonObject> = (
   input: I,
   context: { data: D; signal: AbortSignal },
-) => Promise<JsonObject | { isError: true; message: string }>
+) => Promise<unknown>
 
 /** The inbound request event's shape, structurally — the faculty's wire home validates it. */
 type FacultyRequestEvent<I> = {
@@ -98,7 +107,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   const active = new Map<string, ActiveRequest>()
 
   /** Post one result event to the composition, space + ctx echoed. */
-  const postResult = (result: JsonObject | { isError: true; message: string }, event: FacultyRequestEvent<I>): void => {
+  const postResult = (result: unknown, event: FacultyRequestEvent<I>): void => {
     const detail = ((): JsonObject & { id: string } => {
       if (typeof result === 'object' && result !== null && 'isError' in result) {
         const { isError, ...rest } = result as { isError: boolean } & JsonObject

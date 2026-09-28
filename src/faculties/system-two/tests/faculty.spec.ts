@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
 import {
   AudioContentSchema,
   CompactionItemSchema,
@@ -41,16 +41,17 @@ type WireResult = {
   space?: string
 }
 
-/** Spawn the responses faculty PROCESS and expose the same wire harness API. */
+/** Spawn the responses faculty WORKER and expose the same wire harness API. */
 const spawnModelBehavior = (endpoints: SystemTwoEndpoints) => {
-  // Endpoint config seeds the spawn ENV (the provisioning contract): the
-  // process reads it once at startup and no secret ever crosses the message
-  // boundary. Env vars cross Bun.spawn; worker-thread env-data does not.
-  const faculty = spawnFaculty({
-    file: 'system-two/faculty.ts',
+  // Endpoint config seeds the worker-threads ENV DATA (the provisioning
+  // contract): the worker reads it once at entry evaluation and no secret
+  // ever crosses the message boundary. setEnvironmentData crosses into Bun
+  // web Workers; the entry reads it at module evaluation.
+  const faculty = spawnFacultyWorker({
+    url: new URL('../faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_two_request,
     resultType: FACULTY_MESSAGE_KINDS.system_two_request_result,
-    env: { [SYSTEM_TWO_ENDPOINTS_KEY]: JSON.stringify(endpoints) },
+    env: { [SYSTEM_TWO_ENDPOINTS_KEY]: endpoints },
   })
   const messages: { type?: string; detail?: unknown; space?: string }[] = []
   const respond = (id: string, input: unknown, space?: string, ctx?: JsonObject): void => {
