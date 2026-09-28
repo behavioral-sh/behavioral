@@ -25,7 +25,7 @@
  * @packageDocumentation
  */
 
-import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import type { JsonObject } from '../behavioral/behavioral.types.ts'
 
 /** The outcome of one RPC call — the modified-B envelope, errors-as-data. */
 export type RpcResult<T = JsonObject> =

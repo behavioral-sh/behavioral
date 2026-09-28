@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { spawnFaculty } from './faculty-harness.ts'
 
 /**
  * RPC op specs — exercised through the REAL faculty process boundary
@@ -52,7 +52,7 @@ const rpcServer = (handler?: (body: Record<string, unknown>) => Response | Promi
 /** The faculty harness bound to the shell wire. */
 const spawnShellWorker = () =>
   spawnFaculty({
-    file: 'shell/faculty.ts',
+    file: 'shell.actuator.ts',
     requestType: FACULTY_MESSAGE_KINDS.shell_request,
     resultType: FACULTY_MESSAGE_KINDS.shell_request_result,
   })

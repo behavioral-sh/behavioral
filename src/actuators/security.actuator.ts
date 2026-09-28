@@ -36,21 +36,21 @@
  */
 
 import type { ValidateFunction } from 'ajv'
-import { ajv, type JsonObject } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ajv, type JsonObject } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import {
   type SecurityCancelEvent,
   type SecurityRequestEvent,
   validateSecurityCancelEvent,
   validateSecurityRequestEvent,
-} from '../../faculties/faculties.types.ts'
-import { emit, envData, wireInbound } from '../../faculties/process-lane.ts'
+} from '../faculties/faculties.types.ts'
+import { emit, envData, wireInbound } from '../faculties/process-lane.ts'
 import {
   MCP_BROKER_BOOT_SECRET_KEY,
   MCP_BROKER_URL_KEY,
   validateCredentialRequestInput,
   validateSecurityRequestContext,
-} from '../../faculties/security/types.ts'
+} from '../faculties/security/types.ts'
 import { BunKeychain, vendKeychainToken } from './keychain-oauth-provider.ts'
 
 // ---------------------------------------------------------------------------

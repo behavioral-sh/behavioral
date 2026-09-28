@@ -75,25 +75,29 @@ behavior.
 
 ## Directory Boundaries
 
-**`src/actuators/`** — the daemon-side capability layer: the baked-in trio —
-`shell/` (bun-direct script execution — `run` op TS scripts via `bun run -`,
-`shell` op Bun Shell commands through the wrapper; `rpc` op generic remote
-JSON-RPC — the remote-mcp layering is the threads, not the op; temp-file
-payloads over ~100KB, deleted on every exit; `rpc.client.ts`), `store/`
-(durable space-scoped persistence), and `security/` (the cross-cutting
-credential/policy actuator: `keychain-oauth-provider.ts` is the issuer-bound
-OAuth `BunKeychain` over `Bun.secrets`; it vends `credential_request` →
-`credential_result` — broker env-data first, keychain floor second). Each
-actuator ships ONLY its process entry (`faculty.ts`) + implementation tests
-(`tests/`) — no threads (threads are composition-side, in `src/faculties/<name>/`),
-no overrides (baked-in, never overridable; the config's `actuators` array is
-the explicit allow-list of the trio ONLY), no external provider entries. The
-shared spawn primitive (`use-actuator.ts` — spawn, wire in/out, exit-code
-crash synthesis as `faculty_error`, respawn on demand, terminate; no schema
-compilation — the wire home's once-compiled validators flow in) and
-`instance-lock.ts` (the `<home>/instance.pid` single-instance lock) live here;
-`process-lane.ts` stays in `src/faculties/` until the composition graph's
-`bindEmit` import moves to the emit seam (the shelf's `emit-lane` extraction).
+**`src/actuators/`** — the daemon-side capability layer: the baked-in trio,
+FLAT — no faculty subfolders. The process entries are dot-suffixed
+(`shell.actuator.ts` — bun-direct script execution — `run` op TS scripts via
+`bun run -`, `shell` op Bun Shell commands through the wrapper; `rpc` op
+generic remote JSON-RPC — the remote-mcp layering is the threads, not the op;
+temp-file payloads over ~100KB, deleted on every exit; `rpc.client.ts`),
+`store.actuator.ts` (durable space-scoped persistence), and
+`security.actuator.ts` (the cross-cutting credential/policy actuator:
+`keychain-oauth-provider.ts` is the issuer-bound OAuth `BunKeychain`
+over `Bun.secrets`; it vends `credential_request` → `credential_result` —
+broker env-data first, keychain floor second). Each actuator ships ONLY its
+process entry (`<name>.actuator.ts`) + implementation tests (in `tests/` —
+`<name>.actuator.spec.ts` et al.) — no threads
+(threads are composition-side, in `src/faculties/<name>/`), no overrides
+(baked-in, never overridable; the config's `actuators` array is the explicit
+allow-list of the trio ONLY), no external provider entries. The shared spawn
+primitive (`use-actuator.ts` — spawn, wire in/out, exit-code crash synthesis
+as `faculty_error`, respawn on demand, terminate; no schema compilation — the
+wire home's once-compiled validators flow in), the shared spec harness
+(`tests/`), and `instance-lock.ts` (the `<home>/instance.pid`
+single-instance lock) live here; `process-lane.ts` stays in `src/faculties/`
+until the composition graph's `bindEmit` import moves to the emit seam (the
+shelf's `emit-lane` extraction).
 Dependency arrow: actuators → faculties for the wire + policy types, never
 the reverse; the browser never calls an actuator.
 **`src/faculties/`** — the browser-side thinking layer: the frontier embed

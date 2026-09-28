@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { readdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
-import type { ShellError, ShellSuccess } from '../../../faculties/shell/types.ts'
-import { type FacultyResult, spawnFaculty } from '../../tests/faculty-harness.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import type { ShellError, ShellSuccess } from '../../faculties/shell/types.ts'
+import { type FacultyResult, spawnFaculty } from './faculty-harness.ts'
 
 /**
  * Shell worker integration tests — exercised through the real worker
@@ -34,7 +34,7 @@ type WireResult =
 /** Spawn the shell faculty PROCESS and expose the same wire harness API. */
 const spawnShellWorker = () => {
   const faculty = spawnFaculty({
-    file: 'shell/faculty.ts',
+    file: 'shell.actuator.ts',
     requestType: FACULTY_MESSAGE_KINDS.shell_request,
     resultType: FACULTY_MESSAGE_KINDS.shell_request_result,
   })

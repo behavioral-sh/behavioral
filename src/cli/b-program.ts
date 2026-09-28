@@ -199,7 +199,7 @@ export const bProgram = ({
   const shell =
     shellOverride === undefined
       ? useFaculty({
-          command: ['bun', 'run', '../actuators/shell/faculty.ts'],
+          command: ['bun', 'run', '../actuators/shell.actuator.ts'],
           name: 'shell',
           threads: has('shell') && has('store') ? shellThreads : [],
           requestSchema: ShellRequestEventSchema,
@@ -220,7 +220,7 @@ export const bProgram = ({
   const store =
     storeOverride === undefined
       ? useFaculty({
-          command: ['bun', 'run', '../actuators/store/faculty.ts'],
+          command: ['bun', 'run', '../actuators/store.actuator.ts'],
           name: 'store',
           threads: [],
           requestSchema: StoreRequestEventSchema,
@@ -236,7 +236,7 @@ export const bProgram = ({
   const security =
     securityOverride === undefined
       ? useFaculty({
-          command: ['bun', 'run', '../actuators/security/faculty.ts'],
+          command: ['bun', 'run', '../actuators/security.actuator.ts'],
           name: 'security',
           threads: [],
           requestSchema: SecurityRequestEventSchema,

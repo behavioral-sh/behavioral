@@ -2,11 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
-import type { StoreOp } from '../../../faculties/faculties.types.ts'
-import { STORE_DB_PATH_KEY } from '../../../faculties/store/types.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import type { StoreOp } from '../../faculties/faculties.types.ts'
+import { STORE_DB_PATH_KEY } from '../../faculties/store/types.ts'
+import { spawnFaculty } from './faculty-harness.ts'
 
 /**
  * Store worker integration tests — exercised through the real worker boundary
@@ -33,7 +33,7 @@ type WireResult = {
 /** Spawn the store faculty PROCESS and expose the same wire harness API. */
 const spawnStoreWorker = (dbPath = ':memory:') => {
   const faculty = spawnFaculty({
-    file: 'store/faculty.ts',
+    file: 'store.actuator.ts',
     requestType: FACULTY_MESSAGE_KINDS.store_request,
     resultType: FACULTY_MESSAGE_KINDS.store_request_result,
     // Env vars cross Bun.spawn boundaries; worker-thread env-data does not.
@@ -312,7 +312,7 @@ describe('store worker — persistence', () => {
     const home = mkdtempSync(join(tmpdir(), 'behavioral-home-'))
     // No STORE_DB_PATH_KEY: BEHAVIORAL_HOME alone must drive the db path.
     const faculty = spawnFaculty({
-      file: 'store/faculty.ts',
+      file: 'store.actuator.ts',
       requestType: FACULTY_MESSAGE_KINDS.store_request,
       resultType: FACULTY_MESSAGE_KINDS.store_request_result,
       env: { BEHAVIORAL_HOME: home },

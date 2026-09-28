@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
 import { send } from '../rpc.client.ts'
 
 /**

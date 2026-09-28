@@ -36,11 +36,11 @@ import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import * as path from 'node:path'
 import type { JSONSchemaType } from 'ajv'
-import { ajv, type JsonObject } from '../../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../../faculties/behavioral-home.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
-import { type StoreRequestEvent, validateStoreRequestEvent } from '../../faculties/faculties.types.ts'
-import { emit, envData, wireInbound } from '../../faculties/process-lane.ts'
+import { ajv, type JsonObject } from '../behavioral/behavioral.types.ts'
+import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import { type StoreRequestEvent, validateStoreRequestEvent } from '../faculties/faculties.types.ts'
+import { emit, envData, wireInbound } from '../faculties/process-lane.ts'
 import {
   ROOT_SPACE,
   STORE_DB_PATH_KEY,
@@ -48,8 +48,8 @@ import {
   type StoreGetInput,
   type StorePutInput,
   type StoreQueryInput,
-} from '../../faculties/store/types.ts'
-import { deepEqual } from '../../utils.ts'
+} from '../faculties/store/types.ts'
+import { deepEqual } from '../utils.ts'
 
 // ---------------------------------------------------------------------------
 // Backing — one owned connection, migrations on boot

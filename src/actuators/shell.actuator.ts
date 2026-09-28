@@ -43,15 +43,15 @@
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import type { ValidateFunction } from 'ajv'
-import type { JsonObject } from '../../behavioral/behavioral.types.ts'
-import { ajv } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import type { JsonObject } from '../behavioral/behavioral.types.ts'
+import { ajv } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import {
   type ShellRequestEvent,
   validateShellCancelEvent,
   validateShellRequestEvent,
-} from '../../faculties/faculties.types.ts'
-import { emit, wireInbound } from '../../faculties/process-lane.ts'
+} from '../faculties/faculties.types.ts'
+import { emit, wireInbound } from '../faculties/process-lane.ts'
 import {
   type RpcOpError,
   type RpcOpSuccess,
@@ -63,7 +63,7 @@ import {
   type ShellRpcOpInput,
   type ShellStatus,
   type ShellSuccess,
-} from '../../faculties/shell/types.ts'
+} from '../faculties/shell/types.ts'
 import { send as sendRpc } from './rpc.client.ts'
 
 // ---------------------------------------------------------------------------
@@ -664,7 +664,7 @@ const errorInterior = ({ message }: { message: string }): ShellError => ({
 /** Route one inbound event. */
 const handleInbound = async (message: unknown): Promise<void> => {
   if (validateShellCancelEvent(message)) {
-    const cancel = message as import('../../faculties/faculties.types.ts').ShellCancelEvent
+    const cancel = message as import('../faculties/faculties.types.ts').ShellCancelEvent
     const execution = active.get(cancel.detail.id)
     if (execution !== undefined) stopExecution({ execution, reason: 'canceled' })
     return

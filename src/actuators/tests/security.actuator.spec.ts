@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { spawnFaculty } from './faculty-harness.ts'
 
 /**
  * Security faculty specs — exercised through the REAL faculty process
@@ -45,7 +45,7 @@ const brokerServer = (handler?: (request: Request) => Response | Promise<Respons
 /** The faculty harness bound to the security wire. */
 const spawnSecurityWorker = (env?: Record<string, string>) =>
   spawnFaculty({
-    file: 'security/faculty.ts',
+    file: 'security.actuator.ts',
     requestType: FACULTY_MESSAGE_KINDS.credential_request,
     resultType: FACULTY_MESSAGE_KINDS.credential_result,
     env,
