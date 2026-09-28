@@ -101,6 +101,5 @@ export const wiring = createWorker<SystemOneRequestDetail, SystemOneEndpointConf
   validateRequest: validateSystemOneRequestEvent,
   validateCancel: validateSystemOneCancelEvent,
   validateInput: ajv.compile(detailInputSchema(SystemOneInputSchema)),
-  requestKind: FACULTY_MESSAGE_KINDS.system_one_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_one_request_result,
 })

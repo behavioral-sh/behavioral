@@ -125,7 +125,6 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   validateRequest,
   validateCancel,
   validateInput,
-  requestKind,
   resultKind,
   timeoutMs = 60_000,
 }: {
@@ -137,9 +136,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   validateCancel?: ValidateFunction
   /** The faculty's once-compiled input-boundary validator. */
   validateInput: ValidateFunction
-  /** The inbound request type seal — only this type reaches the faculty. */
-  requestKind: string
-  /** The outbound result type — the lane's seal (must pair with `requestKind`). */
+  /** The outbound result type — the lane's seal (the request validators are const-discriminated). */
   resultKind: string
   /** The in-flight request timeout — the provider call is aborted past this. `0` = no timer (sync faculties). */
   timeoutMs?: number
@@ -188,7 +185,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
       }
       return
     }
-    if (!validateRequest(message) || (message as FacultyRequestEvent<I>).type !== requestKind) return
+    if (!validateRequest(message)) return
     const event = message as FacultyRequestEvent<I>
     if (!initialized) {
       // Fail-closed: no config yet — the caller learns why nothing ran.

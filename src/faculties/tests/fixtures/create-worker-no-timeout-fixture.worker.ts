@@ -14,7 +14,6 @@ import {
  */
 
 export const wiring = createWorker<FixtureDetail>({
-  requestKind: 'fixture_request',
   resultKind: 'fixture_request_result',
   validateRequest: validateFixtureRequestEvent,
   validateCancel: validateFixtureCancelEvent,

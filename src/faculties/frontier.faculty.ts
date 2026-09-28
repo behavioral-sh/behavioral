@@ -1531,7 +1531,6 @@ export const wiring = createWorker<FrontierRequestDetail>({
   respond: frontierRespond,
   validateRequest: validateFrontierRequestEvent,
   validateInput: ajv.compile(FrontierRequestDetailSchema),
-  requestKind: FACULTY_MESSAGE_KINDS.frontier_request,
   resultKind: FACULTY_MESSAGE_KINDS.frontier_request_result,
   timeoutMs: 0,
 })

@@ -281,6 +281,5 @@ export const wiring = createWorker<SystemTwoRequestDetail, SystemTwoEndpoints>({
   validateRequest: validateSystemTwoRequestEvent,
   validateCancel: validateSystemTwoCancelEvent,
   validateInput: ajv.compile(detailInputSchema(SystemTwoInputSchema)),
-  requestKind: FACULTY_MESSAGE_KINDS.system_two_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_two_request_result,
 })
