@@ -32,7 +32,7 @@ import {
   validateAdmissionVerdict,
 } from '../faculties/system-one/threads.ts'
 import { useFaculty } from '../faculties/use-faculty.ts'
-import type { Faculty } from '../faculties.ts'
+import type { Actuator } from '../faculties.ts'
 import { uuid } from '../utils.ts'
 import {
   pluginThreadRegistryKey,
@@ -58,7 +58,7 @@ import { UI_RENDER_TRIGGER_TYPE, uiPipelineThreads, uiThreads } from './ui-threa
  * This was the engine transport's trailing step; it is the composition's
  * now.
  *
- * `faculties` is the allow-list (unset = shell/store/security on); `shell` and
+ * `actuators` is the allow-list (unset = shell/store/security on); `shell` and
  * `store` are the two default-faculty instance overrides (sandboxed shell,
  * durable store), and `systemOne`/`systemTwo` are endpoint-carrying overrides
  * with no default — all pre-curried useFaculty returns for host-constructed
@@ -101,7 +101,7 @@ const frontierFaculty = (
 }
 
 export const bProgram = ({
-  faculties,
+  actuators,
   shell: shellOverride,
   store: storeOverride,
   security: securityOverride,
@@ -110,8 +110,8 @@ export const bProgram = ({
   supervision,
   ui,
 }: {
-  /** Allow-list: unset = all default faculties on; set = only the named faculties spawn. */
-  faculties?: Faculty[]
+  /** Allow-list: unset = all baked-in actuators on; set = only the named actuators spawn. */
+  actuators?: Actuator[]
   /** The shell faculty override: a pre-curried useFaculty return (sandboxed shell). */
   shell?: ReturnType<typeof useFaculty>
   /** The store faculty override: a pre-curried useFaculty return (durable store). */
@@ -152,8 +152,8 @@ export const bProgram = ({
    */
   ui?: { provider?: string; modelId?: string }
 }) => {
-  const enabled = new Set<Faculty>(faculties === undefined ? ['shell', 'store', 'security'] : faculties)
-  const has = (faculty: Faculty): boolean => enabled.has(faculty)
+  const enabled = new Set<Actuator>(actuators === undefined ? ['shell', 'store', 'security'] : actuators)
+  const has = (actuator: Actuator): boolean => enabled.has(actuator)
 
   // ── The engine, in-process ────────────────────────────────────────────────
 

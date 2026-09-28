@@ -11,8 +11,8 @@ import type { bProgram } from './b-program.ts'
  */
 export type BehavioralConfig = Parameters<typeof bProgram>[0]
 
-/** The selectable faculties a config may enable (mirrors the `Faculty` union). */
-const KNOWN_FACULTIES: readonly string[] = ['shell', 'store', 'mcp']
+/** The selectable actuators a config may enable (mirrors the `Actuator` union — the trio only). */
+const KNOWN_ACTUATORS: readonly string[] = ['shell', 'store', 'security']
 
 const invalid = (configPath: string, detail: string): never => {
   throw new Error(`invalid config at ${configPath}: ${detail}`)
@@ -21,19 +21,19 @@ const invalid = (configPath: string, detail: string): never => {
 /** Validate the trusted config's shape — fail fast with the path and a fix hint. */
 const validate = (value: unknown, configPath: string): BehavioralConfig => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    invalid(configPath, 'expected a default-exported object like `export default { faculties: [...] }`')
+    invalid(configPath, 'expected a default-exported object like `export default { actuators: [...] }`')
   }
   const config = value as Record<string, unknown>
-  if (config.faculties !== undefined) {
-    const faculties = config.faculties
-    if (!Array.isArray(faculties) || faculties.some((name) => typeof name !== 'string')) {
-      invalid(configPath, '"faculties" must be an array of faculty names')
+  if (config.actuators !== undefined) {
+    const actuators = config.actuators
+    if (!Array.isArray(actuators) || actuators.some((name) => typeof name !== 'string')) {
+      invalid(configPath, '"actuators" must be an array of actuator names')
     }
-    const unknown = (faculties as string[]).filter((name) => !KNOWN_FACULTIES.includes(name))
+    const unknown = (actuators as string[]).filter((name) => !KNOWN_ACTUATORS.includes(name))
     if (unknown.length > 0) {
       invalid(
         configPath,
-        `unknown faculty ${unknown.map((name) => `"${name}"`).join(', ')} — expected one of: ${KNOWN_FACULTIES.join(', ')}`,
+        `unknown actuator ${unknown.map((name) => `"${name}"`).join(', ')} — expected one of: ${KNOWN_ACTUATORS.join(', ')}`,
       )
     }
   }
@@ -52,7 +52,7 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
  *
  * @remarks
  * The file is **executable config** — trusted, user-owned machine state,
- * dynamically imported so it can carry live values (the `faculties` array and
+ * dynamically imported so it can carry live values (the `actuators` array and
  * `useFaculty(...)` overrides). A missing file yields the empty config, so the
  * composition defaults apply; an unloadable file or an invalid shape throws
  * with the path and a fix hint.

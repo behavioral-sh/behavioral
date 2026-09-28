@@ -155,8 +155,8 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  test('the faculties allow-list prunes faculties: without shell, no route — a triggered shell_request is never answered', async () => {
-    const { runtime, traces } = startRuntime({ faculties: ['store'] })
+  test('the actuators allow-list prunes actuators: without shell, no route — a triggered shell_request is never answered', async () => {
+    const { runtime, traces } = startRuntime({ actuators: ['store'] })
     try {
       // No shell → no scan boot, no shell_request ever. Settle past any
       // boot cascade the threads could have run.
@@ -257,7 +257,7 @@ describe('bProgram — the runtime composition', () => {
   })
 
   test('the root guard threads is mounted: a malformed ui_* message is blocked', async () => {
-    const { runtime, traces } = startRuntime({ faculties: [] })
+    const { runtime, traces } = startRuntime({ actuators: [] })
     try {
       // Invalid ui_render (no html): the guard blocks it, so it never selects and
       // the frontier deadlocks — the reject is visible in the trace.
@@ -271,7 +271,7 @@ describe('bProgram — the runtime composition', () => {
   })
 
   test('the root guard watches every space: a named-space malformed ui_* message is blocked', async () => {
-    const { runtime, traces } = startRuntime({ faculties: [] })
+    const { runtime, traces } = startRuntime({ actuators: [] })
     try {
       // The same invalid ui_render, stamped into s1: the root guard's
       // unstamped block matches every space (Direction/R) — the named-space

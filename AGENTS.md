@@ -75,20 +75,45 @@ behavior.
 
 ## Directory Boundaries
 
-**`src/faculties/`** — the process layer. Shared modules sit at the top: the
-faculty event wire (`faculties.types.ts` + `faculties.constants.ts` — every
-request/result event kind, validators, and the kind registry), the faculty
-wiring primitive (`use-faculty.ts`, `useFaculty` — Bun.spawn processes speaking
-the wire over stdio lines; it compiles the faculty's event schemas and returns
-them so the composition derives guard threads; exit-code crash synthesis as
-`faculty_error`; respawn on demand), the process lane (`process-lane.ts` — stdio
-emit/inbound, the envData bridge, bindEmit for the frontier embed),
-`behavioral-home.ts` (the `BEHAVIORAL_HOME` root), `resolve-faculty-entry.ts`
-(bundled/absolute/home-relative provider-entry paths), and `faculties.threads.ts`
-(the composition's root guard threads).
-Each faculty lives in its own subfolder — `faculty.ts` (the process entry),
-`threads.ts` (its default threads), `types.ts`/`schemas.ts`, `config.ts` (the system
-faculties), plus its `tests/`:
+**`src/actuators/`** — the daemon-side capability layer: the baked-in trio —
+`shell/` (bun-direct script execution — `run` op TS scripts via `bun run -`,
+`shell` op Bun Shell commands through the wrapper; `rpc` op generic remote
+JSON-RPC — the remote-mcp layering is the threads, not the op; temp-file
+payloads over ~100KB, deleted on every exit; `rpc.client.ts`), `store/`
+(durable space-scoped persistence), and `security/` (the cross-cutting
+credential/policy actuator: `keychain-oauth-provider.ts` is the issuer-bound
+OAuth `BunKeychain` over `Bun.secrets`; it vends `credential_request` →
+`credential_result` — broker env-data first, keychain floor second). Each
+actuator ships ONLY its process entry (`faculty.ts`) + implementation tests
+(`tests/`) — no threads (threads are composition-side, in `src/faculties/<name>/`),
+no overrides (baked-in, never overridable; the config's `actuators` array is
+the explicit allow-list of the trio ONLY), no external provider entries. The
+shared spawn primitive (`use-actuator.ts` — spawn, wire in/out, exit-code
+crash synthesis as `faculty_error`, respawn on demand, terminate; no schema
+compilation — the wire home's once-compiled validators flow in) and
+`instance-lock.ts` (the `<home>/instance.pid` single-instance lock) live here;
+`process-lane.ts` stays in `src/faculties/` until the composition graph's
+`bindEmit` import moves to the emit seam (the shelf's `emit-lane` extraction).
+Dependency arrow: actuators → faculties for the wire + policy types, never
+the reverse; the browser never calls an actuator.
+**`src/faculties/`** — the browser-side thinking layer: the frontier embed
+plus the system faculties and every thread pack + the wire. Shared modules
+sit at the top: the faculty event wire (`faculties.types.ts` +
+`faculties.constants.ts` — every request/result event kind, validators
+(compiled once here, both sides reference), and the kind registry), the
+spawn primitive the system faculties wire through (`use-faculty.ts` —
+Bun.spawn processes speaking the wire over stdio lines; it compiles the
+faculty's event schemas and returns them so the composition derives guard
+threads; exit-code crash synthesis as `faculty_error`; respawn on demand),
+the process lane (`process-lane.ts` — stdio emit/inbound, the envData
+bridge, bindEmit for the frontier embed), `behavioral-home.ts` (the
+`BEHAVIORAL_HOME` root), `resolve-faculty-entry.ts` (bundled/absolute/
+home-relative provider-entry paths — the system faculties' endpoint
+surface; baked-in actuators never resolve external entries), and
+`faculties.threads.ts` (the composition's root guard threads).
+The browser faculties live in their own subfolders — `threads.ts` (their
+thread packs), `types.ts`/`schemas.ts`, `config.ts` (the system faculties),
+plus their `tests/`:
 - `system-two/` — Open Responses model calls; a provider entry —
   `configSystemTwo(respond)` wires it, `useSystemTwo({ endpoints })` seeds the
   endpoint map
@@ -102,20 +127,12 @@ faculties), plus its `tests/`:
   root-mounted supervisor's block is global — one space's runaway loop halts
   the watched type everywhere — while a space-stamped supervisor set
   confines, expressible but not built)
-- `shell/` — bun-direct script execution — `run` op TS scripts via `bun run -`,
-  `shell` op Bun Shell commands through the wrapper; `rpc` op generic remote
-  JSON-RPC (the remote-mcp layering is the threads, not the op);
-  temp-file payloads over ~100KB, deleted on every exit
-- `store/` — durable space-scoped persistence
-- `security/` — the cross-cutting credential/policy faculty:
-  `keychain-oauth-provider.ts` is the issuer-bound OAuth `BunKeychain` over
-  `Bun.secrets` (SDK-free plain types in `security/types.ts`); the faculty
-  vends `credential_request` → `credential_result` (broker env-data first,
-  keychain floor second) — consumers are shell (remote MCP), system-two, ATProto
 - `frontier/` — the in-process embed — imported and driven by the composition;
   standalone spawns are a compatibility entry
-Each faculty owns its event types + input boundary; results echo the request
-`space`; op runners errors-as-data.
+Each browser faculty owns its event types + input boundary; results echo the
+request `space`; op runners errors-as-data. The daemon trio's capability
+prose lives under `src/actuators/` above — the two directories, one
+capability: faculties think (browser), actuators act (daemon).
 **`src/tools/`** — deleted (fleet 0): the ICL conversion retired the CLI tool
 fleet. Remote MCP is remote-mcp threads over the shell faculty's
 generic `rpc` op (`src/faculties/shell/remote-mcp.threads.ts` — the retired
@@ -126,7 +143,8 @@ the plugin-thread proposal path: a host proposal → worker import → engine-Th
 validation → one `add_thread` candidate per validated export) + recipes + store,
 taught by `skills/skill-conventions/`.
 **`src/faculties.ts`** — the faculties public surface (package export `./faculties`): the
-`Faculty` union, the wire types + JSON schemas/validators (`faculties.types.ts`), the override thread
+`Actuator` union (the `bProgram` `actuators` allow-list — the trio only), the wire
+types + JSON schemas/validators (`faculties.types.ts`), the override thread
 threads (`shellThreads`), their schemas/types, `useFaculty`, and the
 System One/Two config surface (`configSystemOne`/`useSystemOne`,
 `configSystemTwo`/`useSystemTwo`) — what a
@@ -166,17 +184,17 @@ autoresearch loop's capture side — the in-process lineage-keyed raw run
 consumer + the frontier replay builder; the socket host wires its file sink
 under `<home>/captures`).
 **`src/utils/`** — shared pure utilities.
-**`src/faculties/<faculty>/threads.ts`** — faculty threads: `shell/threads.ts`
-(the ICL threads — skill/plugin scans, catalog/manifest schema gates, links dispatchers
-+ stored recipes), `shell/rpc-auth.threads.ts` (the credential vend-and-replay
-spine), `shell/remote-mcp.threads.ts` (the MCP layering over the rpc op),
-`shell/plugin-threads.threads.ts` (the plugin-thread proposal path — dispatcher,
-import join, candidate carry, add_thread dispatch), and
-`system-one/threads.ts` (the admission judgment threads + the supervision
+**`src/faculties/<faculty>/threads.ts`** — composition-side thread packs:
+`shell/threads.ts` (the ICL threads — skill/plugin scans, catalog/manifest
+schema gates, links dispatchers + stored recipes), `shell/rpc-auth.threads.ts`
+(the credential vend-and-replay spine), `shell/remote-mcp.threads.ts` (the MCP
+layering over the rpc op), `shell/plugin-threads.threads.ts` (the plugin-thread
+proposal path — dispatcher, import join, candidate carry, add_thread dispatch),
+and `system-one/threads.ts` (the admission judgment threads + the supervision
 threads — the runtime circuit breaker, its judgment, and its recovery).
-Threads ship with
-their faculty; `bProgram` mounts the faculty's threads when the faculty and its required
-faculties are on — except `faculties.threads.ts`, the composition's **root guard
+Threads are composition-side; actuators ship without theirs. `bProgram`
+mounts a faculty's threads when the faculty and its required faculties are
+on — except `faculties.threads.ts`, the composition's **root guard
 threads**, always mounted regardless of the allow-list. The
 former `src/threads/` is dissolved; its engine-layer specs live with their
 faculties (`src/faculties/<faculty>/tests/`), while specs for the shared modules

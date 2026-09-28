@@ -23,8 +23,8 @@ describe('loadConfig', () => {
   })
 
   test('a present config file yields its default export', async () => {
-    await withConfig(`export default { faculties: ['shell'] }`, async (file) => {
-      expect(await loadConfig(file)).toEqual({ faculties: ['shell'] })
+    await withConfig(`export default { actuators: ['shell'] }`, async (file) => {
+      expect(await loadConfig(file)).toEqual({ actuators: ['shell'] })
     })
   })
 
@@ -41,9 +41,18 @@ describe('loadConfig', () => {
     })
   })
 
-  test('rejects an unknown faculty name with the allowed set', async () => {
-    await withConfig(`export default { faculties: ['nope'] }`, async (file) => {
-      await expect(loadConfig(file)).rejects.toThrow(/unknown faculty "nope".*expected one of: shell, store, mcp/)
+  test('rejects an unknown actuator name with the allowed set', async () => {
+    await withConfig(`export default { actuators: ['nope'] }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/unknown actuator "nope".*expected one of: shell, store, security/)
+    })
+  })
+
+  test('the allow-list admits the trio only — browser faculties and retired names are unknown', async () => {
+    await withConfig(`export default { actuators: ['systemOne'] }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/unknown actuator "systemOne"/)
+    })
+    await withConfig(`export default { actuators: ['mcp'] }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/unknown actuator "mcp"/)
     })
   })
 
@@ -52,8 +61,8 @@ describe('loadConfig', () => {
     const previous = process.env.BEHAVIORAL_HOME
     process.env.BEHAVIORAL_HOME = home
     try {
-      await Bun.write(join(home, 'config.ts'), `export default { faculties: ['store'] }`)
-      expect(await loadConfig()).toEqual({ faculties: ['store'] })
+      await Bun.write(join(home, 'config.ts'), `export default { actuators: ['store'] }`)
+      expect(await loadConfig()).toEqual({ actuators: ['store'] })
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
       else process.env.BEHAVIORAL_HOME = previous

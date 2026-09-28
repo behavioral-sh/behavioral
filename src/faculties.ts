@@ -3,7 +3,7 @@
  *
  * @remarks
  * Exposes the override threads (`shellThreads`, `mcpThreads`), their
- * schemas and types, the `Faculty` union, `useFaculty`, and the System Two
+ * schemas and types, the `Actuator` union, `useFaculty`, and the System Two
  * config surface (`configSystemTwo` for a provider entry; `useSystemTwo` for
  * the host). The default root threads (`facultiesThreads`) is internal — the
  * composition always mounts it — and is intentionally NOT exported. The runtime
@@ -12,8 +12,8 @@
  * @packageDocumentation
  */
 
-/** The selectable capability faculties (the `bProgram` allow-list). */
-export type Faculty = 'shell' | 'store' | 'security'
+/** The selectable capability actuators (the `bProgram` allow-list). */
+export type Actuator = 'shell' | 'store' | 'security'
 
 export * from './faculties/faculties.types.ts'
 export * from './faculties/security/types.ts'
