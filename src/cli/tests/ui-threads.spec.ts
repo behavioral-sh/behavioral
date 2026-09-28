@@ -724,7 +724,7 @@ const tempHome = () => mkdtempSync(join(tmpdir(), 'behavioral-ui-home-'))
 /** The shell faculty override: the default construction + the temp home env. */
 const shellWithHome = (home: string) =>
   useFaculty({
-    command: ['bun', 'run', 'shell/faculty.ts'],
+    command: ['bun', 'run', '../actuators/shell/faculty.ts'],
     name: 'shell',
     threads: [],
     env: homeEnv(home),
@@ -736,7 +736,7 @@ const shellWithHome = (home: string) =>
 /** The store faculty override: the default construction + the temp home env. */
 const storeWithHome = (home: string) =>
   useFaculty({
-    command: ['bun', 'run', 'store/faculty.ts'],
+    command: ['bun', 'run', '../actuators/store/faculty.ts'],
     name: 'store',
     threads: [],
     env: homeEnv(home),

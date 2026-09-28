@@ -45,13 +45,13 @@ import {
   validateSecurityRequestEvent,
 } from '../../faculties/faculties.types.ts'
 import { emit, envData, wireInbound } from '../../faculties/process-lane.ts'
-import { BunKeychain, vendKeychainToken } from './keychain-oauth-provider.ts'
 import {
   MCP_BROKER_BOOT_SECRET_KEY,
   MCP_BROKER_URL_KEY,
   validateCredentialRequestInput,
   validateSecurityRequestContext,
-} from './types.ts'
+} from '../../faculties/security/types.ts'
+import { BunKeychain, vendKeychainToken } from './keychain-oauth-provider.ts'
 
 // ---------------------------------------------------------------------------
 // Auth binding — module scope, from boundary-legal data only

@@ -3,8 +3,8 @@ import { readdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
+import type { ShellError, ShellSuccess } from '../../../faculties/shell/types.ts'
 import { type FacultyResult, spawnFaculty } from '../../tests/faculty-harness.ts'
-import type { ShellError, ShellSuccess } from '../types.ts'
 
 /**
  * Shell worker integration tests — exercised through the real worker

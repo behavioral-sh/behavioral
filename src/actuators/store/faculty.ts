@@ -41,7 +41,6 @@ import { behavioralHome } from '../../faculties/behavioral-home.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { type StoreRequestEvent, validateStoreRequestEvent } from '../../faculties/faculties.types.ts'
 import { emit, envData, wireInbound } from '../../faculties/process-lane.ts'
-import { deepEqual } from '../../utils.ts'
 import {
   ROOT_SPACE,
   STORE_DB_PATH_KEY,
@@ -49,7 +48,8 @@ import {
   type StoreGetInput,
   type StorePutInput,
   type StoreQueryInput,
-} from './types.ts'
+} from '../../faculties/store/types.ts'
+import { deepEqual } from '../../utils.ts'
 
 // ---------------------------------------------------------------------------
 // Backing — one owned connection, migrations on boot

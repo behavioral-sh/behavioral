@@ -52,7 +52,6 @@ import {
   validateShellRequestEvent,
 } from '../../faculties/faculties.types.ts'
 import { emit, wireInbound } from '../../faculties/process-lane.ts'
-import { send as sendRpc } from './rpc.client.ts'
 import {
   type RpcOpError,
   type RpcOpSuccess,
@@ -64,7 +63,8 @@ import {
   type ShellRpcOpInput,
   type ShellStatus,
   type ShellSuccess,
-} from './types.ts'
+} from '../../faculties/shell/types.ts'
+import { send as sendRpc } from './rpc.client.ts'
 
 // ---------------------------------------------------------------------------
 // Constants

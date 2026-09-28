@@ -1071,7 +1071,7 @@ describe('bProgram — the runtime composition', () => {
     // security override's env-data (the shell/store override pattern).
     const { runtime, traces } = startRuntime({
       security: useFaculty({
-        command: ['bun', 'run', 'security/faculty.ts'],
+        command: ['bun', 'run', '../actuators/security/faculty.ts'],
         name: 'security',
         threads: [],
         env: { MCP_BROKER_URL: brokerUrl, MCP_BROKER_BOOT_SECRET: 'boot-secret' },

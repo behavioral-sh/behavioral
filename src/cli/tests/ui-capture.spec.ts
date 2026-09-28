@@ -51,7 +51,7 @@ const homeEnv = (home: string) => ({ BEHAVIORAL_HOME: home })
 
 const shellWithHome = (home: string) =>
   useFaculty({
-    command: ['bun', 'run', 'shell/faculty.ts'],
+    command: ['bun', 'run', '../actuators/shell/faculty.ts'],
     name: 'shell',
     threads: [],
     env: homeEnv(home),
@@ -62,7 +62,7 @@ const shellWithHome = (home: string) =>
 
 const storeWithHome = (home: string) =>
   useFaculty({
-    command: ['bun', 'run', 'store/faculty.ts'],
+    command: ['bun', 'run', '../actuators/store/faculty.ts'],
     name: 'store',
     threads: [],
     env: homeEnv(home),

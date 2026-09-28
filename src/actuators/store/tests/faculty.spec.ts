@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../../faculties/faculties.constants.ts'
 import type { StoreOp } from '../../../faculties/faculties.types.ts'
+import { STORE_DB_PATH_KEY } from '../../../faculties/store/types.ts'
 import { spawnFaculty } from '../../tests/faculty-harness.ts'
-import { STORE_DB_PATH_KEY } from '../types.ts'
 
 /**
  * Store worker integration tests — exercised through the real worker boundary
