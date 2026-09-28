@@ -88,77 +88,86 @@ over `Bun.secrets`; it vends `credential_request` → `credential_result` —
 broker env-data first, keychain floor second). Each actuator ships ONLY its
 process entry (`<name>.actuator.ts`) + implementation tests (in `tests/` —
 `<name>.actuator.spec.ts` et al.) — no threads
-(threads are composition-side, in `src/faculties/<name>/`), no overrides
+(threads are composition-side, in `src/faculties/` for the browser faculties
+and `src/old-faculties/shell/` for the shell actuator's threads until the
+rewire), no overrides
 (baked-in, never overridable; the config's `actuators` array is the explicit
 allow-list of the trio ONLY), no external provider entries. The shared spawn
 primitive (`use-actuator.ts` — spawn, wire in/out, exit-code crash synthesis
 as `faculty_error`, respawn on demand, terminate; no schema compilation — the
 wire home's once-compiled validators flow in), the shared spec harness
 (`tests/`), and `instance-lock.ts` (the `<home>/instance.pid`
-single-instance lock) live here; `process-lane.ts` stays in `src/faculties/`
-until the composition graph's `bindEmit` import moves to the emit seam (the
-shelf's `emit-lane` extraction).
+single-instance lock) live here; the actuators own their stdio lane copy
+(`process-lane.ts` — the two-homes ruling: the daemon layer owns byte-identical
+wire copies, the faculties tree owns the browser-side wire home).
 Dependency arrow: actuators → faculties for the wire + policy types, never
 the reverse; the browser never calls an actuator.
-**`src/faculties/`** — the browser-side thinking layer: the frontier embed
-plus the system faculties and every thread pack + the wire. Shared modules
-sit at the top: the faculty event wire (`faculties.types.ts` +
-`faculties.constants.ts` — every request/result event kind, validators
-(compiled once here, both sides reference), and the kind registry), the
-spawn primitive the system faculties wire through (`use-faculty.ts` —
-Bun.spawn processes speaking the wire over stdio lines; it compiles the
-faculty's event schemas and returns them so the composition derives guard
-threads; exit-code crash synthesis as `faculty_error`; respawn on demand),
-the process lane (`process-lane.ts` — stdio emit/inbound, the envData
-bridge, bindEmit for the frontier embed), `behavioral-home.ts` (the
-`BEHAVIORAL_HOME` root), `resolve-faculty-entry.ts` (bundled/absolute/
-home-relative provider-entry paths — the system faculties' endpoint
-surface; baked-in actuators never resolve external entries), and
-`faculties.threads.ts` (the composition's root guard threads).
-The browser faculties live in their own subfolders — `threads.ts` (their
-thread packs), `types.ts`/`schemas.ts`, `config.ts` (the system faculties),
-plus their `tests/`:
-- `system-two/` — Open Responses model calls; a provider entry —
-  `configSystemTwo(respond)` wires it, `useSystemTwo({ endpoints })` seeds the
-  endpoint map
-- `system-one/` — TypeSafe/OpenRouter Decisions; `configSystemOne` +
-  `useSystemOne({ endpoint })`, with 429/529 retry; `threads.ts` — the
-  admission judgment threads (the BP-native blocking judge over the Decisions
-  lane; the composition mounts it when systemOne is wired) and the supervision
-  threads (the runtime circuit breaker — the counting supervisor, its
-  block-then-judge verdict, and its recovery; `bProgram({ supervision })`
-  mounts the pack with systemOne when the host names watched types; a
-  root-mounted supervisor's block is global — one space's runaway loop halts
-  the watched type everywhere — while a space-stamped supervisor set
-  confines, expressible but not built)
-- `frontier/` — the in-process embed — imported and driven by the composition;
-  standalone spawns are a compatibility entry
-Each browser faculty owns its event types + input boundary; results echo the
-request `space`; op runners errors-as-data. The daemon trio's capability
-prose lives under `src/actuators/` above — the two directories, one
-capability: faculties think (browser), actuators act (daemon).
+**`src/faculties/`** — the browser-side thinking layer: every faculty is a
+web worker on every host, one file per faculty, flattened to the actuators
+pattern. Shared modules sit at the top:
+- the wire home (`faculties.types.ts` + `faculties.constants.ts` — every
+  request/result event kind, validators compiled once here, both sides
+  reference, the kind registry) and `faculties.threads.ts` (the composition's
+  root guard threads, always mounted);
+- the in-worker bootstrap (`create-worker.ts` — called at the TOP LEVEL of
+  each faculty entry; gates on SCOPE (`typeof window` + `Bun.isMainThread`,
+  never `import.meta` — classic bundles cannot touch it and Bun's main
+  thread carries the worker globals anyway); owns inbound routing, the
+  ok/isError envelope, the cancel map, the request timeout (`0` = none),
+  space + ctx echo; no-ops outside a worker global, so importing an entry in
+  the main thread wires nothing and the `respond` stays importable by specs);
+- the env-data bridge (`env-data.ts` — worker-threads environment data
+  first, JSON process env second; MINIMAL: Bun-side — the browser path
+  delivers config via the construction message at the rewire).
+The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
+(+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
+(+ types/schemas), `frontier.faculty.ts` (+ `.threads.ts`): each entry is a
+`respond` behind the top-level `createWorker` (system-one: TypeSafe/OpenRouter
+Decisions, 429/529 retry-after; system-two: Open Responses, the endpoints map
+as env data; frontier: the reachability analyses — synchronous, no cancel
+contract, no timeout). Endpoints/config arrive as environment data — the
+secret never enters a request message. `system-one.threads.ts` carries the
+admission judgment threads (the BP-native blocking judge over the Decisions
+lane; mounted when systemOne is wired) and the supervision threads (the
+runtime circuit breaker — the counting supervisor, its block-then-judge
+verdict, and its recovery; a root-mounted supervisor's block is global —
+one space's runaway loop halts the watched type everywhere — while a
+space-stamped supervisor set confines, expressible but not built). Specs live
+in `tests/` and drive REAL
+Bun web Workers on the TS entries directly (no bundling needed to prove the
+lane; `faculty-harness.ts` `spawnFacultyWorker`; the create-worker fixture
+entry pins the lane pair).
+Dependency arrow: `src/b-program/` wires these entries via `useWorker`;
+`src/faculties/` → `src/behavioral/` one-way; the browser never calls an
+actuator.
+**`src/old-faculties/`** — the holding pattern: the pre-rebuild faculties
+tree, keeping the running app alive (the composition in `src/cli/` still
+imports it) until the rewire.
 **`src/tools/`** — deleted (fleet 0): the ICL conversion retired the CLI tool
-fleet. Remote MCP is remote-mcp threads over the shell faculty's
-generic `rpc` op (`src/faculties/shell/remote-mcp.threads.ts` — the retired
+fleet. Remote MCP is remote-mcp threads over the shell actuator's
+generic `rpc` op (`src/old-faculties/shell/remote-mcp.threads.ts` — the retired
 `mcp` faculty's replacement; the official SDK dependency is gone);
-skill/plugin operations are the shell faculty's threads
-(`src/faculties/shell/threads.ts` + `src/faculties/shell/plugin-threads.threads.ts` —
+skill/plugin operations are the shell threads
+(`src/old-faculties/shell/threads.ts` + `src/old-faculties/shell/plugin-threads.threads.ts` —
 the plugin-thread proposal path: a host proposal → worker import → engine-ThreadSchema
 validation → one `add_thread` candidate per validated export) + recipes + store,
 taught by `skills/skill-conventions/`.
-**`src/faculties.ts`** — the faculties public surface (package export `./faculties`): the
-`Actuator` union (the `bProgram` `actuators` allow-list — the trio only), the wire
-types + JSON schemas/validators (`faculties.types.ts`), the override thread
-threads (`shellThreads`), their schemas/types, `useFaculty`, and the
-System One/Two config surface (`configSystemOne`/`useSystemOne`,
-`configSystemTwo`/`useSystemTwo`) — what a
-`config.ts` imports to compose. (`facultiesThreads`, the default root threads, is internal.)
-**`src/b-program/`** — the composition home (`src/b-program.ts` boundary, the `src/controller.ts`
-precedent): the host-agnostic runtime composition `bProgram` (`b-program/b-program.ts` — the
-in-process engine + frontier embed, the capability spawns, the thread mounts) and its specs
-(`tests/`). The bProgram worker entry (the browser's per-tab composition worker) joins this home
-with the browser-shape work; the `src/cli/` boundary shrinks to host entries (serve,
-attach-or-start, socket-host), config/init, and the TUI.
+**`src/faculties.ts`** — the faculties public surface (package export `./faculties`):
+HOLDING PATTERN — re-pointed at `src/old-faculties/` so the generated configs
+(`behavioral init`) keep loading until the rewire; it moves to the new tree's
+shape when the composition rewires.
+**`src/b-program/`** — the composition-side wiring home (the directory
+re-forms here; the composition itself still lives in `src/cli/` until the
+rewire): `use-worker.ts` — `useWorker({ name, worker: () => new Worker(...),
+validateRequest, validateCancel, resultKind })`, the worker construction a
+FACTORY at the call site (the literal stays bundler-visible AND
+respawn-after-crash re-invokes it), pre-compiled validators in, returning
+the ruled four-key lane `{ name, send, invalidEventGate, terminate }`;
+crash synthesis re-enters exactly ONE `faculty_error { faculty }`
+once-thread via `addThreads` — in-flight requests at death never answer
+(the engine's `waitFor [result, faculty_error]` pair covers it);
+`tests/` holds the lane's ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over
+a real Bun web Worker).
 **`src/behavioral/`** — the pure language layer: types, constants, utils, the interpreter core
 (`behavioral.ts`), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
 nothing outside behavioral/ speaks its wire). Zero process entries that speak the faculty wire —

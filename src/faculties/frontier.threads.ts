@@ -1,7 +1,7 @@
-import type { JsonObject, Thread } from '../../behavioral/behavioral.types.ts'
-import { ThreadSchema } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { ADMISSION_EVENT_TYPES } from '../system-one/threads.ts'
+import type { JsonObject, Thread } from '../behavioral/behavioral.types.ts'
+import { ThreadSchema } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
+import { ADMISSION_EVENT_TYPES } from './system-one.threads.ts'
 
 /**
  * The frontier faculty's admission-review threads and policy — the

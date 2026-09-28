@@ -24,7 +24,7 @@
  */
 
 import type { JSONSchemaType } from 'ajv'
-import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type {
   BPEvent,
   CandidateBid,
@@ -40,8 +40,8 @@ import type {
   SelectionTrace,
   Thread,
   Trace,
-} from '../../behavioral/behavioral.types.ts'
-import { ajv, BPEventSchema, ThreadSchema } from '../../behavioral/behavioral.types.ts'
+} from '../behavioral/behavioral.types.ts'
+import { ajv, BPEventSchema, ThreadSchema } from '../behavioral/behavioral.types.ts'
 import {
   advanceRunningToPending,
   computeFrontier,
@@ -49,11 +49,11 @@ import {
   isListeningFor,
   resumePendingThreadsForSelectedEvent,
   useThread,
-} from '../../behavioral/behavioral.utils.ts'
-import { uuid } from '../../utils/uuid.ts'
-import { createWorker, type FacultyRespond } from '../create-worker.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { type FrontierOp, validateFrontierRequestEvent } from '../faculties.types.ts'
+} from '../behavioral/behavioral.utils.ts'
+import { uuid } from '../utils/uuid.ts'
+import { createWorker, type FacultyRespond } from './create-worker.ts'
+import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
+import { type FrontierOp, validateFrontierRequestEvent } from './faculties.types.ts'
 
 // ---------------------------------------------------------------------------
 // Private helpers

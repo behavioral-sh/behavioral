@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import {
   AudioContentSchema,
   CompactionItemSchema,
@@ -24,8 +23,9 @@ import {
   VideoContentSchema,
   validateSystemTwoInput,
   validateSystemTwoOutput,
-} from '../schemas.ts'
-import { SYSTEM_TWO_ENDPOINTS_KEY, type SystemTwoEndpoints, type SystemTwoOutput } from '../types.ts'
+} from '../system-two.schemas.ts'
+import { SYSTEM_TWO_ENDPOINTS_KEY, type SystemTwoEndpoints, type SystemTwoOutput } from '../system-two.types.ts'
+import { spawnFacultyWorker } from './faculty-harness.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from './fixtures/model-server.ts'
 
 // ================================================================
@@ -48,7 +48,7 @@ const spawnModelBehavior = (endpoints: SystemTwoEndpoints) => {
   // ever crosses the message boundary. setEnvironmentData crosses into Bun
   // web Workers; the entry reads it at module evaluation.
   const faculty = spawnFacultyWorker({
-    url: new URL('../faculty.ts', import.meta.url),
+    url: new URL('../system-two.faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_two_request,
     resultType: FACULTY_MESSAGE_KINDS.system_two_request_result,
     env: { [SYSTEM_TWO_ENDPOINTS_KEY]: endpoints },

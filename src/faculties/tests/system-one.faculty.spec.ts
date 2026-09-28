@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
-import { validateSystemOneInput } from '../schemas.ts'
-import { SYSTEM_ONE_ENDPOINT_KEY } from '../types.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { validateSystemOneInput } from '../system-one.schemas.ts'
+import { SYSTEM_ONE_ENDPOINT_KEY } from '../system-one.types.ts'
+import { spawnFacultyWorker } from './faculty-harness.ts'
 import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-server.ts'
 
 // ================================================================
@@ -14,7 +14,7 @@ import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-serv
 // the same factory shape the composition's useWorker wiring takes.
 const spawnSystemOne = (endpoint: { url: string; apiKey?: string; model?: string }) =>
   spawnFacultyWorker({
-    url: new URL('../faculty.ts', import.meta.url),
+    url: new URL('../system-one.faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_one_request,
     resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
     env: { [SYSTEM_ONE_ENDPOINT_KEY]: endpoint },

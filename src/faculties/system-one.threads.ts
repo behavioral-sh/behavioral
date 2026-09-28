@@ -1,7 +1,7 @@
 import type { JSONSchemaType } from 'ajv'
-import { ajv, type Thread, ThreadSchema } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { type ChoiceQuestion, choiceQuestionSchema } from './schemas.ts'
+import { ajv, type Thread, ThreadSchema } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
+import { type ChoiceQuestion, choiceQuestionSchema } from './system-one.schemas.ts'
 
 /**
  * The System One faculty's threads — the admission judgment threads (the

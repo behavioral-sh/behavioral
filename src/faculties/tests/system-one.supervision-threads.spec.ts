@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../../behavioral/behavioral.ts'
-import type { JsonObject, SelectionTrace, Thread, Trace } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFaculty } from '../../tests/faculty-harness.ts'
+import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import { behavioral } from '../../behavioral/behavioral.ts'
+import type { JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import {
   SUPERVISION_DEFAULT_THRESHOLD,
   SUPERVISION_EVENT_TYPES,
@@ -14,8 +13,9 @@ import {
   validateSupervisionHalted,
   validateSupervisionInput,
   validateSupervisionTripped,
-} from '../threads.ts'
-import { SYSTEM_ONE_ENDPOINT_KEY } from '../types.ts'
+} from '../system-one.threads.ts'
+import { SYSTEM_ONE_ENDPOINT_KEY } from '../system-one.types.ts'
+import { spawnFacultyWorker } from './faculty-harness.ts'
 
 /**
  * The supervision threads against the real engine — the runtime circuit
@@ -430,16 +430,16 @@ describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_K
     expect(request).toBeDefined()
     expect(validateSupervisionInput(request?.detail?.input)).toBe(true)
 
-    const faculty = spawnFaculty({
-      file: 'system-one/faculty.ts',
+    const faculty = spawnFacultyWorker({
+      url: new URL('../system-one.faculty.ts', import.meta.url),
       requestType: FACULTY_MESSAGE_KINDS.system_one_request,
       resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
       env: {
-        [SYSTEM_ONE_ENDPOINT_KEY]: JSON.stringify({
+        [SYSTEM_ONE_ENDPOINT_KEY]: {
           url: 'https://api.typesafe.ai/v1/systemone',
           apiKey: key,
           model: 'jev-1.13.0',
-        }),
+        },
       },
     })
     try {

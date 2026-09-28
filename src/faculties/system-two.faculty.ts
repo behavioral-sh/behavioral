@@ -26,11 +26,11 @@
  * @packageDocumentation
  */
 
-import { ajv } from '../../behavioral/behavioral.types.ts'
-import { createWorker, detailInputSchema, type FacultyRespond } from '../create-worker.ts'
-import { envData } from '../env-data.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { validateSystemTwoCancelEvent, validateSystemTwoRequestEvent } from '../faculties.types.ts'
+import { ajv } from '../behavioral/behavioral.types.ts'
+import { createWorker, detailInputSchema, type FacultyRespond } from './create-worker.ts'
+import { envData } from './env-data.ts'
+import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
+import { validateSystemTwoCancelEvent, validateSystemTwoRequestEvent } from './faculties.types.ts'
 import {
   ErrorSchema,
   type KnownStreamEvent,
@@ -44,9 +44,14 @@ import {
   SystemTwoInputSchema,
   type Usage,
   UsageSchema,
-} from './schemas.ts'
-import type { SystemTwoEndpointConfig, SystemTwoEndpoints, SystemTwoInput, SystemTwoOutput } from './types.ts'
-import { SYSTEM_TWO_ENDPOINTS_KEY } from './types.ts'
+} from './system-two.schemas.ts'
+import type {
+  SystemTwoEndpointConfig,
+  SystemTwoEndpoints,
+  SystemTwoInput,
+  SystemTwoOutput,
+} from './system-two.types.ts'
+import { SYSTEM_TWO_ENDPOINTS_KEY } from './system-two.types.ts'
 
 // ---------------------------------------------------------------------------
 // Wire helpers

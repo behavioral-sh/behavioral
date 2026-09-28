@@ -7,7 +7,7 @@
  * Responses are built from the openresponses compliance-suite contract
  * (github.com/openresponses/openresponses — bin/compliance-test.ts +
  * src/lib/compliance-tests.ts), trimmed to the Phase-0 item subset the repo's
- * system-two/schemas.ts validates (no assistant `phase` labels, which the
+ * system-two.schemas.ts validates (no assistant `phase` labels, which the
  * strict MessageItemSchema rejects). A canned ResponseResource follows the
  * suite's `getMockResponse` shape minus the phase fields.
  *

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { JsonObject, Thread } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
+import type { JsonObject, Thread } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { spawnFacultyWorker } from './faculty-harness.ts'
 
 /**
  * Frontier worker integration tests — exercised through the real worker
@@ -28,7 +28,7 @@ type WireResult = {
 /** The frontier WORKER harness — a REAL Bun web Worker on the TS entry, the way the composition wires it. */
 const spawnFrontierWorker = () => {
   const faculty = spawnFacultyWorker({
-    url: new URL('../faculty.ts', import.meta.url),
+    url: new URL('../frontier.faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.frontier_request,
     resultType: FACULTY_MESSAGE_KINDS.frontier_request_result,
   })

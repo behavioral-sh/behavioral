@@ -1,6 +1,6 @@
 import type { ErrorObject, JSONSchemaType, ValidateFunction } from 'ajv'
 import Ajv2020 from 'ajv/dist/2020'
-import type { SystemTwoInput, SystemTwoOutput } from './types.ts'
+import type { SystemTwoInput, SystemTwoOutput } from './system-two.types.ts'
 
 // ================================================================
 // Open Responses — Phase 0 subset schemas (AJV / JSON Schema)

@@ -21,18 +21,18 @@
  * @packageDocumentation
  */
 
-import { ajv } from '../../behavioral/behavioral.types.ts'
-import { createWorker, detailInputSchema, type FacultyRespond } from '../create-worker.ts'
-import { envData } from '../env-data.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { validateSystemOneCancelEvent, validateSystemOneRequestEvent } from '../faculties.types.ts'
-import { SystemOneInputSchema, validateSystemOneOutput } from './schemas.ts'
+import { ajv } from '../behavioral/behavioral.types.ts'
+import { createWorker, detailInputSchema, type FacultyRespond } from './create-worker.ts'
+import { envData } from './env-data.ts'
+import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
+import { validateSystemOneCancelEvent, validateSystemOneRequestEvent } from './faculties.types.ts'
+import { SystemOneInputSchema, validateSystemOneOutput } from './system-one.schemas.ts'
 import {
   SYSTEM_ONE_ENDPOINT_KEY,
   type SystemOneEndpointConfig,
   type SystemOneInput,
   type SystemOneOutput,
-} from './types.ts'
+} from './system-one.types.ts'
 
 /** Statuses worth retrying with backoff (the API's rate-limit/overload contract). */
 const RETRY_STATUSES = new Set([429, 529])

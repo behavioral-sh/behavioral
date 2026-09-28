@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import type { JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { envData } from '../../env-data.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
-import { SYSTEM_ONE_ENDPOINT_KEY } from '../types.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { envData } from '../env-data.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { SYSTEM_ONE_ENDPOINT_KEY } from '../system-one.types.ts'
+import { spawnFacultyWorker } from './faculty-harness.ts'
 
 /**
  * The env-data contract of the system-one worker entry — the endpoint rides
@@ -21,7 +21,7 @@ import { SYSTEM_ONE_ENDPOINT_KEY } from '../types.ts'
 
 const spawnEndpointless = () =>
   spawnFacultyWorker({
-    url: new URL('../faculty.ts', import.meta.url),
+    url: new URL('../system-one.faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_one_request,
     resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
     env: { [SYSTEM_ONE_ENDPOINT_KEY]: undefined },

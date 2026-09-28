@@ -17,7 +17,7 @@
  */
 
 import type { JSONSchemaType } from 'ajv'
-import { ajv, type JsonObject } from '../../behavioral/behavioral.types.ts'
+import { ajv, type JsonObject } from '../behavioral/behavioral.types.ts'
 
 /** A free-form instruction/criteria value: a string, a structured object, or an array. */
 export type InstructionValue = string | JsonObject | unknown[]

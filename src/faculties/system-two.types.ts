@@ -1,13 +1,14 @@
 /**
- * Wire and option types shared by the systemTwo faculty process
- * (`system-two/faculty.ts` — Open Responses model calls) and its host-side
- * config surface (`system-two/config.ts`).
+ * Wire and option types shared by the systemTwo faculty worker entry
+ * (`system-two.faculty.ts` — Open Responses model calls) and its composition
+ * wiring (`src/b-program/use-worker.ts`).
  *
  * @remarks
- * The faculty runs as a spawned process, never imported by the host; both
- * sides import here instead. Types plus one side-effect-free key constant —
+ * The faculty runs as a web worker, never imported by the host; both sides
+ * import here instead. Types plus one side-effect-free key constant —
  * the key is the only runtime value, so both sides agree on the
- * environment-data key (env vars across the spawn) without a circular import.
+ * environment-data key (worker-threads environment data across the Worker
+ * construction) without a circular import.
  */
 
 import type {
@@ -19,7 +20,7 @@ import type {
   ReasoningEffort,
   Truncation,
   Usage,
-} from './schemas.ts'
+} from './system-two.schemas.ts'
 
 export type { ReasoningEffort }
 

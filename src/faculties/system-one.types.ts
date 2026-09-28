@@ -11,9 +11,9 @@
  * @packageDocumentation
  */
 
-import type { SystemOneInput, SystemOneOutput } from './schemas.ts'
+import type { SystemOneInput, SystemOneOutput } from './system-one.schemas.ts'
 
-export type { Answer, InstructionValue, Question } from './schemas.ts'
+export type { Answer, InstructionValue, Question } from './system-one.schemas.ts'
 export type { SystemOneInput, SystemOneOutput }
 
 /**

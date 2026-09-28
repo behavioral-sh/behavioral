@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test'
-import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../../behavioral/behavioral.ts'
-import type { BPEvent, SelectionTrace, Thread, Trace } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
+import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import { behavioral } from '../../behavioral/behavioral.ts'
+import type { BPEvent, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import {
   ADMISSION_EVENT_TYPES,
   admissionJudgmentThreads,
   validateAdmissionInput,
   validateAdmissionVerdict,
-} from '../threads.ts'
+} from '../system-one.threads.ts'
 
 /**
  * The system-one admission judgment threads against the real engine — the
