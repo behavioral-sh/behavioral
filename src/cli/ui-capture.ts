@@ -41,7 +41,7 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../old-faculties/faculties.constants.ts'
 import { uuid } from '../utils.ts'
 import { UI_RENDER_TRIGGER_TYPE } from './ui-threads.ts'
 

@@ -44,7 +44,7 @@ import {
   SWAP_MODES,
 } from '../controller/controller.constants.ts'
 import { CONTROLLER_DETAIL_SCHEMAS } from '../controller/controller.schemas.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../old-faculties/faculties.constants.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 

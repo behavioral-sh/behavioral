@@ -1,5 +1,5 @@
 import { acquireInstanceLock } from '../actuators/instance-lock.ts'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 import { attachTui } from './attach.ts'
 import type { HostRuntime } from './serve.ts'
 import { createSocketHost, instanceSocketPath } from './socket-host.ts'

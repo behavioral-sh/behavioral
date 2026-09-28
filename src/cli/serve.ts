@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 import { bProgram } from './b-program.ts'
 import { createJsonRpcServer, type JsonRpcMessage, type JsonRpcServer } from './json-rpc.ts'
 import { loadConfig } from './load-config.ts'

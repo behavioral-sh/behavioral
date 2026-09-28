@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../old-faculties/faculties.constants.ts'
 import {
   SecurityCancelEventSchema,
   SecurityRequestEventSchema,
@@ -12,19 +12,19 @@ import {
   ShellCancelEventSchema,
   ShellRequestEventSchema,
   ShellRequestResultEventSchema,
-} from '../../faculties/faculties.types.ts'
-import { PLUGIN_THREADS_EVENT_TYPES } from '../../faculties/shell/plugin-threads.threads.ts'
+} from '../../old-faculties/faculties.types.ts'
+import { PLUGIN_THREADS_EVENT_TYPES } from '../../old-faculties/shell/plugin-threads.threads.ts'
 import {
   REMOTE_MCP_EVENT_TYPES,
   REMOTE_MCP_PROTOCOL_VERSION,
   REMOTE_MCP_STORE_COLLECTION,
-} from '../../faculties/shell/remote-mcp.threads.ts'
-import { useSystemOne } from '../../faculties/system-one/config.ts'
-import { startDecisionsServer } from '../../faculties/system-one/tests/fixtures/decisions-server.ts'
-import { ADMISSION_EVENT_TYPES, SUPERVISION_EVENT_TYPES } from '../../faculties/system-one/threads.ts'
-import { useSystemTwo } from '../../faculties/system-two/config.ts'
-import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/system-two/tests/fixtures/model-server.ts'
-import { useFaculty } from '../../faculties/use-faculty.ts'
+} from '../../old-faculties/shell/remote-mcp.threads.ts'
+import { useSystemOne } from '../../old-faculties/system-one/config.ts'
+import { startDecisionsServer } from '../../old-faculties/system-one/tests/fixtures/decisions-server.ts'
+import { ADMISSION_EVENT_TYPES, SUPERVISION_EVENT_TYPES } from '../../old-faculties/system-one/threads.ts'
+import { useSystemTwo } from '../../old-faculties/system-two/config.ts'
+import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../old-faculties/system-two/tests/fixtures/model-server.ts'
+import { useFaculty } from '../../old-faculties/use-faculty.ts'
 import { bProgram } from '../b-program.ts'
 import { readPluginThreadRegistry } from '../plugin-thread-registry.ts'
 

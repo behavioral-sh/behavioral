@@ -2,9 +2,9 @@ import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import { behavioral } from '../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
 import { validateThread } from '../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import { eventGuardEntries, facultiesThreads, guardThreads } from '../faculties/faculties.threads.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
+import { FACULTY_MESSAGE_KINDS } from '../old-faculties/faculties.constants.ts'
+import { eventGuardEntries, facultiesThreads, guardThreads } from '../old-faculties/faculties.threads.ts'
 import {
   SecurityCancelEventSchema,
   SecurityRequestEventSchema,
@@ -15,14 +15,14 @@ import {
   StoreRequestEventSchema,
   StoreRequestResultEventSchema,
   validateFrontierRequestEvent,
-} from '../faculties/faculties.types.ts'
-import { handleFrontierMessage } from '../faculties/frontier/faculty.ts'
-import { admissionAnalysisInput, admissionReviewThreads } from '../faculties/frontier/threads.ts'
-import { bindEmit } from '../faculties/process-lane.ts'
-import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../faculties/shell/plugin-threads.threads.ts'
-import { remoteMcpThreads } from '../faculties/shell/remote-mcp.threads.ts'
-import { rpcAuthThreads } from '../faculties/shell/rpc-auth.threads.ts'
-import { shellThreads } from '../faculties/shell/threads.ts'
+} from '../old-faculties/faculties.types.ts'
+import { handleFrontierMessage } from '../old-faculties/frontier/faculty.ts'
+import { admissionAnalysisInput, admissionReviewThreads } from '../old-faculties/frontier/threads.ts'
+import { bindEmit } from '../old-faculties/process-lane.ts'
+import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../old-faculties/shell/plugin-threads.threads.ts'
+import { remoteMcpThreads } from '../old-faculties/shell/remote-mcp.threads.ts'
+import { rpcAuthThreads } from '../old-faculties/shell/rpc-auth.threads.ts'
+import { shellThreads } from '../old-faculties/shell/threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
   admissionJudgmentThreads,
@@ -30,9 +30,12 @@ import {
   supervisionRecoveryThreads,
   supervisionThreads,
   validateAdmissionVerdict,
-} from '../faculties/system-one/threads.ts'
-import { useFaculty } from '../faculties/use-faculty.ts'
-import type { Actuator } from '../faculties.ts'
+} from '../old-faculties/system-one/threads.ts'
+import { useFaculty } from '../old-faculties/use-faculty.ts'
+
+/** The selectable capability actuators (the `bProgram` allow-list — the trio only). */
+type Actuator = 'shell' | 'store' | 'security'
+
 import { uuid } from '../utils.ts'
 import {
   pluginThreadRegistryKey,

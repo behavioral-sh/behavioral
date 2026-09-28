@@ -19,17 +19,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../old-faculties/faculties.constants.ts'
 import {
   ShellCancelEventSchema,
   ShellRequestEventSchema,
   ShellRequestResultEventSchema,
   StoreRequestEventSchema,
   StoreRequestResultEventSchema,
-} from '../../faculties/faculties.types.ts'
-import { useSystemTwo } from '../../faculties/system-two/config.ts'
-import { startOpenResponsesServer } from '../../faculties/system-two/tests/fixtures/model-server.ts'
-import { useFaculty } from '../../faculties/use-faculty.ts'
+} from '../../old-faculties/faculties.types.ts'
+import { useSystemTwo } from '../../old-faculties/system-two/config.ts'
+import { startOpenResponsesServer } from '../../old-faculties/system-two/tests/fixtures/model-server.ts'
+import { useFaculty } from '../../old-faculties/use-faculty.ts'
 import { bProgram } from '../b-program.ts'
 import { createHost, dispatchToRuntime } from '../serve.ts'
 import { createUiCapture, type UiRun, uiReplayRequest } from '../ui-capture.ts'

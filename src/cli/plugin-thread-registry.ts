@@ -29,7 +29,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ajv, type Thread, ThreadSchema } from '../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 
 /** The registry file under `<home>` — one JSON document, the whole registry. */
 export const PLUGIN_THREAD_REGISTRY_FILE = 'plugin-threads.json'

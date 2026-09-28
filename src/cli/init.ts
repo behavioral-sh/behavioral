@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { JSONSchemaType } from 'ajv'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 import { makeCli } from './cli.ts'
 
 // ---------------------------------------------------------------------------

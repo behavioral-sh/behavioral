@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Thread } from '../../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../../faculties/behavioral-home.ts'
+import { behavioralHome } from '../../old-faculties/behavioral-home.ts'
 import {
   PLUGIN_THREAD_REGISTRY_FILE,
   pluginThreadRegistryKey,
