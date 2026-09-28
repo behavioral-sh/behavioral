@@ -1,7 +1,6 @@
-import type { JSONSchemaType } from 'ajv'
-import { ajv, type BPEvent, type JsonObject, type Thread } from '../behavioral/behavioral.types.ts'
+import type { ValidateFunction } from 'ajv'
+import type { BPEvent, JsonObject, Thread } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import { eventTypeOf } from '../faculties/faculties.threads.ts'
 import type { AddThreads } from '../faculties/faculties.types.ts'
 
 type WireMessage = {
@@ -11,23 +10,16 @@ type WireMessage = {
 }
 
 /**
- * The event-wire schemas a faculty wiring declares: the request and cancel
- * schemas own the outbound gate; the result schema owns the inbound lane.
- * `useFaculty` compiles them internally and returns them so the composition
- * can derive guard threads from the same one home.
- */
-export type FacultyEventSchemas = {
-  request: JSONSchemaType<WireMessage>
-  cancel: JSONSchemaType<WireMessage>
-  result: JSONSchemaType<WireMessage>
-}
-
-/**
- * The spawn-based faculty wiring primitive — the process-composition ruling:
- * capability faculties run as Bun.spawn PROCESSES speaking the unchanged
+ * The spawn-based actuator wiring primitive — the process-composition ruling:
+ * capability actuators run as Bun.spawn PROCESSES speaking the unchanged
  * behavioral wire over stdio lines (one JSON event per line), one process
- * instance per wiring (per space), replacing the Worker model for the
- * shell/store/security and system-one/system-two faculties.
+ * instance per wiring (per space).
+ *
+ * Slimmed contract (the actuators split): spawn + wire in/out + exit-code
+ * crash synthesis + terminate. NO schema compilation happens here — the
+ * wiring takes the wire home's once-compiled validators (`faculties.types.ts`
+ * compiles the event schemas once; the composition's guard derivation
+ * references the same one home) and a plain result-kind seal.
  *
  * @remarks
  * Why processes over Workers (the ruling's arithmetic): a shared Worker was
@@ -66,33 +58,23 @@ export const useActuator = ({
   name,
   threads,
   env,
-  requestSchema,
-  cancelSchema,
-  resultSchema,
+  validateRequest,
+  validateCancel,
+  resultKind,
 }: {
   command: string[]
   name: string
   threads: Thread[]
   /** Extra environment for the spawned process, merged over `process.env`. */
   env?: Record<string, string>
-  /** The outbound request/result/cancel schemas — the faculty's trust boundary, compiled here. */
-  requestSchema: JSONSchemaType<WireMessage>
-  cancelSchema: JSONSchemaType<WireMessage>
-  /** The result schema — returned for the composition's guard derivation. */
-  resultSchema: JSONSchemaType<WireMessage>
+  /** The outbound gate — the wire home's once-compiled request validator. */
+  validateRequest: ValidateFunction
+  /** The outbound gate — the wire home's once-compiled cancel validator. */
+  validateCancel: ValidateFunction
+  /** The inbound lane's seal: only this result kind re-enters. */
+  resultKind: string
 }) => {
-  // The inbound lane's seal: only this faculty's RESULT events re-enter from
-  // its process (the request/cancel types stay outbound-only — a process
-  // cannot inject requests into its own or another faculty's lane).
-  // eventTypeOf throws on a schema missing the const — a wiring defect this
-  // fundamental fails at WIRING time (this, the outer call), never as a
-  // silently-undefined seal that would drop every inbound result.
-  const resultKind = eventTypeOf(resultSchema)
-
   return (addThreads: AddThreads, space?: string) => {
-    const validateRequestEvent = ajv.compile(requestSchema)
-    const validateEventCancel = ajv.compile(cancelSchema)
-
     let proc: Bun.Subprocess<'pipe', 'pipe', 'inherit'> | undefined
     let terminated = false
     let crashed = false
@@ -196,7 +178,7 @@ export const useActuator = ({
       proc.stdin?.write(`${JSON.stringify(event)}\n`)
     }
 
-    const invalidEventGate = (event: BPEvent): boolean => !validateRequestEvent(event) && !validateEventCancel(event)
+    const invalidEventGate = (event: BPEvent): boolean => !validateRequest(event) && !validateCancel(event)
 
     // Thread mount — stamped only when set (an explicit `space: undefined`
     // breaks the strict Thread schema; the reenter rule, applied to the mounted threads).
@@ -206,8 +188,6 @@ export const useActuator = ({
       name,
       send,
       invalidEventGate,
-      /** The compiled-source schemas, returned so the composition derives guards from the one home. */
-      schemas: { request: requestSchema, cancel: cancelSchema, result: resultSchema },
       /** Teardown: the composition (or host) kills the process it spawned. */
       terminate: (): void => {
         terminated = true

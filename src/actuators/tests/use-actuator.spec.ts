@@ -8,24 +8,30 @@ import {
   ShellCancelEventSchema,
   ShellRequestEventSchema,
   ShellRequestResultEventSchema,
+  validateShellCancelEvent,
   validateShellRequestEvent,
 } from '../../faculties/faculties.types.ts'
 import { useActuator } from '../use-actuator.ts'
 
 /**
- * useFaculty — the spawn-based faculty primitive — against a real process on
- * the real wire (the engine runs in-process via behavioral(); the spec plays
- * the composition's pump role: selected request events forward to the
- * faculty's send, exactly as bProgram does). Process-native faculties:
+ * useActuator — the slimmed spawn-based actuator primitive — against a real
+ * process on the real wire (the engine runs in-process via behavioral(); the
+ * spec plays the composition's pump role: selected request events forward to
+ * the actuator's send, exactly as bProgram does). Pinned contract:
  *
- * - a request line goes out; the result line re-enters as an event
- * - a crashed process (exit mid-request) synthesizes ONE worker_error
- *   (exit-code crash synthesis)
- * - the faculty RESPAWNS on demand: the next request completes on a fresh
- *   process
+ * - spawn: a request line goes out; the result line re-enters as an event
+ * - wire: the outbound gate is the wire home's ONCE-COMPILED validators —
+ *   no schema compilation happens here
+ * - crash: a crashed process (exit mid-request) synthesizes ONE
+ *   faculty_error (exit-code crash synthesis)
+ * - respawn: the faculty RESPAWNS on demand — the next request completes on
+ *   a fresh process
+ * - terminate: kills the process; later sends are no-ops
  *
- * The fixture: `probe.proc.ts` — long-running line protocol; the `die` op
- * exits 3 mid-stream; everything else answers the ok envelope.
+ * Guard derivation is composition-side from the wire home (faculties.types.ts
+ * compiles the schemas once; the guard test below derives from the same one
+ * home). The fixture: `probe.proc.ts` — long-running line protocol; the `die`
+ * op exits 3 mid-stream; everything else answers the ok envelope.
  */
 
 const selectionsOf = (traces: Trace[]): SelectionTrace[] =>
@@ -46,14 +52,15 @@ const addThreadsWithStep =
 const spawnProbe = (env?: Record<string, string>) => {
   const program = behavioral()
   const traces: Trace[] = []
-  const faculty = useActuator({
+  const actuator = useActuator({
     command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
     name: 'probe',
     threads: [],
     ...(env === undefined ? {} : { env }),
-    requestSchema: ShellRequestEventSchema,
-    cancelSchema: ShellCancelEventSchema,
-    resultSchema: ShellRequestResultEventSchema,
+    // The wire home's once-compiled validators — useActuator compiles nothing.
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
   })(addThreadsWithStep(program))
   // The composition's pump role: forward selected faculty requests outbound
   // (the wire-projected event — the selected candidate carries non-wire
@@ -64,10 +71,10 @@ const spawnProbe = (env?: Record<string, string>) => {
     const selected = (trace as SelectionTrace).selected
     const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
     if (event.type === FACULTY_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
-      faculty.send(event)
+      actuator.send(event)
     }
   })
-  return { program, traces, faculty }
+  return { program, traces, actuator }
 }
 
 const awaitSelection = async (
@@ -90,20 +97,40 @@ const request = (id: string, op: string): BPEvent => ({
   detail: { id, label: 'probe', input: { op } },
 })
 
-describe('useFaculty — the spawn-based faculty primitive', () => {
-  test('compiles the wiring schemas and returns them (bProgram derives guards from these)', () => {
-    const { faculty } = spawnProbe()
+describe('useActuator — the slimmed spawn-based actuator primitive', () => {
+  test('no schema compilation happens here — the wiring takes the wire home once-compiled validators and returns no schemas', () => {
+    const { actuator } = spawnProbe()
     try {
-      expect(faculty.schemas.request).toBe(ShellRequestEventSchema)
-      expect(faculty.schemas.cancel).toBe(ShellCancelEventSchema)
-      expect(faculty.schemas.result).toBe(ShellRequestResultEventSchema)
+      expect('schemas' in actuator).toBe(false)
+      expect(Object.keys(actuator).sort()).toEqual(['invalidEventGate', 'name', 'send', 'terminate'])
     } finally {
-      faculty.terminate()
+      actuator.terminate()
+    }
+  })
+
+  test('the outbound gate is the wire home compiled validators — a schema-invalid request or cancel does not pass', () => {
+    const { actuator } = spawnProbe()
+    try {
+      // A wire-shaped request passes; a malformed one fails both gates.
+      expect(
+        actuator.invalidEventGate({
+          type: FACULTY_MESSAGE_KINDS.shell_request,
+          detail: { id: 'g', label: 'x', input: { op: 'echo' } },
+        }),
+      ).toBe(false)
+      expect(actuator.invalidEventGate({ type: FACULTY_MESSAGE_KINDS.shell_request, detail: { nope: true } })).toBe(
+        true,
+      )
+      expect(actuator.invalidEventGate({ type: FACULTY_MESSAGE_KINDS.shell_request_result, detail: { id: 'g' } })).toBe(
+        true,
+      )
+    } finally {
+      actuator.terminate()
     }
   })
 
   test('a request round-trips through the process and its result re-enters', async () => {
-    const { program, traces, faculty } = spawnProbe()
+    const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
         label: 'caller',
@@ -120,12 +147,12 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
       )
       expect((result.selected.detail as { ok?: boolean } | undefined)?.ok).toBe(true)
     } finally {
-      faculty.terminate()
+      actuator.terminate()
     }
   })
 
   test('env is merged over the inherited environment for the spawned process', async () => {
-    const { program, traces, faculty } = spawnProbe({ PROBE_ENV: 'from-env-option' })
+    const { program, traces, actuator } = spawnProbe({ PROBE_ENV: 'from-env-option' })
     try {
       program.addThread({ label: 'env-caller', once: true, rules: [{ request: request('e1', 'env') }] })
       program.trigger({ type: 'probe_pump', detail: {} })
@@ -139,12 +166,12 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
       const detail = result.selected.detail as { result?: { env?: string } } | undefined
       expect(detail?.result?.env).toBe('from-env-option')
     } finally {
-      faculty.terminate()
+      actuator.terminate()
     }
   })
 
   test('without a guard, a schema-invalid result line re-enters and is observable — not silently discarded', async () => {
-    const { program, traces, faculty } = spawnProbe()
+    const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
         label: 'malformed-caller',
@@ -172,24 +199,33 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
         ),
       ).toBe(true)
     } finally {
-      faculty.terminate()
+      actuator.terminate()
     }
   })
 
-  test('with the faculty guard mounted, the malformed result is blocked — visible in the frontier, never selected', async () => {
+  test('with the composition-side guard mounted, the malformed result is blocked — visible in the frontier, never selected', async () => {
     const program = behavioral()
     const traces: Trace[] = []
-    const faculty = useActuator({
+    const actuator = useActuator({
       command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
       name: 'probe',
       threads: [],
-      requestSchema: ShellRequestEventSchema,
-      cancelSchema: ShellCancelEventSchema,
-      resultSchema: ShellRequestResultEventSchema,
+      validateRequest: validateShellRequestEvent,
+      validateCancel: validateShellCancelEvent,
+      resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
     })(addThreadsWithStep(program))
-    // The composition's own mount: the guard derived from the schemas
-    // useFaculty returned — exactly what bProgram does for a system faculty.
-    addThreadsWithStep(program)(guardThreads('guard:probe-schema', eventGuardEntries(faculty.schemas)))
+    // The composition's own mount: the guard derived from the wire home's
+    // schemas — exactly what bProgram derives (the actuator returns none).
+    addThreadsWithStep(program)(
+      guardThreads(
+        'guard:probe-schema',
+        eventGuardEntries({
+          request: ShellRequestEventSchema,
+          cancel: ShellCancelEventSchema,
+          result: ShellRequestResultEventSchema,
+        }),
+      ),
+    )
     try {
       program.useTrace((trace: Trace) => {
         traces.push(trace)
@@ -197,7 +233,7 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
         const selected = (trace as SelectionTrace).selected
         const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
         if (event.type === FACULTY_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
-          faculty.send(event)
+          actuator.send(event)
         }
       })
       program.addThread({
@@ -228,12 +264,12 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
       expect(traces.some((trace) => JSON.stringify(trace).includes('"malformed":true'))).toBe(true)
       expect(traces.some((trace) => trace.kind === TRACE_MESSAGE_KINDS.deadlock)).toBe(true)
     } finally {
-      faculty.terminate()
+      actuator.terminate()
     }
   })
 
-  test('a crashed process synthesizes ONE worker_error, then the faculty respawns', async () => {
-    const { program, traces, faculty } = spawnProbe()
+  test('a crashed process synthesizes ONE faculty_error, then the actuator respawns', async () => {
+    const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
         label: 'crash-watch',
@@ -260,7 +296,7 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
         (t) =>
           t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error &&
           (t.selected.detail as { faculty?: string } | undefined)?.faculty === 'probe',
-        'no worker_error',
+        'no faculty_error',
       )
       const crashes = selectionsOf(traces).filter((t) => t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error).length
       expect(crashes).toBe(1)
@@ -283,29 +319,7 @@ describe('useFaculty — the spawn-based faculty primitive', () => {
       // Still exactly one crash — the respawn's listener is armed for the NEXT death only.
       expect(selectionsOf(traces).filter((t) => t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error).length).toBe(1)
     } finally {
-      faculty.terminate()
+      actuator.terminate()
     }
-  })
-
-  // The review's follow-up 4: the pump reads the result schema's type const
-  // as its lane seal — a schema without it computed an undefined seal and
-  // silently dropped EVERY inbound result. A wiring defect this fundamental
-  // must fail at wiring time, same check and message as the guard generator.
-  test('useFaculty fails fast on a result schema missing properties.type.const', () => {
-    const schemas = {
-      request: ShellRequestEventSchema,
-      cancel: ShellCancelEventSchema,
-      result: { type: 'object', properties: {} } as typeof ShellRequestResultEventSchema,
-    }
-    expect(() =>
-      useActuator({
-        command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
-        name: 'probe',
-        threads: [],
-        requestSchema: schemas.request,
-        cancelSchema: schemas.cancel,
-        resultSchema: schemas.result,
-      }),
-    ).toThrow(/missing properties\.type\.const/)
   })
 })
