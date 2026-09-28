@@ -1,5 +1,6 @@
 import type { ValidateFunction } from 'ajv'
 import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
+import { INIT_FRAME_KIND, type InitFrame } from '../faculties/create-worker.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import type { AddThreads } from '../faculties/faculties.types.ts'
 
@@ -50,6 +51,7 @@ export const useWorker = ({
   validateRequest,
   validateCancel,
   resultKind,
+  initData,
 }: {
   name: string
   /** The worker factory — a bundler-visible literal at the call site. */
@@ -60,6 +62,14 @@ export const useWorker = ({
   validateCancel: ValidateFunction
   /** The inbound lane's seal: only this result kind re-enters. */
   resultKind: string
+  /**
+   * The faculty's config, delivered as the INIT FRAME — posted immediately
+   * after the worker constructs (port FIFO + the worker message queue
+   * guarantee it precedes the first request). Never a request message; never
+   * eval-time reads. Re-init later (a fresh init frame) overwrites — the
+   * forward-compatible channel for config updates.
+   */
+  initData?: JsonObject
 }) => {
   return (addThreads: AddThreads) => {
     let worker: Worker | undefined
@@ -95,6 +105,10 @@ export const useWorker = ({
     /** Construct the faculty worker (fresh on first send and after any death). */
     const spawn = (): Worker => {
       const next = spawnWorker()
+      // The construction message: the faculty's config, always first. Port
+      // FIFO + the worker message queue order it before any request.
+      const init: InitFrame = { kind: INIT_FRAME_KIND, data: initData ?? {} }
+      next.postMessage(init)
       // One crash synthesis per death — the listeners are per-instance, so a
       // respawn arms fresh ones for the next death.
       let synthesized = false

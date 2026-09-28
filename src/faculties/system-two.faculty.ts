@@ -13,11 +13,10 @@
  * posted — no
  * consumer exists (MINIMAL: router-published delta trace when one does).
  *
- * Endpoint config (URLs + resolved API keys + extra headers) is delivered
- * via environment data (`envData` — the host seeds worker-threads
- * environment data before constructing the Worker) and read once by the
- * bootstrap — secrets never enter a request message or the model-facing
- * schema.
+ * Endpoint config (URLs + resolved API keys + extra headers) is delivered as
+ * the INIT FRAME's data (the composition posts it at construction — the
+ * secret never enters a request message or the model-facing schema, and the
+ * worker side imports no node builtins).
  *
  * MINIMAL: no request-level concurrency cap — the host/threads decide how many
  * calls to have in flight. Upgrade path: an executor-side queue if a runaway
@@ -28,7 +27,6 @@
 
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { createWorker, detailInputSchema, type FacultyRespond } from './create-worker.ts'
-import { envData } from './env-data.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
 import { validateSystemTwoCancelEvent, validateSystemTwoRequestEvent } from './faculties.types.ts'
 import {
@@ -51,7 +49,6 @@ import type {
   SystemTwoInput,
   SystemTwoOutput,
 } from './system-two.types.ts'
-import { SYSTEM_TWO_ENDPOINTS_KEY } from './system-two.types.ts'
 
 // ---------------------------------------------------------------------------
 // Wire helpers
@@ -299,5 +296,4 @@ export const wiring = createWorker<SystemTwoRequestDetail, SystemTwoEndpoints>({
   validateInput: ajv.compile(detailInputSchema(SystemTwoInputSchema)),
   requestKind: FACULTY_MESSAGE_KINDS.system_two_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_two_request_result,
-  data: (envData(SYSTEM_TWO_ENDPOINTS_KEY) ?? {}) as SystemTwoEndpoints,
 })

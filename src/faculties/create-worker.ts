@@ -12,7 +12,8 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  * bundled CLASSIC), and Bun's main thread carries the web-worker globals
  * anyway (oven-sh/bun#35655), so entry detection lies. Outside a worker
  * global the bootstrap wires nothing: importing a faculty entry in the
- * main thread is inert, and the `respond` stays importable by specs.
+ * Faculty config rides the INIT FRAME (the construction message) — never
+ * eval-time reads, never request messages, never node builtins.
  *
  * Scope discrimination (Bun 1.4 facts, probed):
  * - browser main threads have `window`; workers never do;
@@ -44,6 +45,30 @@ export const detailInputSchema = (inputSchema: object): object => ({
   required: ['input'],
   additionalProperties: true,
 })
+
+/**
+ * The lane's control-frame discriminant — the construction message. The
+ * composition posts `{ kind: 'init', data }` immediately after constructing
+ * the worker (port FIFO + the worker message queue guarantee it precedes the
+ * first request); the faculty's config NEVER rides a request message and the
+ * worker side never imports node builtins (the browser classic bundle cannot
+ * carry them — Bun's browser build silently shims `node:` imports to empty
+ * objects, and the shim dies at eval). Re-init is legal: a later init frame
+ * overwrites the config (the forward-compatible channel for config updates,
+ * e.g. pulling a new local model).
+ */
+export const INIT_FRAME_KIND = 'init'
+
+/** The init frame: the composition → faculty construction message. */
+export type InitFrame = { kind: typeof INIT_FRAME_KIND; data: JsonObject }
+
+const isInitFrame = (message: unknown): message is InitFrame =>
+  typeof message === 'object' &&
+  message !== null &&
+  (message as InitFrame).kind === INIT_FRAME_KIND &&
+  typeof (message as InitFrame).data === 'object' &&
+  (message as InitFrame).data !== null &&
+  !Array.isArray((message as InitFrame).data)
 
 /**
  * The faculty's call: one correlated request detail in, one result (or error data) out.
@@ -100,7 +125,6 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   validateInput,
   requestKind,
   resultKind,
-  data = {} as D,
   timeoutMs = 60_000,
 }: {
   /** The faculty's call — one correlated request detail in, one result out. */
@@ -115,12 +139,16 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   requestKind: string
   /** The outbound result type — the lane's seal (must pair with `requestKind`). */
   resultKind: string
-  /** The faculty's already-read environment config, handed to each call. */
-  data?: D
   /** The in-flight request timeout — the provider call is aborted past this. `0` = no timer (sync faculties). */
   timeoutMs?: number
 }): { resultKind: string } | undefined => {
   if (!isWorkerScope()) return undefined
+
+  // The faculty's config, delivered by the init frame (never eval-time, never
+  // a request message). Fail-closed: requests before init answer a typed
+  // error; an invalid init frame is ignored.
+  let data = {} as D
+  let initialized = false
 
   /** In-flight requests, keyed by correlation id. */
   const active = new Map<string, ActiveRequest>()
@@ -145,7 +173,12 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
 
   /** Route one inbound message (fire-and-forget per message). */
   const handleInbound = async (message: unknown): Promise<void> => {
-    if (validateCancel !== undefined && validateCancel(message)) {
+    if (isInitFrame(message)) {
+      data = message.data as D
+      initialized = true
+      return
+    }
+    if (validateCancel?.(message)) {
       const request = active.get((message as FacultyCancelEvent).detail.id)
       if (request !== undefined && request.reason === null) {
         request.reason = 'canceled'
@@ -155,6 +188,11 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
     }
     if (!validateRequest(message) || (message as FacultyRequestEvent<I>).type !== requestKind) return
     const event = message as FacultyRequestEvent<I>
+    if (!initialized) {
+      // Fail-closed: no config yet — the caller learns why nothing ran.
+      postResult({ isError: true, message: 'faculty not initialized: no init frame received' }, event)
+      return
+    }
     const requestDetail = event.detail
     if (!validateInput(requestDetail)) {
       const detail = validateInput.errors?.map((e) => `${e.instancePath} ${e.message}`).join('; ')

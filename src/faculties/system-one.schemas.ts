@@ -193,7 +193,7 @@ export const SystemOneOutputSchema = {
   additionalProperties: true,
 } as unknown as JSONSchemaType<SystemOneOutput>
 
-/** The input trust boundary — validated in the faculty process. */
+/** The input trust boundary — validated in the faculty worker. */
 export const validateSystemOneInput = ajv.compile(SystemOneInputSchema)
 /** The output conformance boundary. */
 export const validateSystemOneOutput = ajv.compile(SystemOneOutputSchema)

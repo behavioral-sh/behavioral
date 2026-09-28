@@ -24,7 +24,7 @@ import {
   validateSystemTwoInput,
   validateSystemTwoOutput,
 } from '../system-two.schemas.ts'
-import { SYSTEM_TWO_ENDPOINTS_KEY, type SystemTwoEndpoints, type SystemTwoOutput } from '../system-two.types.ts'
+import type { SystemTwoEndpoints, SystemTwoOutput } from '../system-two.types.ts'
 import { spawnFacultyWorker } from './faculty-harness.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from './fixtures/model-server.ts'
 
@@ -51,7 +51,7 @@ const spawnModelBehavior = (endpoints: SystemTwoEndpoints) => {
     url: new URL('../system-two.faculty.ts', import.meta.url),
     requestType: FACULTY_MESSAGE_KINDS.system_two_request,
     resultType: FACULTY_MESSAGE_KINDS.system_two_request_result,
-    env: { [SYSTEM_TWO_ENDPOINTS_KEY]: endpoints },
+    initData: endpoints,
   })
   const messages: { type?: string; detail?: unknown; space?: string }[] = []
   const respond = (id: string, input: unknown, space?: string, ctx?: JsonObject): void => {

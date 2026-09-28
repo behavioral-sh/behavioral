@@ -5,7 +5,7 @@ import {
   fixtureRequestEvent,
   validateFixtureCancelEvent,
   validateFixtureRequestEvent,
-} from '../../faculties/tests/fixtures/create-worker-fixture.worker.ts'
+} from '../../faculties/tests/fixtures/create-worker-fixture.wire.ts'
 import { useWorker } from '../use-worker.ts'
 
 /**
@@ -75,6 +75,9 @@ const wiredFixture = (): {
     validateRequest: validateFixtureRequestEvent,
     validateCancel: validateFixtureCancelEvent,
     resultKind: 'fixture_request_result',
+    // The composition's config rides the init frame — posted at spawn, before
+    // any request can follow (port FIFO + the worker message queue).
+    initData: { fixture: true },
   })(collectorResult.addThreads)
   return { wiring, threads: collectorResult.threads, factoryCalls }
 }

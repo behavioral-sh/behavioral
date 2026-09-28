@@ -14,7 +14,6 @@ import {
   validateSupervisionInput,
   validateSupervisionTripped,
 } from '../system-one.threads.ts'
-import { SYSTEM_ONE_ENDPOINT_KEY } from '../system-one.types.ts'
 import { spawnFacultyWorker } from './faculty-harness.ts'
 
 /**
@@ -434,12 +433,10 @@ describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_K
       url: new URL('../system-one.faculty.ts', import.meta.url),
       requestType: FACULTY_MESSAGE_KINDS.system_one_request,
       resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
-      env: {
-        [SYSTEM_ONE_ENDPOINT_KEY]: {
-          url: 'https://api.typesafe.ai/v1/systemone',
-          apiKey: key,
-          model: 'jev-1.13.0',
-        },
+      initData: {
+        url: 'https://api.typesafe.ai/v1/systemone',
+        apiKey: key as string,
+        model: 'jev-1.13.0',
       },
     })
     try {

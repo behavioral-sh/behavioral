@@ -1,13 +1,16 @@
 import { describe, expect, test } from 'bun:test'
-import { setEnvironmentData } from 'node:worker_threads'
-import { FIXTURE_TIMEOUT_KEY } from './fixtures/create-worker-fixture.worker.ts'
+import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { INIT_FRAME_KIND, type InitFrame } from '../create-worker.ts'
 
 /**
  * The create-worker specs — the faculty-side half of the worker lane,
  * proven against REAL Bun web Workers running the fixture entry directly
- * (Bun's Worker needs no bundling). Every case boots its own worker and
- * drives the unchanged wire: request in, `fixture_request_result` out.
+ * (Bun's Worker needs no bundling). Every case boots its own worker, posts
+ * the init frame (the construction message — the config's only channel),
+ * and drives the unchanged wire: request in, `fixture_request_result` out.
  */
+
+const initFrame = (data: JsonObject): InitFrame => ({ kind: INIT_FRAME_KIND, data })
 
 type FixtureResult = {
   type: string
@@ -17,14 +20,10 @@ type FixtureResult = {
 
 type FixtureErrors = string[]
 
-/** Boot the fixture worker, collect its result events, expose a correlated wait. */
-const spawnFixture = (): {
-  worker: Worker
-  results: FixtureResult[]
-  errors: FixtureErrors
-  resultFor: (id: string, timeoutMs?: number) => Promise<FixtureResult>
-} => {
+/** Boot a fixture worker, post its init frame, expose a correlated wait. */
+const spawnFixture = (initData: JsonObject = { fixture: true }) => {
   const worker = new Worker(new URL('./fixtures/create-worker-fixture.worker.ts', import.meta.url))
+  worker.postMessage(initFrame(initData))
   const results: FixtureResult[] = []
   const errors: FixtureErrors = []
   worker.addEventListener('message', (event: MessageEvent) => {
@@ -125,16 +124,19 @@ describe('createWorker — the in-worker bootstrap over a real Bun Worker', () =
   })
 
   test('timeoutMs 0 means no timer — the call stays in flight past the default window', async () => {
-    setEnvironmentData(FIXTURE_TIMEOUT_KEY, 0)
-    const { worker, results } = spawnFixture()
+    const worker = new Worker(new URL('./fixtures/create-worker-no-timeout-fixture.worker.ts', import.meta.url))
+    worker.postMessage(initFrame({}))
+    const results: FixtureResult[] = []
+    worker.addEventListener('message', (event: MessageEvent) => {
+      results.push(event.data as FixtureResult)
+    })
     try {
       worker.postMessage({ type: 'fixture_request', detail: { id: 'nt1', input: { op: 'hang' } } })
-      // The fixture's env-configured timeout would fire at 200ms; the hang
-      // call must still be in flight well past it.
+      // The default window (200ms in the main fixture) would have fired; the
+      // no-timer faculty's hang call must still be in flight well past it.
       await Bun.sleep(450)
       expect(results).toEqual([])
     } finally {
-      setEnvironmentData(FIXTURE_TIMEOUT_KEY, undefined)
       worker.terminate()
     }
   })
@@ -162,6 +164,55 @@ describe('createWorker — the in-worker bootstrap over a real Bun Worker', () =
     // Nothing from the malformed batch leaked into the lane.
     expect(results.filter((r) => r.type === 'fixture_request_result')).toHaveLength(1)
     worker.terminate()
+  })
+})
+
+describe('createWorker — the init frame (the construction message)', () => {
+  test('a request before init answers the typed error — fail-closed, no silent empty-config run', async () => {
+    const worker = new Worker(new URL('./fixtures/create-worker-fixture.worker.ts', import.meta.url))
+    const results: FixtureResult[] = []
+    worker.addEventListener('message', (event: MessageEvent) => {
+      results.push(event.data as FixtureResult)
+    })
+    try {
+      // No init frame — the request arrives with no config at all.
+      worker.postMessage({ type: 'fixture_request', detail: { id: 'pre1', input: { op: 'echo' } } })
+      const deadline = Date.now() + 5000
+      let result: FixtureResult | undefined
+      for (;;) {
+        result = results.find((r) => r.detail.id === 'pre1')
+        if (result !== undefined || Date.now() > deadline) break
+        await Bun.sleep(10)
+      }
+      expect(result?.detail).toEqual({
+        id: 'pre1',
+        ok: false,
+        error: { code: 'error', message: 'faculty not initialized: no init frame received' },
+      })
+    } finally {
+      worker.terminate()
+    }
+  })
+
+  test('an invalid init frame is ignored; a valid one initializes and re-init overwrites', async () => {
+    const { worker, resultFor } = spawnFixture()
+    try {
+      // Garbage frames — non-object data, arrays, wrong kind — change nothing.
+      worker.postMessage({ kind: INIT_FRAME_KIND, data: 'not an object' })
+      worker.postMessage({ kind: INIT_FRAME_KIND, data: [1, 2] })
+      worker.postMessage({ kind: 'other', data: { fixture: false } })
+      worker.postMessage({ type: 'fixture_request', detail: { id: 'iv1', input: { op: 'echo' } } })
+      const untouched = await resultFor('iv1')
+      expect((untouched.detail.result as { seenData: boolean }).seenData).toBe(true)
+
+      // Re-init overwrites — the forward-compatible config-update channel.
+      worker.postMessage(initFrame({ fixture: false }))
+      worker.postMessage({ type: 'fixture_request', detail: { id: 'iv2', input: { op: 'echo' } } })
+      const overwritten = await resultFor('iv2')
+      expect((overwritten.detail.result as { seenData: boolean }).seenData).toBe(false)
+    } finally {
+      worker.terminate()
+    }
   })
 })
 

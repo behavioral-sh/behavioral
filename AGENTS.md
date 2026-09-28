@@ -116,9 +116,15 @@ pattern. Shared modules sit at the top:
   ok/isError envelope, the cancel map, the request timeout (`0` = none),
   space + ctx echo; no-ops outside a worker global, so importing an entry in
   the main thread wires nothing and the `respond` stays importable by specs);
-- the env-data bridge (`env-data.ts` — worker-threads environment data
-  first, JSON process env second; MINIMAL: Bun-side — the browser path
-  delivers config via the construction message at the rewire).
+- the faculty config's only channel: the INIT FRAME (the construction
+  message — `create-worker.ts` owns the frame kind; the composition posts
+  `{ kind: 'init', data }` at spawn, and port FIFO + the worker message
+  queue order it before the first request; re-init overwrites — the future
+  channel for config updates such as pulling a new local model). NO `node:`
+  imports anywhere in the worker-side tree — Bun's browser build silently
+  shims `node:` builtins to empty objects that die at eval, so the
+  bundle-clean gate (tests/bundle-gate.spec.ts) builds every entry for the
+  browser target and boots the artifact through a real round-trip.
 The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
 (+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
 (+ types/schemas), `frontier.faculty.ts` (+ `.threads.ts`): each entry is a
@@ -159,9 +165,10 @@ shape when the composition rewires.
 **`src/b-program/`** — the composition-side wiring home (the directory
 re-forms here; the composition itself still lives in `src/cli/` until the
 rewire): `use-worker.ts` — `useWorker({ name, worker: () => new Worker(...),
-validateRequest, validateCancel, resultKind })`, the worker construction a
+validateRequest, validateCancel, resultKind, initData })`, the worker construction a
 FACTORY at the call site (the literal stays bundler-visible AND
-respawn-after-crash re-invokes it), pre-compiled validators in, returning
+respawn-after-crash re-invokes it — and re-posts the init frame),
+pre-compiled validators in, returning
 the ruled four-key lane `{ name, send, invalidEventGate, terminate }`;
 crash synthesis re-enters exactly ONE `faculty_error { faculty }`
 once-thread via `addThreads` — in-flight requests at death never answer

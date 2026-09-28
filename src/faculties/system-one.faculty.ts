@@ -8,9 +8,9 @@
  * their own entry the same way — a `respond` behind `createWorker` — and the
  * wire contract does not change.
  *
- * The endpoint is read ONCE from environment data (`envData` — the host
- * seeds worker-threads environment data before constructing the Worker); the
- * secret never enters a request message. Retries cover the API's rate-limit
+ * The endpoint arrives as the INIT FRAME's data (the composition posts it at
+ * construction — the secret never enters a request message and the worker
+ * side imports no node builtins). Retries cover the API's rate-limit
  * statuses (429/529), honoring `retry-after` when present — the faculty the
  * vendor SDKs provide, implemented here so the faculty owns its transport.
  *
@@ -23,16 +23,10 @@
 
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { createWorker, detailInputSchema, type FacultyRespond } from './create-worker.ts'
-import { envData } from './env-data.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
 import { validateSystemOneCancelEvent, validateSystemOneRequestEvent } from './faculties.types.ts'
 import { SystemOneInputSchema, validateSystemOneOutput } from './system-one.schemas.ts'
-import {
-  SYSTEM_ONE_ENDPOINT_KEY,
-  type SystemOneEndpointConfig,
-  type SystemOneInput,
-  type SystemOneOutput,
-} from './system-one.types.ts'
+import type { SystemOneEndpointConfig, SystemOneInput, SystemOneOutput } from './system-one.types.ts'
 
 /** Statuses worth retrying with backoff (the API's rate-limit/overload contract). */
 const RETRY_STATUSES = new Set([429, 529])
@@ -109,5 +103,4 @@ export const wiring = createWorker<SystemOneRequestDetail, SystemOneEndpointConf
   validateInput: ajv.compile(detailInputSchema(SystemOneInputSchema)),
   requestKind: FACULTY_MESSAGE_KINDS.system_one_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_one_request_result,
-  data: (envData(SYSTEM_ONE_ENDPOINT_KEY) ?? {}) as SystemOneEndpointConfig,
 })

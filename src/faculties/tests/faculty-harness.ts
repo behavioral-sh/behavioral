@@ -1,5 +1,5 @@
-import { type Serializable, setEnvironmentData } from 'node:worker_threads'
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import { INIT_FRAME_KIND, type InitFrame } from '../create-worker.ts'
 
 /**
  * The faculty spec harness — every faculty spec's spawn shape: the faculty
@@ -9,9 +9,9 @@ import type { JsonObject } from '../../behavioral/behavioral.types.ts'
  * bundler-visible literal at the CALL SITE (the spec's `new URL(...)`), per
  * the useWorker factory ruling.
  *
- * `env` carries the faculty's env-data — worker-threads environment data,
- * seeded BEFORE the worker boots (the entry reads it once at module
- * evaluation).
+ * `initData` is the faculty's config, delivered as the INIT FRAME — posted
+ * immediately after the worker constructs (port FIFO + the worker message
+ * queue order it before any request), exactly as `useWorker` posts it.
  */
 
 export type FacultyResult = {
@@ -33,17 +33,18 @@ export const spawnFacultyWorker = ({
   url,
   requestType,
   resultType,
-  env,
+  initData,
 }: {
   /** The worker entry URL — `new URL('<relative entry>', import.meta.url)` at the call site. */
   url: URL
   requestType: string
   resultType: string
-  /** Worker-threads environment data, seeded before the worker boots (`undefined` resets the key). */
-  env?: Record<string, Serializable | undefined>
+  /** The faculty's config, delivered as the init frame posted at construction. */
+  initData?: JsonObject
 }): FacultyWorker => {
-  for (const [key, value] of Object.entries(env ?? {})) setEnvironmentData(key, value)
   const worker = new Worker(url)
+  const init: InitFrame = { kind: INIT_FRAME_KIND, data: initData ?? {} }
+  worker.postMessage(init)
   const results: FacultyResult[] = []
   worker.addEventListener('message', (event: MessageEvent) => {
     const message = event.data as { type: string; detail: { id: string } & JsonObject; space?: string } | null
