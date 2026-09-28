@@ -72,7 +72,7 @@ export const useActuator = ({
   /** The inbound lane's seal: only this result kind re-enters. */
   resultKind: string
 }) => {
-  return (addThreads: AddThreads, space?: string) => {
+  return (addThreads: AddThreads) => {
     let proc: Bun.Subprocess<'pipe', 'pipe', 'inherit'> | undefined
     let terminated = false
     let crashed = false
