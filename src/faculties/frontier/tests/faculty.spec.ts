@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import type { Thread } from '../../../behavioral/behavioral.types.ts'
+import type { JsonObject, Thread } from '../../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
-import { bindEmit } from '../../process-lane.ts'
-import { handleFrontierMessage } from '../faculty.ts'
+import { spawnFacultyWorker } from '../../tests/faculty-harness.ts'
 
 /**
  * Frontier worker integration tests — exercised through the real worker
@@ -26,36 +25,25 @@ type WireResult = {
   space?: string
 }
 
-/** The frontier IN-PROCESS harness — the embed the composition uses: the exported dispatch with the lane emit bound to a local collector. */
+/** The frontier WORKER harness — a REAL Bun web Worker on the TS entry, the way the composition wires it. */
 const spawnFrontierWorker = () => {
-  const results: WireResult[] = []
-  bindEmit((event) => {
-    if (event.type === FACULTY_MESSAGE_KINDS.frontier_request_result) {
-      const detail = event.detail as { id: string; ok: boolean; result?: unknown; error?: Record<string, unknown> }
-      results.push({ ...detail, id: detail.id, space: event.space } as WireResult)
-    }
+  const faculty = spawnFacultyWorker({
+    url: new URL('../faculty.ts', import.meta.url),
+    requestType: FACULTY_MESSAGE_KINDS.frontier_request,
+    resultType: FACULTY_MESSAGE_KINDS.frontier_request_result,
   })
   const call = (id: string, op: string, input: unknown, space?: string): void => {
-    handleFrontierMessage({
-      type: FACULTY_MESSAGE_KINDS.frontier_request,
-      detail: { id, op, input },
-      ...(space === undefined ? {} : { space }),
-    })
+    faculty.call({ id, op, input } as JsonObject, space)
   }
   const resultFor = async (id: string): Promise<WireResult> => {
-    const deadline = Date.now() + 10_000
-    for (;;) {
-      const found = results.find((r) => r.id === id)
-      if (found !== undefined) return found
-      if (Date.now() > deadline) throw new Error(`no result for ${id}`)
-      await Bun.sleep(10)
-    }
+    const raw = await faculty.resultFor(id)
+    return { ...(raw.detail as Omit<WireResult, 'id' | 'space'>), id: raw.id, space: raw.space }
   }
-  return { call, resultFor, terminate: (): void => bindEmit(null) }
+  return { call, resultFor, terminate: (): void => faculty.terminate() }
 }
 
 // Structural mirrors of the worker's result payloads (the worker module is
-// spawn-by-URL and never imported, so the spec types its own views).
+// spawned by URL and never imported, so the spec types its own views).
 type Frontier = { status: string; enabled: Array<{ type: string; detail?: unknown }> }
 type ReplayResult = {
   frontier: Frontier | null

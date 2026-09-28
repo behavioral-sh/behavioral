@@ -8,8 +8,9 @@
  * envelope, cancel/timeout). A third party writes their own entry the same
  * way with a different `respond`; the wire contract does not change.
  *
- * `detail.input` is validated against `validateSystemTwoInput` by the
- * bootstrap; stream events are assembled internally and never posted — no
+ * `detail.input` is validated against the input schema (lifted to detail
+ * level) by the bootstrap; stream events are assembled internally and never
+ * posted — no
  * consumer exists (MINIMAL: router-published delta trace when one does).
  *
  * Endpoint config (URLs + resolved API keys + extra headers) is delivered
@@ -25,7 +26,8 @@
  * @packageDocumentation
  */
 
-import { createWorker, type FacultyRespond } from '../create-worker.ts'
+import { ajv } from '../../behavioral/behavioral.types.ts'
+import { createWorker, detailInputSchema, type FacultyRespond } from '../create-worker.ts'
 import { envData } from '../env-data.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import { validateSystemTwoCancelEvent, validateSystemTwoRequestEvent } from '../faculties.types.ts'
@@ -39,9 +41,9 @@ import {
   type OutputItem,
   OutputItemSchema,
   StreamEventLaxSchema,
+  SystemTwoInputSchema,
   type Usage,
   UsageSchema,
-  validateSystemTwoInput,
 } from './schemas.ts'
 import type { SystemTwoEndpointConfig, SystemTwoEndpoints, SystemTwoInput, SystemTwoOutput } from './types.ts'
 import { SYSTEM_TWO_ENDPOINTS_KEY } from './types.ts'
@@ -282,11 +284,14 @@ const openResponsesRespond: FacultyRespond<SystemTwoInput, SystemTwoEndpoints> =
 }
 
 // The worker entry: wire only inside a worker global (an in-process import wires nothing).
-export const wiring = createWorker<SystemTwoInput, SystemTwoEndpoints>({
-  respond: openResponsesRespond,
+// The request detail the bootstrap hands the faculty — the payload rides `input`.
+type SystemTwoRequestDetail = { input: SystemTwoInput }
+
+export const wiring = createWorker<SystemTwoRequestDetail, SystemTwoEndpoints>({
+  respond: async (detail, { data, signal }) => openResponsesRespond(detail.input, { data, signal }),
   validateRequest: validateSystemTwoRequestEvent,
   validateCancel: validateSystemTwoCancelEvent,
-  validateInput: validateSystemTwoInput,
+  validateInput: ajv.compile(detailInputSchema(SystemTwoInputSchema)),
   requestKind: FACULTY_MESSAGE_KINDS.system_two_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_two_request_result,
   data: (envData(SYSTEM_TWO_ENDPOINTS_KEY) ?? {}) as SystemTwoEndpoints,

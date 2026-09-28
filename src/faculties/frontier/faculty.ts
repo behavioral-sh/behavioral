@@ -1,25 +1,24 @@
 /**
- * Frontier faculty — the reachability analysis engine: replays, explores,
- * and verifies behavioral thread sets off the host thread.
+ * Frontier faculty worker entry — the reachability analysis engine: replays,
+ * explores, and verifies behavioral thread sets off the host thread.
  *
  * @remarks
- * The IN-PROCESS embed: the composition imports its dispatch
- * (`handleFrontierMessage`) and drives it directly, its emit lane bound via
- * `bindEmit` so results re-enter the engine instead of writing the host's
- * stdout. It speaks the behavioral event wire — `frontier_request` events in
- * (dispatched by `detail.op`: replay / explore / verify), one
- * `frontier_request_result` out with the request `space` echoed. It needs no
- * cancel event: analyses are synchronous, nothing is in flight to abort.
- * The analysis engine below is the former fleet tool implementation, moved
- * wholesale; only the boundary changed. Standalone spawns (stdio lines) remain
- * a compatibility entry.
+ * One file, one faculty: the analysis engine (the former fleet tool
+ * implementation, moved wholesale — only the boundary changed) behind the
+ * top-level `createWorker` bootstrap. It speaks the behavioral event wire —
+ * `frontier_request` events in (dispatched by `detail.op`: replay / explore /
+ * verify / add_thread), one `frontier_request_result` out with the request
+ * `space` echoed. It needs no cancel event and no timeout: analyses are
+ * synchronous, nothing is in flight to abort.
  *
  * Self-analysis is safe by construction: the trace a caller passes is a frozen
  * structured-clone payload, this faculty's simulation state is private, and
  * its own calls in the host trace are logical breakpoints.
  *
  * MINIMAL: results are synchronous analyses; a frontier call blocks this
- * faculty only, never the host — no stream lane needed.
+ * worker only, never the host — no stream lane needed. The in-process
+ * `bindEmit` embed does not enter this tree (it stays in old-faculties for
+ * the running app until the rewire).
  *
  * @packageDocumentation
  */
@@ -52,9 +51,9 @@ import {
   useThread,
 } from '../../behavioral/behavioral.utils.ts'
 import { uuid } from '../../utils/uuid.ts'
+import { createWorker, type FacultyRespond } from '../create-worker.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { type FrontierRequestEvent, validateFrontierRequestEvent } from '../faculties.types.ts'
-import { emit, wireInbound } from '../process-lane.ts'
+import { type FrontierOp, validateFrontierRequestEvent } from '../faculties.types.ts'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -1323,22 +1322,6 @@ export const FrontierAddThreadInputSchema = {
 // Event dispatch — the wire surface
 // ---------------------------------------------------------------------------
 
-const postResult = ({ id, result, space }: { id: string; result: unknown; space?: string }): void => {
-  emit({
-    type: FACULTY_MESSAGE_KINDS.frontier_request_result,
-    // The uniform envelope: { isError: true, … } → error branch; anything
-    // else is the analysis payload → ok branch.
-    detail: ((): JsonObject & { id: string } => {
-      if (typeof result === 'object' && result !== null && 'isError' in result) {
-        const { isError, ...rest } = result as { isError: boolean } & JsonObject
-        return { id, ok: false, error: { code: 'error', ...(isError ? rest : {}) } }
-      }
-      return { id, ok: true, result: (result ?? {}) as JsonObject }
-    })(),
-    ...(space === undefined ? {} : { space }),
-  })
-}
-
 const validateReplayInput = ajv.compile(FrontierReplayInputSchema)
 const validateExploreInput = ajv.compile(FrontierExploreInputSchema)
 const validateVerifyInput = ajv.compile(FrontierVerifyInputSchema)
@@ -1510,41 +1493,45 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
   },
 }
 
-// The wire is the behavioral event vocabulary, validated with the shared
-// schemas — the trust boundary for anything crossing into this process. The
-// raw analysis functions throw; every throw is caught and posted as
-// { isError, message } data, so a throw never crosses the process boundary.
-/**
- * The frontier dispatch — exported for the in-process embed: the composition
- * imports this (bindEmit'd to its reenter) and calls it directly with each
- * routed frontier_request. The standalone entry below wires the same function
- * to the stdio line lane.
- */
-export const handleFrontierMessage = (message: unknown): void => {
-  handleInbound(message)
+// The per-op input validation lives in the runners (invalid input is error
+// DATA through the same result shape, per op) — the bootstrap's input
+// boundary mirrors the wire home's detail contract: the op enum and a loose
+// input object.
+type FrontierRequestDetail = { op: FrontierOp; input: JsonObject }
+
+const FrontierRequestDetailSchema: JSONSchemaType<FrontierRequestDetail> = {
+  type: 'object',
+  properties: {
+    // Mirrors the wire home's FrontierRequestEventSchema.detail (op enum +
+    // loose input) — per-op input validity is the runners' (error data).
+    // `id` (and any bootstrap bookkeeping) rides along: additionalProperties
+    // stays open — the wire home's event validator is the strict boundary.
+    op: { type: 'string', enum: ['replay', 'explore', 'verify', 'add_thread'] },
+    input: { type: 'object', required: [], additionalProperties: true },
+  },
+  required: ['op', 'input'],
+  additionalProperties: true,
 }
 
-const handleInbound = (message: unknown): void => {
-  if (!validateFrontierRequestEvent(message)) return
-  const event = message as FrontierRequestEvent
-  const { id, op, input } = event.detail
-  const runner = OP_RUNNERS[op]
-  if (runner === undefined) {
-    postResult({ id, result: { isError: true, message: `unknown frontier operation: ${op}` }, space: event.space })
-    return
-  }
-  if (!runner.validate(input)) {
-    postResult({ id, result: { isError: true, message: `invalid input: ${runner.errors()}` }, space: event.space })
-    return
-  }
-  postResult({ id, result: runner.run(input as never), space: event.space })
+const frontierRespond: FacultyRespond<FrontierRequestDetail> = async (detail) => {
+  const runner = OP_RUNNERS[detail.op]
+  if (runner === undefined) return { isError: true, message: `unknown frontier operation: ${detail.op}` }
+  if (!runner.validate(detail.input)) return { isError: true, message: `invalid input: ${runner.errors()}` }
+  // The raw analysis functions throw; every throw is caught and returned as
+  // { isError, message } data, so a throw never crosses the worker boundary.
+  return runner.run(detail.input as never)
 }
 
-if (import.meta.main) {
-  // Standalone (spawned process) — wire the stdio line lane. An in-process
-  // import (the composition's frontier embed) wires nothing: the host's
-  // stdin is never touched.
-  wireInbound((message) => {
-    handleInbound(message)
-  })
-}
+// The worker entry: wire only inside a worker global (an in-process import
+// wires nothing). Analyses are synchronous — no cancel contract (the
+// bootstrap's cancel routing stays unwired) and no in-flight timeout
+// (timeoutMs 0): a long analysis answers when it answers, never a
+// fabricated timeout.
+export const wiring = createWorker<FrontierRequestDetail>({
+  respond: frontierRespond,
+  validateRequest: validateFrontierRequestEvent,
+  validateInput: ajv.compile(FrontierRequestDetailSchema),
+  requestKind: FACULTY_MESSAGE_KINDS.frontier_request,
+  resultKind: FACULTY_MESSAGE_KINDS.frontier_request_result,
+  timeoutMs: 0,
+})

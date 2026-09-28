@@ -1,6 +1,7 @@
 import type { JSONSchemaType } from 'ajv'
 import { ajv, type JsonObject } from '../../../behavioral/behavioral.types.ts'
-import { createWorker } from '../../create-worker.ts'
+import { createWorker, detailInputSchema } from '../../create-worker.ts'
+import { envData } from '../../env-data.ts'
 
 /**
  * The create-worker fixture faculty — a canned `respond` behind the generic
@@ -15,12 +16,25 @@ import { createWorker } from '../../create-worker.ts'
  *
  * The fixture compiles its own wire schemas (it is plumbing fixture, not a
  * faculty) — the request/cancel shapes mirror the wire home's event shape.
+ * Its in-flight timeout is env-data configurable (FIXTURE_TIMEOUT_KEY) so the
+ * specs can pin the no-timeout contract (0 = no timer).
  */
+
+/** Env-data key for the fixture's in-flight timeout (`0` = no timer). */
+export const FIXTURE_TIMEOUT_KEY = 'behavioral:fixture-timeout'
+
+const fixtureTimeoutMs = (): number => {
+  const configured = envData(FIXTURE_TIMEOUT_KEY)
+  return typeof configured === 'number' ? configured : 200
+}
 
 type FixtureInput = {
   op: 'echo' | 'fail' | 'hang' | 'crash' | 'throw'
   message?: string
 }
+
+/** The bootstrap hands the faculty the full correlated detail; the payload rides `input`. */
+type FixtureDetail = { input: FixtureInput }
 
 type FixtureRequestEvent = {
   type: 'fixture_request'
@@ -120,15 +134,16 @@ export const fixtureCancelEvent = ({ id, space }: { id: string; space?: string }
   ...(space === undefined ? {} : { space }),
 })
 
-export const wiring = createWorker<FixtureInput>({
+export const wiring = createWorker<FixtureDetail, { fixture: boolean }>({
   requestKind: 'fixture_request',
   resultKind: 'fixture_request_result',
   validateRequest: validateFixtureRequestEvent,
   validateCancel: validateFixtureCancelEvent,
-  validateInput: ajv.compile(inputSchema),
-  timeoutMs: 200,
+  validateInput: ajv.compile(detailInputSchema(inputSchema)),
+  timeoutMs: fixtureTimeoutMs(),
   data: { fixture: true },
-  respond: async (input, { data, signal }): Promise<JsonObject | { isError: true; message: string }> => {
+  respond: async (detail, { data, signal }): Promise<JsonObject | { isError: true; message: string }> => {
+    const input = detail.input
     if (input.op === 'echo') {
       const seenData = (data as { fixture?: boolean }).fixture ?? null
       return input.message === undefined ? { op: 'echo', seenData } : { op: 'echo', message: input.message, seenData }

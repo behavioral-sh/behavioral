@@ -21,11 +21,12 @@
  * @packageDocumentation
  */
 
-import { createWorker, type FacultyRespond } from '../create-worker.ts'
+import { ajv } from '../../behavioral/behavioral.types.ts'
+import { createWorker, detailInputSchema, type FacultyRespond } from '../create-worker.ts'
 import { envData } from '../env-data.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import { validateSystemOneCancelEvent, validateSystemOneRequestEvent } from '../faculties.types.ts'
-import { validateSystemOneInput, validateSystemOneOutput } from './schemas.ts'
+import { SystemOneInputSchema, validateSystemOneOutput } from './schemas.ts'
 import {
   SYSTEM_ONE_ENDPOINT_KEY,
   type SystemOneEndpointConfig,
@@ -98,11 +99,14 @@ const typesafeRespond: FacultyRespond<SystemOneInput, SystemOneEndpointConfig> =
 }
 
 // The worker entry: wire only inside a worker global (an in-process import wires nothing).
-export const wiring = createWorker<SystemOneInput, SystemOneEndpointConfig>({
-  respond: typesafeRespond,
+// The request detail the bootstrap hands the faculty — the payload rides `input`.
+type SystemOneRequestDetail = { input: SystemOneInput }
+
+export const wiring = createWorker<SystemOneRequestDetail, SystemOneEndpointConfig>({
+  respond: async (detail, { data, signal }) => typesafeRespond(detail.input, { data, signal }),
   validateRequest: validateSystemOneRequestEvent,
   validateCancel: validateSystemOneCancelEvent,
-  validateInput: validateSystemOneInput,
+  validateInput: ajv.compile(detailInputSchema(SystemOneInputSchema)),
   requestKind: FACULTY_MESSAGE_KINDS.system_one_request,
   resultKind: FACULTY_MESSAGE_KINDS.system_one_request_result,
   data: (envData(SYSTEM_ONE_ENDPOINT_KEY) ?? {}) as SystemOneEndpointConfig,

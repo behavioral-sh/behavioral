@@ -33,7 +33,20 @@ const isWorkerScope = (): boolean => {
 }
 
 /**
- * The faculty's call: one validated input in, one result (or error data) out.
+ * Lift an input-level schema to the request-detail level — the system
+ * faculties' payload rides the detail at `input`. The wire home's event
+ * validator remains the strict outer boundary; this is the faculty's
+ * defense-in-depth at its own boundary.
+ */
+export const detailInputSchema = (inputSchema: object): object => ({
+  type: 'object',
+  properties: { input: inputSchema },
+  required: ['input'],
+  additionalProperties: true,
+})
+
+/**
+ * The faculty's call: one correlated request detail in, one result (or error data) out.
  *
  * The result is structurally discriminated by the envelope: `{ isError: true,
  * message }` (any extra fields ride the error payload) → the error branch;
@@ -47,10 +60,16 @@ export type FacultyRespond<I = JsonObject, D = JsonObject> = (
   context: { data: D; signal: AbortSignal },
 ) => Promise<unknown>
 
-/** The inbound request event's shape, structurally — the faculty's wire home validates it. */
+/** The inbound request event's shape, structurally — the faculty's wire home validates it.
+ *
+ * The bootstrap hands the faculty the FULL correlated detail (`{ id, ctx? } & I`):
+ * where the payload sits inside the detail is the faculty wire's convention
+ * (the system faculties nest it at `input`; frontier's dispatch key `op` rides
+ * beside it) — not the bootstrap's business.
+ */
 type FacultyRequestEvent<I> = {
   type: string
-  detail: { id: string; input: I; ctx?: JsonObject }
+  detail: { id: string; ctx?: JsonObject } & I
   space?: string
 }
 
@@ -65,7 +84,7 @@ type ActiveRequest = {
   controller: AbortController
   /** First stop reason wins. */
   reason: 'canceled' | 'timeout' | null
-  timer: ReturnType<typeof setTimeout>
+  timer?: ReturnType<typeof setTimeout>
 }
 
 /**
@@ -84,12 +103,12 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   data = {} as D,
   timeoutMs = 60_000,
 }: {
-  /** The faculty's call — one validated input in, one result out. */
+  /** The faculty's call — one correlated request detail in, one result out. */
   respond: FacultyRespond<I, D>
   /** The wire home's once-compiled request validator. */
   validateRequest: ValidateFunction
-  /** The wire home's once-compiled cancel validator. */
-  validateCancel: ValidateFunction
+  /** The wire home's once-compiled cancel validator — absent for faculties with no cancel contract (sync analyses). */
+  validateCancel?: ValidateFunction
   /** The faculty's once-compiled input-boundary validator. */
   validateInput: ValidateFunction
   /** The inbound request type seal — only this type reaches the faculty. */
@@ -98,7 +117,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   resultKind: string
   /** The faculty's already-read environment config, handed to each call. */
   data?: D
-  /** The in-flight request timeout — the provider call is aborted past this. */
+  /** The in-flight request timeout — the provider call is aborted past this. `0` = no timer (sync faculties). */
   timeoutMs?: number
 }): { resultKind: string } | undefined => {
   if (!isWorkerScope()) return undefined
@@ -126,7 +145,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
 
   /** Route one inbound message (fire-and-forget per message). */
   const handleInbound = async (message: unknown): Promise<void> => {
-    if (validateCancel(message)) {
+    if (validateCancel !== undefined && validateCancel(message)) {
       const request = active.get((message as FacultyCancelEvent).detail.id)
       if (request !== undefined && request.reason === null) {
         request.reason = 'canceled'
@@ -136,8 +155,8 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
     }
     if (!validateRequest(message) || (message as FacultyRequestEvent<I>).type !== requestKind) return
     const event = message as FacultyRequestEvent<I>
-    const { id, input } = event.detail
-    if (!validateInput(input)) {
+    const requestDetail = event.detail
+    if (!validateInput(requestDetail)) {
       const detail = validateInput.errors?.map((e) => `${e.instancePath} ${e.message}`).join('; ')
       postResult({ isError: true, message: `invalid input: ${detail}` }, event)
       return
@@ -147,14 +166,18 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
     const request: ActiveRequest = {
       controller,
       reason: null,
-      timer: setTimeout(() => {
-        if (request.reason === null) {
-          request.reason = 'timeout'
-          controller.abort()
-        }
-      }, timeoutMs),
+      ...(timeoutMs > 0
+        ? {
+            timer: setTimeout(() => {
+              if (request.reason === null) {
+                request.reason = 'timeout'
+                controller.abort()
+              }
+            }, timeoutMs),
+          }
+        : {}),
     }
-    active.set(id, request)
+    active.set(requestDetail.id, request)
 
     // `respond` never rejects the worker: any faculty throw becomes result data.
     // The stop reason wins over HOW the call settled — a resolved call on an
@@ -167,7 +190,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
           ? { isError: true, message: 'request canceled' }
           : null
     try {
-      const result = await respond(input, { data, signal: controller.signal })
+      const result = await respond(requestDetail, { data, signal: controller.signal })
       postResult(stopResult() ?? result, event)
     } catch (error) {
       postResult(
@@ -175,8 +198,8 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
         event,
       )
     } finally {
-      clearTimeout(request.timer)
-      active.delete(id)
+      if (request.timer !== undefined) clearTimeout(request.timer)
+      active.delete(requestDetail.id)
     }
   }
 

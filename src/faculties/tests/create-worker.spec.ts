@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test'
+import { setEnvironmentData } from 'node:worker_threads'
+import { FIXTURE_TIMEOUT_KEY } from './fixtures/create-worker-fixture.worker.ts'
 
 /**
  * The create-worker specs — the faculty-side half of the worker lane,
@@ -120,6 +122,21 @@ describe('createWorker — the in-worker bootstrap over a real Bun Worker', () =
       error: { code: 'error', message: 'request timed out after 200ms' },
     })
     worker.terminate()
+  })
+
+  test('timeoutMs 0 means no timer — the call stays in flight past the default window', async () => {
+    setEnvironmentData(FIXTURE_TIMEOUT_KEY, 0)
+    const { worker, results } = spawnFixture()
+    try {
+      worker.postMessage({ type: 'fixture_request', detail: { id: 'nt1', input: { op: 'hang' } } })
+      // The fixture's env-configured timeout would fire at 200ms; the hang
+      // call must still be in flight well past it.
+      await Bun.sleep(450)
+      expect(results).toEqual([])
+    } finally {
+      setEnvironmentData(FIXTURE_TIMEOUT_KEY, undefined)
+      worker.terminate()
+    }
   })
 
   test('a throwing respond becomes error data, never a dead worker', async () => {
