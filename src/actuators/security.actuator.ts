@@ -37,21 +37,17 @@
 
 import type { ValidateFunction } from 'ajv'
 import { ajv, type JsonObject } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import {
-  type SecurityCancelEvent,
-  type SecurityRequestEvent,
-  validateSecurityCancelEvent,
-  validateSecurityRequestEvent,
-} from '../faculties/faculties.types.ts'
-import { emit, envData, wireInbound } from '../faculties/process-lane.ts'
+import { ACTUATOR_MESSAGE_KINDS } from './actuators.constants.ts'
+import { validateSecurityCancelEvent, validateSecurityRequestEvent } from './actuators.schemas.ts'
+import type { SecurityCancelEvent, SecurityRequestEvent } from './actuators.types.ts'
+import { BunKeychain, vendKeychainToken } from './keychain-oauth-provider.ts'
+import { emit, envData, wireInbound } from './process-lane.ts'
 import {
   MCP_BROKER_BOOT_SECRET_KEY,
   MCP_BROKER_URL_KEY,
   validateCredentialRequestInput,
   validateSecurityRequestContext,
-} from '../faculties/security/types.ts'
-import { BunKeychain, vendKeychainToken } from './keychain-oauth-provider.ts'
+} from './security.types.ts'
 
 // ---------------------------------------------------------------------------
 // Auth binding — module scope, from boundary-legal data only
@@ -123,7 +119,7 @@ const postResult = ({
   ctx?: JsonObject
 }): void => {
   emit({
-    type: FACULTY_MESSAGE_KINDS.credential_result,
+    type: ACTUATOR_MESSAGE_KINDS.credential_result,
     // The request's ctx echoes on BOTH branches — the caller's join lane
     // round-trips through failures too (the absent-credential surfacing).
     detail: (error === undefined

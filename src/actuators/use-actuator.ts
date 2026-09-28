@@ -1,7 +1,7 @@
 import type { ValidateFunction } from 'ajv'
 import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import type { AddThreads } from '../faculties/faculties.types.ts'
+import { ACTUATOR_MESSAGE_KINDS } from './actuators.constants.ts'
+import type { AddThreads } from './actuators.types.ts'
 
 type WireMessage = {
   type: string
@@ -96,7 +96,7 @@ export const useActuator = ({
       if (terminated) return
       crashed = true
       reenter({
-        type: FACULTY_MESSAGE_KINDS.faculty_error,
+        type: ACTUATOR_MESSAGE_KINDS.faculty_error,
         detail: {
           id: `crash_${name}_${crypto.randomUUID()}`,
           faculty: name,

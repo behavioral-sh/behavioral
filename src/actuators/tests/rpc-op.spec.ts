@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ACTUATOR_MESSAGE_KINDS } from '.././actuators.constants.ts'
 import { spawnFaculty } from './faculty-harness.ts'
 
 /**
@@ -53,8 +53,8 @@ const rpcServer = (handler?: (body: Record<string, unknown>) => Response | Promi
 const spawnShellWorker = () =>
   spawnFaculty({
     file: 'shell.actuator.ts',
-    requestType: FACULTY_MESSAGE_KINDS.shell_request,
-    resultType: FACULTY_MESSAGE_KINDS.shell_request_result,
+    requestType: ACTUATOR_MESSAGE_KINDS.shell_request,
+    resultType: ACTUATOR_MESSAGE_KINDS.shell_request_result,
   })
 
 const servers: Array<ReturnType<typeof rpcServer>> = []
@@ -157,7 +157,7 @@ describe('shell rpc op', () => {
       await Bun.sleep(25)
     }
     expect(seen).toBe(1)
-    worker.post({ type: FACULTY_MESSAGE_KINDS.shell_cancel, detail: { id: 'rpc4' } })
+    worker.post({ type: ACTUATOR_MESSAGE_KINDS.shell_cancel, detail: { id: 'rpc4' } })
     const raw = await worker.resultFor('rpc4')
     const result = wire(raw)
     expect(result.ok).toBe(false)

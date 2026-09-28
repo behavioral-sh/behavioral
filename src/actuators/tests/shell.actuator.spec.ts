@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { readdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
-import type { ShellError, ShellSuccess } from '../../faculties/shell/types.ts'
+import { ACTUATOR_MESSAGE_KINDS } from '.././actuators.constants.ts'
+import type { ShellError, ShellSuccess } from '.././shell.types.ts'
 import { type FacultyResult, spawnFaculty } from './faculty-harness.ts'
 
 /**
@@ -35,8 +35,8 @@ type WireResult =
 const spawnShellWorker = () => {
   const faculty = spawnFaculty({
     file: 'shell.actuator.ts',
-    requestType: FACULTY_MESSAGE_KINDS.shell_request,
-    resultType: FACULTY_MESSAGE_KINDS.shell_request_result,
+    requestType: ACTUATOR_MESSAGE_KINDS.shell_request,
+    resultType: ACTUATOR_MESSAGE_KINDS.shell_request_result,
   })
   const results: WireResult[] = []
   const observe = (raw: FacultyResult): void => {
@@ -60,7 +60,7 @@ const spawnShellWorker = () => {
     faculty.call({ id, label: 'test-sh', input: { op: 'shell', command, ...extra } } as JsonObject, space)
   }
   const cancel = (id: string): void => {
-    faculty.post({ type: FACULTY_MESSAGE_KINDS.shell_cancel, detail: { id } } as never)
+    faculty.post({ type: ACTUATOR_MESSAGE_KINDS.shell_cancel, detail: { id } } as never)
   }
   /** ok-branch payload or throws — error paths use errorFor. */
   const payloadFor = async (id: string): Promise<ShellSuccess> => {

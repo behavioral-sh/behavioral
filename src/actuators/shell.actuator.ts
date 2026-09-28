@@ -45,13 +45,11 @@ import * as path from 'node:path'
 import type { ValidateFunction } from 'ajv'
 import type { JsonObject } from '../behavioral/behavioral.types.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import {
-  type ShellRequestEvent,
-  validateShellCancelEvent,
-  validateShellRequestEvent,
-} from '../faculties/faculties.types.ts'
-import { emit, wireInbound } from '../faculties/process-lane.ts'
+import { ACTUATOR_MESSAGE_KINDS } from './actuators.constants.ts'
+import { validateShellCancelEvent, validateShellRequestEvent } from './actuators.schemas.ts'
+import type { ShellRequestEvent } from './actuators.types.ts'
+import { emit, wireInbound } from './process-lane.ts'
+import { send as sendRpc } from './rpc.client.ts'
 import {
   type RpcOpError,
   type RpcOpSuccess,
@@ -63,8 +61,7 @@ import {
   type ShellRpcOpInput,
   type ShellStatus,
   type ShellSuccess,
-} from '../faculties/shell/types.ts'
-import { send as sendRpc } from './rpc.client.ts'
+} from './shell.types.ts'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -630,7 +627,7 @@ const postResult = ({
   ctx?: JsonObject
 }): void => {
   emit({
-    type: FACULTY_MESSAGE_KINDS.shell_request_result,
+    type: ACTUATOR_MESSAGE_KINDS.shell_request_result,
     // The request's ctx echoes at detail level — the out-of-band join lane
     // (thread orchestration state round-trips beside ok, never model-facing).
     detail: (error === undefined
@@ -664,7 +661,7 @@ const errorInterior = ({ message }: { message: string }): ShellError => ({
 /** Route one inbound event. */
 const handleInbound = async (message: unknown): Promise<void> => {
   if (validateShellCancelEvent(message)) {
-    const cancel = message as import('../faculties/faculties.types.ts').ShellCancelEvent
+    const cancel = message as import('./actuators.types.ts').ShellCancelEvent
     const execution = active.get(cancel.detail.id)
     if (execution !== undefined) stopExecution({ execution, reason: 'canceled' })
     return

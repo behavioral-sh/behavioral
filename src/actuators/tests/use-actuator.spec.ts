@@ -2,15 +2,15 @@ import { describe, expect, test } from 'bun:test'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
-import { eventGuardEntries, guardThreads } from '../../faculties/faculties.threads.ts'
+import { ACTUATOR_MESSAGE_KINDS } from '../actuators.constants.ts'
 import {
   ShellCancelEventSchema,
   ShellRequestEventSchema,
   ShellRequestResultEventSchema,
   validateShellCancelEvent,
   validateShellRequestEvent,
-} from '../../faculties/faculties.types.ts'
+} from '../actuators.schemas.ts'
+import { eventGuardEntries, guardThreads } from '../actuators.threads.ts'
 import { useActuator } from '../use-actuator.ts'
 
 /**
@@ -59,7 +59,7 @@ const spawnProbe = (env?: Record<string, string>) => {
     // The wire home's once-compiled validators — useActuator compiles nothing.
     validateRequest: validateShellRequestEvent,
     validateCancel: validateShellCancelEvent,
-    resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
+    resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
   })(addThreadsWithStep(program))
   // The composition's pump role: forward selected faculty requests outbound
   // (the wire-projected event — the selected candidate carries non-wire
@@ -69,7 +69,7 @@ const spawnProbe = (env?: Record<string, string>) => {
     if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
     const selected = (trace as SelectionTrace).selected
     const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
-    if (event.type === FACULTY_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
+    if (event.type === ACTUATOR_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
       actuator.send(event)
     }
   })
@@ -92,7 +92,7 @@ const awaitSelection = async (
 }
 
 const request = (id: string, op: string): BPEvent => ({
-  type: FACULTY_MESSAGE_KINDS.shell_request,
+  type: ACTUATOR_MESSAGE_KINDS.shell_request,
   detail: { id, label: 'probe', input: { op } },
 })
 
@@ -113,16 +113,16 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       // A wire-shaped request passes; a malformed one fails both gates.
       expect(
         actuator.invalidEventGate({
-          type: FACULTY_MESSAGE_KINDS.shell_request,
+          type: ACTUATOR_MESSAGE_KINDS.shell_request,
           detail: { id: 'g', label: 'x', input: { op: 'echo' } },
         }),
       ).toBe(false)
-      expect(actuator.invalidEventGate({ type: FACULTY_MESSAGE_KINDS.shell_request, detail: { nope: true } })).toBe(
+      expect(actuator.invalidEventGate({ type: ACTUATOR_MESSAGE_KINDS.shell_request, detail: { nope: true } })).toBe(
         true,
       )
-      expect(actuator.invalidEventGate({ type: FACULTY_MESSAGE_KINDS.shell_request_result, detail: { id: 'g' } })).toBe(
-        true,
-      )
+      expect(
+        actuator.invalidEventGate({ type: ACTUATOR_MESSAGE_KINDS.shell_request_result, detail: { id: 'g' } }),
+      ).toBe(true)
     } finally {
       actuator.terminate()
     }
@@ -140,7 +140,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       const result = await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
           (t.selected.detail as { id?: string } | undefined)?.id === 'r1',
         'no result',
       )
@@ -158,7 +158,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       const result = await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
           (t.selected.detail as { id?: string } | undefined)?.id === 'e1',
         'no env result',
       )
@@ -182,7 +182,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       const result = await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
           (t.selected.detail as { id?: string } | undefined)?.id === 'm1',
         'no ok result',
       )
@@ -193,7 +193,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       expect(
         selectionsOf(traces).some(
           (t) =>
-            t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+            t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
             (t.selected.detail as { malformed?: boolean } | undefined)?.malformed === true,
         ),
       ).toBe(true)
@@ -210,7 +210,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       name: 'probe',
       validateRequest: validateShellRequestEvent,
       validateCancel: validateShellCancelEvent,
-      resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
+      resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
     })(addThreadsWithStep(program))
     // The composition's own mount: the guard derived from the wire home's
     // schemas — exactly what bProgram derives (the actuator returns none).
@@ -230,7 +230,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
         if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
         const selected = (trace as SelectionTrace).selected
         const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
-        if (event.type === FACULTY_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
+        if (event.type === ACTUATOR_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
           actuator.send(event)
         }
       })
@@ -244,7 +244,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
           (t.selected.detail as { id?: string } | undefined)?.id === 'm1',
         'no ok result',
       )
@@ -253,7 +253,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       expect(
         selectionsOf(traces).some(
           (t) =>
-            t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+            t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
             (t.selected.detail as { malformed?: boolean } | undefined)?.malformed === true,
         ),
       ).toBe(false)
@@ -275,7 +275,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
           {
             waitFor: [
               {
-                type: FACULTY_MESSAGE_KINDS.faculty_error,
+                type: ACTUATOR_MESSAGE_KINDS.faculty_error,
                 detailSchema: { type: 'object', properties: { faculty: { const: 'probe' } }, required: ['faculty'] },
               },
             ],
@@ -292,11 +292,13 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.faculty_error &&
           (t.selected.detail as { faculty?: string } | undefined)?.faculty === 'probe',
         'no faculty_error',
       )
-      const crashes = selectionsOf(traces).filter((t) => t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error).length
+      const crashes = selectionsOf(traces).filter(
+        (t) => t.selected.type === ACTUATOR_MESSAGE_KINDS.faculty_error,
+      ).length
       expect(crashes).toBe(1)
 
       // 2. Respawn on demand: the next request completes on a fresh process.
@@ -309,13 +311,15 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       const result = await awaitSelection(
         traces,
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.shell_request_result &&
+          t.selected.type === ACTUATOR_MESSAGE_KINDS.shell_request_result &&
           (t.selected.detail as { id?: string } | undefined)?.id === 'r2',
         'no respawn result',
       )
       expect((result.selected.detail as { ok?: boolean } | undefined)?.ok).toBe(true)
       // Still exactly one crash — the respawn's listener is armed for the NEXT death only.
-      expect(selectionsOf(traces).filter((t) => t.selected.type === FACULTY_MESSAGE_KINDS.faculty_error).length).toBe(1)
+      expect(selectionsOf(traces).filter((t) => t.selected.type === ACTUATOR_MESSAGE_KINDS.faculty_error).length).toBe(
+        1,
+      )
     } finally {
       actuator.terminate()
     }

@@ -37,10 +37,12 @@ import { mkdirSync } from 'node:fs'
 import * as path from 'node:path'
 import type { JSONSchemaType } from 'ajv'
 import { ajv, type JsonObject } from '../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
-import { type StoreRequestEvent, validateStoreRequestEvent } from '../faculties/faculties.types.ts'
-import { emit, envData, wireInbound } from '../faculties/process-lane.ts'
+import { deepEqual } from '../utils.ts'
+import { ACTUATOR_MESSAGE_KINDS } from './actuators.constants.ts'
+import { validateStoreRequestEvent } from './actuators.schemas.ts'
+import type { StoreRequestEvent } from './actuators.types.ts'
+import { behavioralHome } from './behavioral-home.ts'
+import { emit, envData, wireInbound } from './process-lane.ts'
 import {
   ROOT_SPACE,
   STORE_DB_PATH_KEY,
@@ -48,8 +50,7 @@ import {
   type StoreGetInput,
   type StorePutInput,
   type StoreQueryInput,
-} from '../faculties/store/types.ts'
-import { deepEqual } from '../utils.ts'
+} from './store.types.ts'
 
 // ---------------------------------------------------------------------------
 // Backing — one owned connection, migrations on boot
@@ -153,7 +154,7 @@ const postResult = ({
   ctx?: JsonObject
 }): void => {
   emit({
-    type: FACULTY_MESSAGE_KINDS.store_request_result,
+    type: ACTUATOR_MESSAGE_KINDS.store_request_result,
     // The uniform envelope: op-runner { ok: true, … } → ok branch (payload =
     // the rest); { isError: true, … } or a throw → error branch. The request's
     // ctx echoes at detail level — the out-of-band join lane (thread

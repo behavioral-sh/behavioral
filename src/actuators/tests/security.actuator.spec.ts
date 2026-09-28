@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ACTUATOR_MESSAGE_KINDS } from '.././actuators.constants.ts'
 import { spawnFaculty } from './faculty-harness.ts'
 
 /**
@@ -46,8 +46,8 @@ const brokerServer = (handler?: (request: Request) => Response | Promise<Respons
 const spawnSecurityWorker = (env?: Record<string, string>) =>
   spawnFaculty({
     file: 'security.actuator.ts',
-    requestType: FACULTY_MESSAGE_KINDS.credential_request,
-    resultType: FACULTY_MESSAGE_KINDS.credential_result,
+    requestType: ACTUATOR_MESSAGE_KINDS.credential_request,
+    resultType: ACTUATOR_MESSAGE_KINDS.credential_result,
     env,
   })
 
@@ -118,7 +118,7 @@ describe('security faculty — credential vending over the wire', () => {
     const worker = spawnSecurityWorker({ MCP_BROKER_URL: broker.url, MCP_BROKER_BOOT_SECRET: 'boot-secret' })
     workers.push(worker)
     worker.call({ id: 'cred5', input: { serverUrl: SERVER_URL } } as JsonObject)
-    worker.post({ type: FACULTY_MESSAGE_KINDS.credential_cancel, detail: { id: 'cred5' } } as never)
+    worker.post({ type: ACTUATOR_MESSAGE_KINDS.credential_cancel, detail: { id: 'cred5' } } as never)
     const raw = await worker.resultFor('cred5')
     const result = raw.detail as unknown as WireResult
     expect(result.ok).toBe(false)

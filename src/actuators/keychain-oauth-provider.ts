@@ -41,7 +41,7 @@ import type {
   OAuthDiscoveryState,
   StoredOAuthClientInformation,
   StoredOAuthTokens,
-} from '../faculties/security/types.ts'
+} from './security.types.ts'
 
 // ---------------------------------------------------------------------------
 // Plain client-auth selection (the SDK-free replacement for the SDK helper)
