@@ -5,10 +5,7 @@
  *
  * @remarks
  * The faculty runs as a web worker, never imported by the host; both sides
- * import here instead. Types plus one side-effect-free key constant —
- * the key is the only runtime value, so both sides agree on the
- * environment-data key (worker-threads environment data across the Worker
- * construction) without a circular import.
+ * import here instead. Types only — the faculty's config rides the init frame (the construction message).
  */
 
 import type {
@@ -43,8 +40,6 @@ export type SystemTwoEndpointConfig = {
 export type SystemTwoEndpoints = Record<string, SystemTwoEndpointConfig>
 
 /** Environment-data key for the provisioned endpoint map (host seeds, worker reads). */
-export const SYSTEM_TWO_ENDPOINTS_KEY = 'behavioral:model-endpoints'
-
 // ---------------------------------------------------------------------------
 // model-respond — input / output
 // ---------------------------------------------------------------------------

@@ -43,24 +43,11 @@ import {
   type Usage,
   UsageSchema,
 } from './system-two.schemas.ts'
-import type {
-  SystemTwoEndpointConfig,
-  SystemTwoEndpoints,
-  SystemTwoInput,
-  SystemTwoOutput,
-} from './system-two.types.ts'
+import type { SystemTwoEndpoints, SystemTwoInput, SystemTwoOutput } from './system-two.types.ts'
 
 // ---------------------------------------------------------------------------
 // Wire helpers
 // ---------------------------------------------------------------------------
-
-const joinUrl = (base: string, path: string): string => `${base.replace(/\/$/, '')}${path}`
-
-const buildHeaders = (endpoint: SystemTwoEndpointConfig): Record<string, string> => ({
-  'content-type': 'application/json',
-  ...(endpoint.apiKey !== undefined && { authorization: `Bearer ${endpoint.apiKey}` }),
-  ...endpoint.headers,
-})
 
 /** Structured error body ({ error: { code, message } }) on a non-2xx response. */
 const describeHttpError = async (res: Response): Promise<string> => {
@@ -112,10 +99,6 @@ const buildRespondBody = (input: SystemTwoInput): Record<string, unknown> => {
 // Response schemas (lax envelopes — the strict content lives in the item union)
 // ---------------------------------------------------------------------------
 
-const usageJsonSchema = UsageSchema.schema
-const errorJsonSchema = ErrorSchema.schema
-const outputItemJsonSchema = OutputItemSchema.schema
-
 type ResponseResource = {
   id: string
   object: string
@@ -132,9 +115,9 @@ const responseResourceSchema = makeSchema<ResponseResource>({
     object: { type: 'string' },
     status: { type: 'string' },
     model: { type: 'string' },
-    output: { type: 'array', items: outputItemJsonSchema },
-    usage: { ...usageJsonSchema, additionalProperties: true, nullable: true },
-    error: { ...errorJsonSchema, additionalProperties: true, nullable: true },
+    output: { type: 'array', items: OutputItemSchema.schema },
+    usage: { ...UsageSchema.schema, additionalProperties: true, nullable: true },
+    error: { ...ErrorSchema.schema, additionalProperties: true, nullable: true },
   },
   required: ['id', 'object', 'status', 'output'],
   additionalProperties: true,
@@ -248,16 +231,20 @@ const assembleResponse = (events: OpenResponsesStreamEvent[], knownEvents: Known
 // The provider: one Open Responses call per input
 // ---------------------------------------------------------------------------
 
-const openResponsesRespond: FacultyRespond<SystemTwoInput, SystemTwoEndpoints> = async (
-  input,
+const openResponsesRespond: FacultyRespond<SystemTwoRequestDetail, SystemTwoEndpoints> = async (
+  { input },
   { data: endpoints, signal },
 ) => {
   const endpoint = endpoints[input.provider]
   if (!endpoint) return { isError: true, message: `[Error: unknown provider "${input.provider}"]` }
   try {
-    const res = await fetch(joinUrl(endpoint.url, '/responses'), {
+    const res = await fetch(`${endpoint.url.replace(/\/$/, '')}/responses`, {
       method: 'POST',
-      headers: buildHeaders(endpoint),
+      headers: {
+        'content-type': 'application/json',
+        ...(endpoint.apiKey !== undefined && { authorization: `Bearer ${endpoint.apiKey}` }),
+        ...endpoint.headers,
+      },
       body: JSON.stringify(buildRespondBody(input)),
       signal,
     })
@@ -290,7 +277,7 @@ const openResponsesRespond: FacultyRespond<SystemTwoInput, SystemTwoEndpoints> =
 type SystemTwoRequestDetail = { input: SystemTwoInput }
 
 export const wiring = createWorker<SystemTwoRequestDetail, SystemTwoEndpoints>({
-  respond: async (detail, { data, signal }) => openResponsesRespond(detail.input, { data, signal }),
+  respond: openResponsesRespond,
   validateRequest: validateSystemTwoRequestEvent,
   validateCancel: validateSystemTwoCancelEvent,
   validateInput: ajv.compile(detailInputSchema(SystemTwoInputSchema)),

@@ -48,9 +48,8 @@ export const guardThreads = (label: string, entries: GuardEntry[]): Thread[] => 
 
 /**
  * Read an event schema's wire kind — its `properties.type.const`. The one
- * extraction home: the guard generator and `useFaculty`'s lane seal both
- * derive from it, so a schema without the const fails LOUDLY at wiring time
- * wherever it is read (never as a silently-undefined seal).
+ * extraction home: the guard generator derives from it, so a schema without
+ * the const fails LOUDLY at wiring time (never as a silently-undefined seal).
  */
 export const eventTypeOf = (schema: unknown): string => {
   const properties = (schema as { properties?: Record<string, unknown> }).properties ?? {}
@@ -58,7 +57,6 @@ export const eventTypeOf = (schema: unknown): string => {
   if (type === undefined) throw new Error('event schema is missing properties.type.const')
   return type
 }
-
 /**
  * Extract guard entries from a faculty's three event schemas (the same object
  * `useFaculty` compiles): the `type` constant and the `detail` sub-schema.

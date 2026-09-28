@@ -63,8 +63,8 @@ const describeHttpError = async (res: Response): Promise<string> => {
   return `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`
 }
 
-const typesafeRespond: FacultyRespond<SystemOneInput, SystemOneEndpointConfig> = async (
-  input,
+const typesafeRespond: FacultyRespond<SystemOneRequestDetail, SystemOneEndpointConfig> = async (
+  { input },
   { data: endpoint, signal },
 ) => {
   const model = input.model ?? endpoint.model
@@ -97,7 +97,7 @@ const typesafeRespond: FacultyRespond<SystemOneInput, SystemOneEndpointConfig> =
 type SystemOneRequestDetail = { input: SystemOneInput }
 
 export const wiring = createWorker<SystemOneRequestDetail, SystemOneEndpointConfig>({
-  respond: async (detail, { data, signal }) => typesafeRespond(detail.input, { data, signal }),
+  respond: typesafeRespond,
   validateRequest: validateSystemOneRequestEvent,
   validateCancel: validateSystemOneCancelEvent,
   validateInput: ajv.compile(detailInputSchema(SystemOneInputSchema)),

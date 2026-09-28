@@ -21,7 +21,7 @@ export type FacultyResult = {
 }
 
 /** The worker-shape harness type. */
-export type FacultyWorker = {
+type FacultyWorker = {
   call: (detail: JsonObject, space?: string) => void
   post: (event: { type: string; detail: JsonObject; space?: string }) => void
   resultFor: (id: string, timeoutMs?: number) => Promise<FacultyResult>

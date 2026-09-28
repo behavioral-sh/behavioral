@@ -88,20 +88,6 @@ export const useWorker = ({
       ])
     }
 
-    /** Crash synthesis — exactly ONE faculty_error per unsolicited death. */
-    const onDeath = (message: string): void => {
-      if (terminated) return
-      crashed = true
-      reenter({
-        type: FACULTY_MESSAGE_KINDS.faculty_error,
-        detail: {
-          id: `crash_${name}_${crypto.randomUUID()}`,
-          faculty: name,
-          message,
-        },
-      })
-    }
-
     /** Construct the faculty worker (fresh on first send and after any death). */
     const spawn = (): Worker => {
       const next = spawnWorker()
@@ -126,9 +112,19 @@ export const useWorker = ({
         reenter(message)
       })
       next.addEventListener('error', (event: ErrorEvent) => {
+        // Crash synthesis — exactly ONE faculty_error per unsolicited death.
         if (synthesized) return
         synthesized = true
-        onDeath(`worker crashed: ${event.message}`)
+        if (terminated) return
+        crashed = true
+        reenter({
+          type: FACULTY_MESSAGE_KINDS.faculty_error,
+          detail: {
+            id: `crash_${name}_${crypto.randomUUID()}`,
+            faculty: name,
+            message: `worker crashed: ${event.message}`,
+          },
+        })
       })
       return next
     }

@@ -13,7 +13,6 @@
 
 import type { SystemOneInput, SystemOneOutput } from './system-one.schemas.ts'
 
-export type { Answer, InstructionValue, Question } from './system-one.schemas.ts'
 export type { SystemOneInput, SystemOneOutput }
 
 /**
@@ -29,6 +28,3 @@ export type SystemOneEndpointConfig = {
   /** Default model slug; a request `model` overrides it. */
   model?: string
 }
-
-/** Environment-data key for the provisioned system-one endpoint (host seeds, process reads). */
-export const SYSTEM_ONE_ENDPOINT_KEY = 'behavioral:system-one-endpoint'

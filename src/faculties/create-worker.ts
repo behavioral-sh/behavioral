@@ -11,7 +11,9 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  * error in classic worker bundles (the browser gets the same entries
  * bundled CLASSIC), and Bun's main thread carries the web-worker globals
  * anyway (oven-sh/bun#35655), so entry detection lies. Outside a worker
- * global the bootstrap wires nothing: importing a faculty entry in the
+ * global the bootstrap wires nothing: importing a faculty entry in the main
+ * thread is inert, and the `respond` stays importable by specs.
+ *
  * Faculty config rides the INIT FRAME (the construction message) — never
  * eval-time reads, never request messages, never node builtins.
  *
