@@ -18,6 +18,7 @@
 export * from './utils/case.ts'
 export * from './utils/deep-equal.ts'
 export * from './utils/escape.ts'
+export * from './utils/hash-string.ts'
 export * from './utils/is-type-of.ts'
 export * from './utils/key-mirror.ts'
 export * from './utils/true-type-of.ts'
