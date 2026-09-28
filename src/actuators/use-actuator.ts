@@ -1,5 +1,5 @@
 import type { ValidateFunction } from 'ajv'
-import type { BPEvent, JsonObject, Thread } from '../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import type { AddThreads } from '../faculties/faculties.types.ts'
 
@@ -28,7 +28,7 @@ type WireMessage = {
  * without dead-port stragglers — killing a process closes its pipes.
  *
  * Curried like its Worker ancestor: the initial call captures the faculty's
- * command, wire name, threads, validators, and an optional `env` override
+ * command, wire name, validators, and an optional `env` override
  * (merged over the inherited environment); the returned function
  * — awaiting `(addThreads, space?)` — wires:
  *
@@ -56,7 +56,6 @@ type WireMessage = {
 export const useActuator = ({
   command,
   name,
-  threads,
   env,
   validateRequest,
   validateCancel,
@@ -64,7 +63,6 @@ export const useActuator = ({
 }: {
   command: string[]
   name: string
-  threads: Thread[]
   /** Extra environment for the spawned process, merged over `process.env`. */
   env?: Record<string, string>
   /** The outbound gate — the wire home's once-compiled request validator. */
@@ -179,10 +177,6 @@ export const useActuator = ({
     }
 
     const invalidEventGate = (event: BPEvent): boolean => !validateRequest(event) && !validateCancel(event)
-
-    // Thread mount — stamped only when set (an explicit `space: undefined`
-    // breaks the strict Thread schema; the reenter rule, applied to the mounted threads).
-    addThreads(threads.map((thread) => (space === undefined ? thread : { ...thread, space })))
 
     return {
       name,

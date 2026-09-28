@@ -55,7 +55,6 @@ const spawnProbe = (env?: Record<string, string>) => {
   const actuator = useActuator({
     command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
     name: 'probe',
-    threads: [],
     ...(env === undefined ? {} : { env }),
     // The wire home's once-compiled validators — useActuator compiles nothing.
     validateRequest: validateShellRequestEvent,
@@ -209,7 +208,6 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
     const actuator = useActuator({
       command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
       name: 'probe',
-      threads: [],
       validateRequest: validateShellRequestEvent,
       validateCancel: validateShellCancelEvent,
       resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
