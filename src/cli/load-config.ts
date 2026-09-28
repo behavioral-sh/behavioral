@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { behavioralHome } from '../faculties/behavioral-home.ts'
+import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 import type { bProgram } from './b-program.ts'
 
 /**
