@@ -16,9 +16,11 @@ import type { SystemOneInput, SystemOneOutput } from './system-one.schemas.ts'
 export type { SystemOneInput, SystemOneOutput }
 
 /**
- * One provisioned System One endpoint. `apiKey` is resolved at provisioning
- * time — it is never model-facing and never crosses the wire in a request
- * message (the host delivers it via environment data).
+ * One provisioned System One endpoint, riding the init frame (the
+ * construction message). For static-key vendors (Typesafe, OpenRouter) the
+ * `url` is the DAEMON's provider-shaped proxy route and `apiKey` stays
+ * unset — the key attaches daemon-side from the keychain and never enters a
+ * browser context.
  */
 export type SystemOneEndpointConfig = {
   /** The FULL request URL (e.g. `https://api.typesafe.ai/v1/systemone`). */

@@ -129,10 +129,14 @@ The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
 (+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
 (+ types/schemas), `frontier.faculty.ts` (+ `.threads.ts`): each entry is a
 `respond` behind the top-level `createWorker` (system-one: TypeSafe/OpenRouter
-Decisions, 429/529 retry-after; system-two: Open Responses, the endpoints map
-as env data; frontier: the reachability analyses — synchronous, no cancel
-contract, no timeout). Endpoints/config arrive as environment data — the
-secret never enters a request message. `system-one.threads.ts` carries the
+Decisions, 429/529 retry-after; system-two: Open Responses, the endpoints
+map via the init frame, per-provider `transport: 'rest' | 'webgpu'` — rest
+URLs point at the daemon's provider-shaped proxy for static-key vendors
+(the key attaches daemon-side, never in a browser context), webgpu runs the
+local runtime (`system-two.webgpu.ts`, lazy-imported); frontier: the
+reachability analyses — synchronous, no cancel contract, no timeout).
+Endpoints/config arrive as the init frame — the secret never enters a
+request message. `system-one.threads.ts` carries the
 admission judgment threads (the BP-native blocking judge over the Decisions
 lane; mounted when systemOne is wired) and the supervision threads (the
 runtime circuit breaker — the counting supervisor, its block-then-judge

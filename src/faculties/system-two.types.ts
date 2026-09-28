@@ -22,24 +22,33 @@ import type {
 export type { ReasoningEffort }
 
 /**
- * One provisioned Open Responses endpoint. `apiKey` must already be resolved
- * at provisioning time — it is never model-facing and never crosses the wire
- * in a request message (the host delivers the whole map via environment data).
+ * One provisioned model endpoint. Two transports:
+ *
+ * - `rest` (default) — `url` is the full base URL the operation path appends
+ *   to (`/responses`). For static-key vendors (Typesafe, OpenRouter) this is
+ *   the DAEMON's provider-shaped proxy route and `apiKey` stays unset — the
+ *   key attaches daemon-side from the keychain and never enters a browser
+ *   context. `apiKey` is only for providers that accept short-lived,
+ *   scoped tokens vended to this session.
+ * - `webgpu` — local in-worker inference; `model` names the local model.
+ *   No network, no credential.
  */
 export type SystemTwoEndpointConfig = {
+  transport?: 'rest' | 'webgpu'
   /**
    * The full base URL the operation path appends to (`/responses`) — no
-   * `/v1/` prefix is added.
+   * `/v1/` prefix is added. Rest transport only.
    */
-  url: string
+  url?: string
+  /** Rest transport only — daemon-vended short-lived tokens, never a static vendor key. */
   apiKey?: string
   headers?: Record<string, string>
+  /** Webgpu transport only — the local model id. */
+  model?: string
 }
 
-/** Provider label → endpoint config. Delivered to the faculty via environment data. */
+/** Provider label → endpoint config. Rides the init frame (the construction message). */
 export type SystemTwoEndpoints = Record<string, SystemTwoEndpointConfig>
-
-/** Environment-data key for the provisioned endpoint map (host seeds, worker reads). */
 // ---------------------------------------------------------------------------
 // model-respond — input / output
 // ---------------------------------------------------------------------------

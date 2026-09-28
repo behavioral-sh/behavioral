@@ -177,7 +177,7 @@ describe('model faculty — streaming respond', () => {
   })
 })
 
-describe('model faculty — endpoint config via environment data', () => {
+describe('model faculty — endpoint config via the init frame', () => {
   test('the provisioned apiKey reaches the wire as a bearer header', async () => {
     const server = await startOpenResponsesServer({ apiKey: 'secret-token' })
     const model = spawnModelBehavior({ mock: { url: server.url, apiKey: 'secret-token' } })
@@ -1104,6 +1104,40 @@ describe('model faculty — output conformance', () => {
     } finally {
       model.terminate()
       await server.close()
+    }
+  })
+})
+
+describe('model faculty — the transport toggle (rest ↔ webgpu)', () => {
+  test('a webgpu endpoint dispatches to the local runtime as a normal result', async () => {
+    const model = spawnModelBehavior({ local: { transport: 'webgpu', model: 'stub-1' } })
+    try {
+      model.respond('w1', { provider: 'local', modelId: 'mock-model', input: [userMessage] })
+      const { ok, result } = await model.resultFor('w1')
+      expect(ok).toBe(true)
+      const output = result as {
+        status: string
+        items: Array<{ type: string; role: string; status: string; content: Array<{ text: string }> }>
+      }
+      expect(output.status).toBe('completed')
+      expect(output.status).toBe('completed')
+      const item = output.items[0]
+      expect(item).toMatchObject({ type: 'message', role: 'assistant', status: 'completed' })
+      expect(item?.content[0]?.text).toContain('stub-1')
+    } finally {
+      model.terminate()
+    }
+  })
+
+  test('a rest endpoint without a url answers the typed error', async () => {
+    const model = spawnModelBehavior({ broken: { transport: 'rest' } })
+    try {
+      model.respond('w2', { provider: 'broken', modelId: 'mock-model', input: [userMessage] })
+      const { ok, error } = await model.resultFor('w2')
+      expect(ok).toBe(false)
+      expect(String(error?.message)).toBe('[Error: rest endpoint "broken" has no url]')
+    } finally {
+      model.terminate()
     }
   })
 })

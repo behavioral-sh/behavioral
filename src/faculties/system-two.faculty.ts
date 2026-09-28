@@ -238,6 +238,14 @@ const openResponsesRespond: FacultyRespond<SystemTwoRequestDetail, SystemTwoEndp
   const endpoint = endpoints[input.provider]
   if (!endpoint) return { isError: true, message: `[Error: unknown provider "${input.provider}"]` }
   try {
+    // The transport toggle: local (WebGPU) inference vs rest fetch — config
+    // only, the wire contract is identical. The runtime lazy-imports so the
+    // default bundle never pays for it.
+    if (endpoint.transport === 'webgpu') {
+      const { runLocalModel } = await import('./system-two.webgpu.ts')
+      return runLocalModel(input, { model: endpoint.model, signal })
+    }
+    if (!endpoint.url) return { isError: true, message: `[Error: rest endpoint "${input.provider}" has no url]` }
     const res = await fetch(`${endpoint.url.replace(/\/$/, '')}/responses`, {
       method: 'POST',
       headers: {
