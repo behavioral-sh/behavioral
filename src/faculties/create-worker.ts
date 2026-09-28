@@ -113,8 +113,8 @@ type ActiveRequest = {
 }
 
 /**
- * Wire the worker's inbound lane around one faculty's `respond`. Returns a
- * small wiring descriptor when inside a worker scope; `undefined` when the
+ * Wire the worker's inbound lane around one faculty's `respond`. Returns the
+ * lane's sealed result kind when inside a worker scope; `undefined` when the
  * module was imported outside one (the no-op guard — introspectable so the
  * main-thread inertness is provable, not assumed).
  */
@@ -141,7 +141,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   resultKind: string
   /** The in-flight request timeout — the provider call is aborted past this. `0` = no timer (sync faculties). */
   timeoutMs?: number
-}): { resultKind: string } | undefined => {
+}): string | undefined => {
   if (!isWorkerScope()) return undefined
 
   // The faculty's config, delivered by the init frame (never eval-time, never
@@ -245,5 +245,5 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
     void handleInbound(event.data)
   })
 
-  return { resultKind }
+  return resultKind
 }

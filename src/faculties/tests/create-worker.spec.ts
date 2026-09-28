@@ -220,7 +220,7 @@ describe('createWorker — the scope gate', () => {
   test('importing a faculty entry in the main thread wires nothing', async () => {
     // Assert the branch first: outside a worker global, createWorker no-ops.
     const mod = (await import('./fixtures/create-worker-fixture.worker.ts')) as {
-      wiring: { resultKind: string } | undefined
+      wiring: string | undefined
     }
     expect(mod.wiring).toBeUndefined()
   })
