@@ -14,3 +14,5 @@
 
 export * from './controller/controller.ts'
 export * from './controller/controller.types.ts'
+export * from './controller/websocket-transport.ts'
+export * from './controller/worker-transport.ts'

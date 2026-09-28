@@ -41,10 +41,12 @@ describe('createSocketHost — the GUI carrier', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('text/javascript;charset=utf-8')
     // The gzipped bundle decodes to real controller runtime: the ui_render
-    // handler wire type and the transport's WebSocket reconnect are present.
+    // handler wire type and the default worker carrier are present (the
+    // flipped default — the composition boots in the bProgram worker spawned
+    // from the conventional serving path).
     const body = await response.text()
     expect(body).toContain('ui_render')
-    expect(body).toContain('WebSocket')
+    expect(body).toContain('b-program.worker')
     await host.close()
   }, 30_000)
 

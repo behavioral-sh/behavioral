@@ -132,12 +132,16 @@ export type ControllerConstructorArgs = {
   /** Called on {@link https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event | pagehide}. */
   onPageHide?: ControllerExtension<Window, 'pagehide'>
   /**
-   * Optional message carrier. When omitted the controller uses its built-in
-   * WebSocket carrier (byte-for-byte the pre-seam behavior). When provided,
-   * the controller sends/receives through it instead of opening a WebSocket —
-   * the injection point a non-WS carrier (e.g. native IPC) plugs into.
+   * Optional message carrier. The default is the worker carrier: a dedicated
+   * module Worker spawned from the conventional `B_PROGRAM_WORKER_PATH`
+   * serving path (the composition boots in the bProgram worker; the page
+   * talks postMessage). An injected carrier always wins — a `Worker` or
+   * `MessagePort` is wrapped in the built-in worker Transport; a full
+   * `Transport` is used as-is (the injection point a non-worker carrier —
+   * e.g. the WebSocket carrier for thin GUI clients of a remote host — plugs
+   * into).
    */
-  transport?: Transport
+  transport?: Transport | Worker | MessagePort
 }
 
 // ---------------------------------------------------------------------------

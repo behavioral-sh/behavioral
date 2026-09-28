@@ -37,13 +37,8 @@ import type {
   StyleMessage,
   Transport,
 } from './controller.types.ts'
-import {
-  DelegatedListener,
-  detectXssVectors,
-  isInvalidTrigger,
-  swapBoundary,
-  WebSocketTransport,
-} from './controller.utils.ts'
+import { DelegatedListener, detectXssVectors, isInvalidTrigger, swapBoundary } from './controller.utils.ts'
+import { B_PROGRAM_WORKER_PATH, WorkerTransport } from './worker-transport.ts'
 
 const delegates = new WeakMap<EventTarget, DelegatedListener>()
 
@@ -109,7 +104,7 @@ export class Controller {
   #onPageShow: ControllerConstructorArgs['onPageShow']
   #onPageSwap: ControllerConstructorArgs['onPageSwap']
   #disconnectSet = new Set<Disconnect>()
-  #injectedTransport?: Transport
+  #injectedTransport?: Transport | Worker | MessagePort
   #transport: Transport | undefined
   #transportWired = false
   #addDisconnect(disconnect: Disconnect) {
@@ -117,18 +112,26 @@ export class Controller {
   }
   /**
    * @internal
-   * Resolves the active carrier, creating the default WebSocket carrier on
-   * first use (mirroring the pre-seam lazy connect: a send before `connect()`
-   * opens the socket). An injected transport is used as-is. The carrier is
+   * Resolves the active carrier. The default is the worker carrier: a
+   * dedicated module Worker spawned from the conventional
+   * {@link B_PROGRAM_WORKER_PATH} serving path — the composition (the
+   * bProgram worker) boots in the worker, and the page talks postMessage.
+   * An injected carrier always wins: a `Worker`/`MessagePort` is wrapped in
+   * the worker Transport; a full `Transport` is used as-is. The carrier is
    * wired for incoming dispatch + status/error reporting exactly once.
    */
   #getTransport(): Transport {
     if (!this.#transport) {
-      this.#transport =
-        this.#injectedTransport ??
-        new WebSocketTransport(self.location.href.replace(/^http/, 'ws'), {
-          registerDisconnect: (cb) => this.#addDisconnect(cb),
-        })
+      const injected = this.#injectedTransport
+      if (injected instanceof Worker || injected instanceof MessagePort) {
+        this.#transport = new WorkerTransport({ worker: injected })
+      } else {
+        this.#transport =
+          injected ??
+          new WorkerTransport({
+            worker: new Worker(new URL(B_PROGRAM_WORKER_PATH, self.location.origin), { type: 'module' }),
+          })
+      }
       this.#wireTransport(this.#transport)
     }
     return this.#transport

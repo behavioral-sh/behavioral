@@ -12,7 +12,10 @@ import { B_TRIGGER } from '../../controller.constants.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from './bundle-controller.ts'
 
 const FIXTURES_DIR = import.meta.dir
-const controllerRoutes = await bundleController()
+// The WS-carrier coverage: the fixture's pages construct the controller with
+// the injected WebSocket carrier (the thin-GUI-client shape — the flipped
+// default is the worker carrier, proven by the worker-transport webview probe).
+const controllerRoutes = await bundleController({ carrier: 'websocket' })
 
 const connectScript = (modules?: string[]) => {
   const params = new URLSearchParams()

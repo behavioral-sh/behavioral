@@ -20,9 +20,12 @@ import type { ControllerConstructorArgs, Transport } from '../controller.types.t
 import { startTransportServer } from './fixtures/transport-serve.ts'
 
 // Type-level assertion: ControllerConstructorArgs accepts an injected
-// transport. `Transport` is exported; the conditional type resolves to `true`.
-// Type-only — erased at runtime.
-type _AssertTransportArg = ControllerConstructorArgs extends { transport?: Transport } ? true : false
+// transport — and the widened carrier contract: a Worker/MessagePort too (the
+// wrapped-in-worker-transport shapes). `Transport` is exported; the
+// conditional type resolves to `true`. Type-only — erased at runtime.
+type _AssertTransportArg = ControllerConstructorArgs extends { transport?: Transport | Worker | MessagePort }
+  ? true
+  : false
 const _assertTransportArg: _AssertTransportArg = true
 void _assertTransportArg
 
