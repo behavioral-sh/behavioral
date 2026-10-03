@@ -1,4 +1,3 @@
-import { useWorker } from '../b-program/use-worker.ts'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import { behavioral } from '../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
@@ -24,9 +23,10 @@ import {
   admissionJudgmentThreads,
   validateAdmissionVerdict,
 } from '../faculties/system-one.threads.ts'
-import { PLUGIN_THREADS_EVENT_TYPES } from '../old-faculties/shell/plugin-threads.threads.ts'
 import { uuid } from '../utils.ts'
+import { PLUGIN_THREADS_EVENT_TYPES } from './plugin-threads.threads.ts'
 import { UI_RENDER_TRIGGER_TYPE, uiPipelineThreads } from './ui-threads.ts'
+import { useWorker } from './use-worker.ts'
 
 /*
  * The runtime composition — IN-PROCESS (the browser bProgram worker entry

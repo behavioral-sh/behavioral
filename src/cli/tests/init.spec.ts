@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ajv } from '../../behavioral/behavioral.types.ts'
-import { type Ask, collectInitInput, type InitInput, InitInputSchema, init, runInit as runInitDirect } from '../init.ts'
+import { type Ask, collectInitInput, InitInputSchema, init } from '../init.ts'
 import { loadConfig } from '../load-config.ts'
 import { createRuntime } from '../serve.ts'
 
@@ -12,14 +12,14 @@ import { createRuntime } from '../serve.ts'
  * (makeCli: JSON positional in, validated JSON out), against a temp
  * BEHAVIORAL_HOME. The locked contract:
  *
+ * - the generated config is the ruled two-key shape: the `actuators`
+ *   allow-list plus the model identifiers (`systemOne`/`systemTwo`) as DATA
+ *   riding the faculties' init frame — no factory overrides;
  * - absent faculties default on (TypeSafe/OpenAI urls, env-NAME secrets);
  *   `null` omits a faculty; objects customize over the defaults;
  * - no literal secrets: api keys ride as `env('<NAME>')` references that fail
  *   fast when the variable is unset;
- * - an existing config is never clobbered without `force`;
- * - provider scaffolding writes `<home>/providers/<file>` (import-safe bare
- *   specifiers, thanks to the global-install resolution) and points the
- *   faculty's `entry` at it.
+ * - an existing config is never clobbered without `force`.
  */
 
 /** Scripted ask seam: answers pop in order; an exhausted tour keeps returning empty. */
@@ -56,24 +56,25 @@ describe('behavioral init — the runner', () => {
     return JSON.parse(logs.join('\n')) as { home: string; configPath: string; files: string[] }
   }
 
-  test('an empty input generates the default config — both faculties, env-name secrets', async () => {
+  test('an empty input generates the default config — the trio, both faculties, env-name secrets', async () => {
     const output = await runInit('{}')
     expect(output.configPath).toBe(configPath())
     expect(output.files).toContain('config.ts')
     const content = readConfig()
     expect(content).toContain("import { defineConfig } from '@behavioral/sh'")
-    expect(content).toContain("import { useSystemOne, useSystemTwo } from '@behavioral/sh/faculties'")
+    expect(content).toContain("actuators: ['shell', 'store', 'security']")
     expect(content).toContain('https://api.typesafe.ai/v1/systemone')
     expect(content).toContain("'jev-latest'")
     expect(content).toContain("apiKey: env('TYPESAFE_API_KEY')")
     expect(content).toContain('https://api.openai.com/v1')
     expect(content).toContain("apiKey: env('OPENAI_API_KEY')")
-    // No literal secrets anywhere.
+    // No factory overrides and no literal secrets anywhere.
+    expect(content).not.toMatch(/useSystemOne|useSystemTwo|configSystem/)
     expect(content).not.toMatch(/sk-[a-zA-Z0-9]/)
   })
 
-  // The review's missing load-test: the generated config must not merely look
-  // right — it must LOAD (module resolution from the home) and COMPOSE.
+  // The load-test: the generated config must not merely look right — it must
+  // LOAD (module resolution from the home) and COMPOSE through the new shape.
   test('init links the package into the home — the generated config loads and composes', async () => {
     const previousTypesafe = process.env.TYPESAFE_API_KEY
     const previousOpenai = process.env.OPENAI_API_KEY
@@ -86,16 +87,16 @@ describe('behavioral init — the runner', () => {
       expect(output.files).toContain('node_modules/@behavioral/sh')
       expect(existsSync(join(home, 'node_modules/@behavioral/sh/package.json'))).toBe(true)
       // The full loop: loadConfig (dynamic import from the home) + compose.
-      const config = (await loadConfig(configPath())) as unknown as {
-        systemOne: unknown
-        systemTwo: unknown
-      }
-      expect(typeof config.systemOne).toBe('function')
-      expect(typeof config.systemTwo).toBe('function')
-      // TRANSITIONAL: the legacy factory shape composes through the entry
-      // constructor (the overrides are ignored with a note until the
-      // templates regenerate — the next slice).
-      const runtime = createRuntime(config as never)
+      const config = await loadConfig(configPath())
+      expect(config.systemOne).toEqual({
+        url: 'https://api.typesafe.ai/v1/systemone',
+        model: 'jev-latest',
+        apiKey: 'test',
+      })
+      expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1', apiKey: 'test' } })
+      // The model identifiers are the init-frame payloads — the composition
+      // reads them as data.
+      const runtime = createRuntime(config)
       runtime.terminate()
     } finally {
       // Restore, never delete: the env is the caller's, not this spec's — a
@@ -131,42 +132,6 @@ describe('behavioral init — the runner', () => {
     expect(readConfig()).toContain('defineConfig')
   })
 
-  test('provider scaffolding writes the entry and points the faculty at it', async () => {
-    const output = await runInit(
-      JSON.stringify({
-        providers: [{ faculty: 'systemOne', file: 'my-one.faculty.ts' }],
-      }),
-    )
-    expect(output.files).toContain('providers/my-one.faculty.ts')
-    const entry = readFileSync(join(home, 'providers', 'my-one.faculty.ts'), 'utf8')
-    expect(entry).toContain('configSystemOne')
-    expect(entry).toContain('SystemOneRespond')
-    expect(readConfig()).toContain("entry: 'providers/my-one.faculty.ts'")
-  })
-
-  // The review's follow-up 3: the stub must match ITS faculty's contract —
-  // systemOne's context is a single endpoint and the Decisions output
-  // ({model, answers}); systemTwo's is the endpoint MAP and the Open
-  // Responses output ({items, status}). A stub that fails its own
-  // typecheck is a broken scaffold.
-  test('the systemTwo provider stub matches the systemTwo contract', async () => {
-    await runInit(
-      JSON.stringify({
-        providers: [{ faculty: 'systemTwo', file: 'my-two.faculty.ts' }],
-      }),
-    )
-    const entry = readFileSync(join(home, 'providers', 'my-two.faculty.ts'), 'utf8')
-    expect(entry).toContain('configSystemTwo')
-    expect(entry).toContain('SystemTwoRespond')
-    // systemTwo's respond context is the endpoint MAP, not a single endpoint.
-    expect(entry).toContain('{ endpoints, signal }')
-    // systemTwo's output is the Open Responses shape — items + status.
-    expect(entry).toContain("{ items: [], status: 'completed' }")
-    // Not the systemOne (Decisions) shape.
-    expect(entry).not.toContain('answers')
-    expect(entry).not.toContain('{ endpoint, signal }')
-  })
-
   // The review's follow-up 6: control characters in URL/header values must
   // not emit a broken string literal — init exits 0 and the config dies at
   // load. The escape funnel (ts) covers every emitted value.
@@ -184,57 +149,16 @@ describe('behavioral init — the runner', () => {
     expect(content).not.toContain('http://localhost:9\n99/systemone')
   })
 
-  test('the systemOne provider stub keeps the Decisions shape', async () => {
-    await runInit(
-      JSON.stringify({
-        providers: [{ faculty: 'systemOne', file: 'my-one.faculty.ts' }],
-      }),
-    )
-    const entry = readFileSync(join(home, 'providers', 'my-one.faculty.ts'), 'utf8')
-    expect(entry).toContain('{ endpoint, signal }')
-    expect(entry).toContain("{ model: 'custom', answers: {} }")
-  })
-
-  test('two providers for one faculty are rejected', async () => {
-    const input = JSON.stringify({
-      providers: [
-        { faculty: 'systemOne', file: 'a.faculty.ts' },
-        { faculty: 'systemOne', file: 'b.faculty.ts' },
-      ],
-    })
-    await expect(init([input])).rejects.toThrow(/one provider per faculty/)
-  })
-
-  // The review's follow-up 7: the file-name pattern gates the JSON path via
-  // the input schema, but the interactive collector's free text flows into
-  // runInit raw — runInit is the one funnel both paths share, so the pattern
-  // is enforced there.
-  test('runInit rejects a traversal file name whatever path it arrives by', async () => {
-    // runInit directly: the CLI's schema gate (process.exit on bad JSON)
-    // already protects the JSON path — this proves the FUNNEL, which is what
-    // the interactive collector's free text flows through.
-    const bad: InitInput = { providers: [{ faculty: 'systemOne', file: '../../evil.ts' }] }
-    await expect(runInitDirect(bad)).rejects.toThrow(/file name/)
-    // The collector path: collected input reaches the same gate.
-    const collected = await collectInitInput(
-      // systemOne×4 defaults, systemTwo×3 defaults, then scaffold y → faculty → file.
-      scriptedAsk(['', '', '', '', '', '', '', 'y', 'systemOne', '../../evil.ts']),
-    )
-    await expect(runInitDirect(collected)).rejects.toThrow(/file name/)
-  })
-
-  test('the input schema rejects path traversal in a provider file name', () => {
+  test('the input schema is closed over the two-key shape', () => {
     const validate = ajv.compile(InitInputSchema)
-    const bad: InitInput = { providers: [{ faculty: 'systemOne', file: '../evil.ts' }] }
-    expect(validate(bad)).toBe(false)
-    const ok: InitInput = { providers: [{ faculty: 'systemOne', file: 'my-one.faculty.ts' }] }
-    expect(validate(ok)).toBe(true)
+    expect(validate({ systemOne: null, systemTwo: null })).toBe(true)
+    expect(validate({ providers: [{ faculty: 'systemOne', file: 'x.ts' }] })).toBe(false)
   })
 })
 
 describe('behavioral init — the interactive collector', () => {
   test('empty answers keep every default', async () => {
-    const input = await collectInitInput(scriptedAsk(['', '', '', '', '', '', '', '']))
+    const input = await collectInitInput(scriptedAsk(['', '', '', '', '', '', '']))
     expect(input.systemOne).toEqual({
       url: 'https://api.typesafe.ai/v1/systemone',
       model: 'jev-latest',
@@ -243,20 +167,12 @@ describe('behavioral init — the interactive collector', () => {
     expect(input.systemTwo).toEqual({
       endpoints: { openai: { url: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY' } },
     })
-    expect(input.providers).toBeUndefined()
   })
 
   test("answering 'n' disables a faculty", async () => {
     const input = await collectInitInput(scriptedAsk(['n', 'y', '', '', 'n']))
     expect(input.systemOne).toBeNull()
     expect(input.systemTwo).not.toBeNull()
-  })
-
-  test('the scaffold tour collects the provider', async () => {
-    const input = await collectInitInput(
-      scriptedAsk(['', '', '', '', '', '', '', 'y', 'systemTwo', 'my-two.faculty.ts']),
-    )
-    expect(input.providers).toEqual([{ faculty: 'systemTwo', file: 'my-two.faculty.ts' }])
   })
 })
 
@@ -331,8 +247,6 @@ describe('behavioral init — the real CLI boundary', () => {
     proc.terminal?.write('\n')
     await waitFor('System Two API key env var')
     proc.terminal?.write('\n')
-    await waitFor('Scaffold a custom provider entry')
-    proc.terminal?.write('n\n')
 
     await proc.exited
     expect(proc.exitCode).toBe(0)

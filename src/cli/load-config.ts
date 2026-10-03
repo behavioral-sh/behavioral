@@ -1,26 +1,122 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { behavioralHome } from '../old-faculties/behavioral-home.ts'
-import type { bProgram } from './b-program.ts'
+import { behavioralHome } from '../actuators/behavioral-home.ts'
+import type { SystemOneEndpointConfig } from '../faculties/system-one.types.ts'
+import type { SystemTwoEndpoints } from '../faculties/system-two.types.ts'
+import type { Actuator } from '../faculties.ts'
 
 /**
- * The host config shape — the {@link bProgram} options a `config.ts` may
- * set. A config file default-exports a value of this shape.
+ * The host config shape — the daemon's config (`<home>/config.ts`) under the
+ * ruled two-hosts-two-configs shape: the `actuators` allow-list (which of the
+ * trio the daemon spawns) plus the composition's model identifiers (the init-
+ * frame payloads: `systemOne` endpoint config, `systemTwo` endpoints map, the
+ * `ui` generation target). A config file default-exports a value of this
+ * shape; api keys ride as resolved env values (the generated template's
+ * `env()` helper fails fast on an unset variable — never literals).
  *
  * @public
  */
-export type BehavioralConfig = Parameters<typeof bProgram>[0]
+export type BehavioralConfig = {
+  /** The actuator allow-list — absent means the whole trio is on. */
+  actuators?: Actuator[]
+  /** The SystemOne endpoint config riding the init frame; `null` omits it. */
+  systemOne?: SystemOneEndpointConfig | null
+  /** The SystemTwo endpoints map riding the init frame; `null` omits it. */
+  systemTwo?: SystemTwoEndpoints | null
+  /** The ui generation target within the systemTwo map. */
+  ui?: { provider?: string; modelId?: string }
+}
 
-/** The selectable actuators a config may enable (mirrors the `Actuator` union — the trio only). */
+/** The selectable actuators a config may enable (the trio only). */
 const KNOWN_ACTUATORS: readonly string[] = ['shell', 'store', 'security']
+/** The systemTwo endpoint transports (the faculty's rest | webgpu toggle). */
+const KNOWN_TRANSPORTS: readonly string[] = ['rest', 'webgpu']
 
 const invalid = (configPath: string, detail: string): never => {
   throw new Error(`invalid config at ${configPath}: ${detail}`)
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isStringRecord = (value: unknown): boolean =>
+  isRecord(value) && Object.values(value).every((v) => typeof v === 'string')
+
+/** Validate the model-identifier keys — fail fast with the path and a fix hint. */
+const validateModels = (config: Record<string, unknown>, configPath: string): void => {
+  const { systemOne, systemTwo, ui } = config
+  // Each guard's happy path sits in an `else` block — the plain narrowing
+  // (a never-returning call as a bare statement does not narrow).
+  if (systemOne !== undefined && systemOne !== null) {
+    if (isRecord(systemOne)) {
+      // Property values are captured into locals before their typeof checks —
+      // noUncheckedIndexedAccess makes property narrowing on the record itself
+      // collapse the object to `{}`.
+      const { url, apiKey, headers } = systemOne
+      if (typeof url !== 'string') {
+        invalid(configPath, '"systemOne" must be an endpoint object with a "url" string (or null to omit)')
+      }
+      if (apiKey !== undefined && typeof apiKey !== 'string') {
+        invalid(configPath, '"systemOne"."apiKey" must be a string (an env-resolved value, never a literal key file)')
+      }
+      if (headers !== undefined && !isStringRecord(headers)) {
+        invalid(configPath, '"systemOne"."headers" must be a record of strings')
+      }
+    } else {
+      invalid(configPath, '"systemOne" must be an endpoint object with a "url" string (or null to omit)')
+    }
+  }
+  if (systemTwo !== undefined && systemTwo !== null) {
+    if (isRecord(systemTwo)) {
+      for (const [label, endpoint] of Object.entries(systemTwo)) {
+        if (isRecord(endpoint)) {
+          const { transport, url, model, apiKey, headers } = endpoint
+          if (transport !== undefined && (typeof transport !== 'string' || !KNOWN_TRANSPORTS.includes(transport))) {
+            invalid(configPath, `"systemTwo"."${label}"."transport" must be one of: ${KNOWN_TRANSPORTS.join(', ')}`)
+          }
+          // The faculty's rule: rest (the default) needs the full base url; webgpu
+          // needs the local model id instead.
+          if ((transport ?? 'rest') === 'rest' && typeof url !== 'string') {
+            invalid(
+              configPath,
+              `"systemTwo"."${label}" needs a "url" string (rest) or a "model" string (webgpu) via "transport": "webgpu"`,
+            )
+          }
+          if (model !== undefined && typeof model !== 'string') {
+            invalid(configPath, `"systemTwo"."${label}"."model" must be a string (the local webgpu model id)`)
+          }
+          if (apiKey !== undefined && typeof apiKey !== 'string') {
+            invalid(configPath, `"systemTwo"."${label}"."apiKey" must be a string`)
+          }
+          if (headers !== undefined && !isStringRecord(headers)) {
+            invalid(configPath, `"systemTwo"."${label}"."headers" must be a record of strings`)
+          }
+        } else {
+          invalid(configPath, `"systemTwo"."${label}" must be an endpoint object`)
+        }
+      }
+    } else {
+      invalid(configPath, '"systemTwo" must be a provider-label → endpoint map (or null)')
+    }
+  }
+  if (ui !== undefined) {
+    if (isRecord(ui)) {
+      const { provider, modelId } = ui
+      if (provider !== undefined && typeof provider !== 'string') {
+        invalid(configPath, '"ui"."provider" must be a string (a systemTwo provider label)')
+      }
+      if (modelId !== undefined && typeof modelId !== 'string') {
+        invalid(configPath, '"ui"."modelId" must be a string (a model id within the provider)')
+      }
+    } else {
+      invalid(configPath, '"ui" must be { provider?, modelId? }')
+    }
+  }
+}
+
 /** Validate the trusted config's shape — fail fast with the path and a fix hint. */
 const validate = (value: unknown, configPath: string): BehavioralConfig => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isRecord(value)) {
     invalid(configPath, 'expected a default-exported object like `export default { actuators: [...] }`')
   }
   const config = value as Record<string, unknown>
@@ -37,12 +133,16 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
       )
     }
   }
-  for (const key of ['shell', 'store', 'systemOne', 'systemTwo'] as const) {
-    const override = config[key]
-    if (override !== undefined && typeof override !== 'function') {
-      const got = override === null ? 'null' : typeof override
-      invalid(configPath, `"${key}" must be a useFaculty(...) override (a curried function), got ${got}`)
-    }
+  validateModels(config, configPath)
+  // The shape is closed — a legacy key (the useFaculty factory overrides) is
+  // a stale config, and a stale config must fail fast, never silently shrink.
+  const known = new Set(['actuators', 'systemOne', 'systemTwo', 'ui'])
+  const stale = Object.keys(config).filter((key) => !known.has(key))
+  if (stale.length > 0) {
+    invalid(
+      configPath,
+      `unknown config key ${stale.map((key) => `"${key}"`).join(', ')} — the config is the actuator allow-list plus model identifiers; regenerate via behavioral init`,
+    )
   }
   return config as BehavioralConfig
 }
@@ -52,9 +152,9 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
  *
  * @remarks
  * The file is **executable config** — trusted, user-owned machine state,
- * dynamically imported so it can carry live values (the `actuators` array and
- * `useFaculty(...)` overrides). A missing file yields the empty config, so the
- * composition defaults apply; an unloadable file or an invalid shape throws
+ * dynamically imported so it can carry live values (the `actuators` allow-list
+ * and the env-resolved model identifiers). A missing file yields the empty
+ * config, so the defaults apply; an unloadable file or an invalid shape throws
  * with the path and a fix hint.
  *
  * @public

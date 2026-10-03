@@ -28,11 +28,11 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { behavioralHome } from '../actuators/behavioral-home.ts'
+import { PLUGIN_THREADS_EVENT_TYPES } from '../b-program/plugin-threads.threads.ts'
 import { ajv, type Thread, ThreadSchema, validateThread } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import { ADMISSION_EVENT_TYPES, validateAdmissionVerdict } from '../faculties/system-one.threads.ts'
-import { behavioralHome } from '../old-faculties/behavioral-home.ts'
-import { PLUGIN_THREADS_EVENT_TYPES } from '../old-faculties/shell/plugin-threads.threads.ts'
 
 /** The registry file under `<home>` — one JSON document, the whole registry. */
 export const PLUGIN_THREAD_REGISTRY_FILE = 'plugin-threads.json'

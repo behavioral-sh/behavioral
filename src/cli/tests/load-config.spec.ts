@@ -24,18 +24,36 @@ describe('loadConfig', () => {
 
   test('a present config file yields its default export', async () => {
     await withConfig(`export default { actuators: ['shell'] }`, async (file) => {
-      // The legacy view: the config is data-shaped until the reshape lands.
-      const config = (await loadConfig(file)) as unknown as { actuators: string[] }
+      const config = await loadConfig(file)
       expect(config).toEqual({ actuators: ['shell'] })
     })
   })
 
-  test('accepts a useFaculty-style function override', async () => {
-    await withConfig(`const shell = () => 'wired'\nexport default { shell }`, async (file) => {
-      // TRANSITIONAL: the legacy factory shape still validates (the reshape
-      // is the next slice) — the rewired composition ignores the factories.
-      const config = (await loadConfig(file)) as unknown as { shell: unknown }
-      expect(typeof config.shell).toBe('function')
+  test('the model identifiers are DATA — the composition reads them into the init frame', async () => {
+    await withConfig(
+      `export default {
+        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' },
+        systemTwo: { openai: { url: 'https://api.openai.com/v1' } },
+        ui: { provider: 'openai', modelId: 'gpt-x' },
+      }`,
+      async (file) => {
+        const config = await loadConfig(file)
+        expect(config.systemOne).toEqual({
+          url: 'https://api.typesafe.ai/v1/systemone',
+          model: 'jev-latest',
+          apiKey: 'k',
+        })
+        expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1' } })
+        expect(config.ui).toEqual({ provider: 'openai', modelId: 'gpt-x' })
+      },
+    )
+  })
+
+  test('systemTwo: null is valid — the faculty stays mounted but endpoint-less', async () => {
+    await withConfig(`export default { systemOne: null, systemTwo: null }`, async (file) => {
+      const config = await loadConfig(file)
+      expect(config.systemOne).toBeNull()
+      expect(config.systemTwo).toBeNull()
     })
   })
 
@@ -66,7 +84,7 @@ describe('loadConfig', () => {
     process.env.BEHAVIORAL_HOME = home
     try {
       await Bun.write(join(home, 'config.ts'), `export default { actuators: ['store'] }`)
-      const config = (await loadConfig()) as unknown as { actuators: string[] }
+      const config = await loadConfig()
       expect(config).toEqual({ actuators: ['store'] })
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
@@ -81,9 +99,30 @@ describe('loadConfig', () => {
     })
   })
 
-  test('rejects a non-function shell override', async () => {
-    await withConfig(`export default { shell: 'not-a-function' }`, async (file) => {
-      await expect(loadConfig(file)).rejects.toThrow(/shell/)
+  test('the legacy useFaculty override keys are rejected — regenerate via behavioral init', async () => {
+    await withConfig(`const shell = () => 'wired'\nexport default { shell }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/unknown config key "shell".*behavioral init/s)
+    })
+  })
+
+  test('systemOne without a url is rejected', async () => {
+    await withConfig(`export default { systemOne: { model: 'jev-latest' } }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"url"/s)
+    })
+  })
+
+  test('a systemTwo endpoint transport must be rest or webgpu', async () => {
+    await withConfig(
+      `export default { systemTwo: { openai: { url: 'https://api.openai.com/v1', transport: 'smoke' } } }`,
+      async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/transport/)
+      },
+    )
+  })
+
+  test('a ui generation target must carry string provider/modelId', async () => {
+    await withConfig(`export default { ui: { provider: 42 } }`, async (file) => {
+      await expect(loadConfig(file)).rejects.toThrow(/"ui".*"provider"/s)
     })
   })
 })

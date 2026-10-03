@@ -26,10 +26,10 @@ import {
 import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import { createHost, dispatchToRuntime } from '../../cli/serve.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { bProgram } from '../b-program.ts'
-import { createHost, dispatchToRuntime } from '../serve.ts'
 import { createUiCapture, type UiRun, uiReplayRequest } from '../ui-capture.ts'
 import { uiThreads } from '../ui-threads.ts'
 

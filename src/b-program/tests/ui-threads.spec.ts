@@ -31,10 +31,10 @@ import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, PendingBidsTrace, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import { createHost, dispatchToRuntime } from '../../cli/serve.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { bProgram } from '../b-program.ts'
-import { createHost, dispatchToRuntime } from '../serve.ts'
 import {
   DESIGN_SCAN_SCRIPT,
   UI_DESIGN_ARTIFACT_KEY,

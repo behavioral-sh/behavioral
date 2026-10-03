@@ -1,6 +1,5 @@
 /**
- * `behavioral init` — generate the harness config (and optional custom
- * provider entries) under the behavioral home.
+ * `behavioral init` — generate the harness config under the behavioral home.
  *
  * @remarks
  * Two surfaces over one runner:
@@ -13,10 +12,10 @@
  *   {@link InitInput} through an injectable `ask` seam and hands it to the
  *   same runner.
  *
- * Provider scaffolding writes `<home>/providers/<file>` — a provider entry
- * that imports the faculty factory by bare specifier (resolvable anywhere under
- * the global install) — and points the faculty's `entry` at it (relative paths
- * resolve against the home, per `resolveFacultyEntry`).
+ * The generated config is the ruled two-key shape: the daemon's `actuators`
+ * allow-list plus the composition's model identifiers — `systemOne` endpoint
+ * config and `systemTwo` endpoints map as DATA (they ride the init frame;
+ * the `useSystemOne`/`useSystemTwo` factory overrides are gone).
  *
  * @packageDocumentation
  */
@@ -25,7 +24,7 @@ import { existsSync, mkdirSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { JSONSchemaType } from 'ajv'
-import { behavioralHome } from '../old-faculties/behavioral-home.ts'
+import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { makeCli } from './cli.ts'
 
 // ---------------------------------------------------------------------------
@@ -47,20 +46,12 @@ export type SystemTwoEndpointInit = {
   headers?: Record<string, string>
 }
 
-/** A custom provider entry to scaffold under `<home>/providers/`. */
-export type ProviderScaffold = {
-  faculty: 'systemOne' | 'systemTwo'
-  /** A bare file name (no path components) ending in `.ts`. */
-  file: string
-}
-
 export type InitInput = {
   /** Absent → the default TypeSafe endpoint; `null` → the faculty is omitted. */
   systemOne?: SystemOneEndpointInit | null
   /** Absent → the default OpenAI endpoint; `null` → the faculty is omitted. */
   systemTwo?: { endpoints?: Record<string, SystemTwoEndpointInit> } | null
-  providers?: ProviderScaffold[]
-  /** Overwrite an existing config (and provider files). */
+  /** Overwrite an existing config. */
   force?: boolean
 }
 
@@ -85,6 +76,9 @@ const SYSTEM_TWO_DEFAULTS = {
   url: 'https://api.openai.com/v1',
   apiKeyEnv: 'OPENAI_API_KEY',
 }
+
+/** The default actuator allow-list — the trio, all on. */
+const ACTUATOR_DEFAULTS: readonly string[] = ['shell', 'store', 'security']
 
 // ---------------------------------------------------------------------------
 // Schemas (the CLI trust boundary — `--schema input|output` reflects these)
@@ -126,19 +120,6 @@ export const InitInputSchema = {
         { type: 'null' },
       ],
     },
-    providers: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          faculty: { type: 'string', enum: ['systemOne', 'systemTwo'] },
-          // Bare file names only — no path components, no traversal.
-          file: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*\\.ts$' },
-        },
-        required: ['faculty', 'file'],
-        additionalProperties: false,
-      },
-    },
     force: { type: 'boolean' },
   },
   additionalProperties: false,
@@ -158,32 +139,6 @@ const InitOutputSchema = {
 // ---------------------------------------------------------------------------
 // Templates
 // ---------------------------------------------------------------------------
-
-const providerTemplate = (faculty: 'systemOne' | 'systemTwo'): string => {
-  const factory = faculty === 'systemOne' ? 'configSystemOne' : 'configSystemTwo'
-  const respondType = faculty === 'systemOne' ? 'SystemOneRespond' : 'SystemTwoRespond'
-  // Each stub matches ITS faculty's respond contract: systemOne gets a
-  // single endpoint + the Decisions output; systemTwo gets the endpoint map
-  // + the Open Responses output. (A stub that fails its own typecheck is a
-  // broken scaffold.)
-  const stub =
-    faculty === 'systemOne'
-      ? "async (input, { endpoint, signal }) => {\n  return { model: 'custom', answers: {} }\n}"
-      : "async (input, { endpoints, signal }) => {\n  return { items: [], status: 'completed' }\n}"
-  return `/**
- * A custom System ${faculty === 'systemOne' ? 'One' : 'Two'} provider entry.
- * ${factory} owns the wire plumbing (inbound lane, result envelope, cancel and
- * timeout); you own only the model call below.
- */
-import { ${factory}, type ${respondType} } from '@behavioral/sh/faculties'
-
-// MINIMAL: stub transport — replace with your call. Keep the contract: one
-// validated input in; the output shape or { isError: true, message } out.
-const respond: ${respondType} = ${stub}
-
-if (import.meta.main) ${factory}(respond)
-`
-}
 
 const envHelper = (): string =>
   [
@@ -226,64 +181,49 @@ const tsObject = (record: Record<string, string>): string =>
 const renderConfig = ({
   systemOne,
   systemTwo,
-  entryByFaculty,
 }: {
   systemOne?: Required<Omit<SystemOneEndpointInit, 'headers'>> & { headers?: Record<string, string> }
   systemTwo?: { endpoints: Record<string, SystemTwoEndpointInit> }
-  entryByFaculty: Map<'systemOne' | 'systemTwo', string>
 }): string => {
   const usesEnv =
     (systemOne !== undefined && systemOne.apiKeyEnv !== undefined) ||
     (systemTwo !== undefined && Object.values(systemTwo.endpoints).some((spec) => spec.apiKeyEnv !== undefined))
 
-  const helpers = useHelpers(systemOne, systemTwo)
-  const imports = [
-    "import { defineConfig } from '@behavioral/sh'",
-    `import { ${helpers.sort().join(', ')} } from '@behavioral/sh/faculties'`,
-  ]
   const lines: string[] = [
     '// Generated by `behavioral init` — executable config; edit freely.',
-    ...imports,
+    '// The daemon reads `actuators`; the composition reads the model',
+    '// identifiers as data (they ride the faculties init frame).',
+    "import { defineConfig } from '@behavioral/sh'",
     '',
     ...(usesEnv ? [envHelper()] : []),
     'export default defineConfig({',
+    `  actuators: [${ACTUATOR_DEFAULTS.map((name) => ts(name)).join(', ')}],`,
   ]
 
   if (systemOne !== undefined) {
-    lines.push('  systemOne: useSystemOne({', '    endpoint: {')
-    lines.push(`      url: ${ts(systemOne.url)},`)
-    lines.push(`      model: ${ts(systemOne.model)},`)
-    if (systemOne.apiKeyEnv !== undefined) lines.push(`      apiKey: env(${ts(systemOne.apiKeyEnv)}),`)
-    if (systemOne.headers !== undefined) lines.push(`      headers: ${tsObject(systemOne.headers)},`)
-    lines.push('    },')
-    const entry = entryByFaculty.get('systemOne')
-    if (entry !== undefined) lines.push(`    entry: ${ts(entry)},`)
-    lines.push('  }),')
+    lines.push('  systemOne: {')
+    lines.push(`    url: ${ts(systemOne.url)},`)
+    lines.push(`    model: ${ts(systemOne.model)},`)
+    if (systemOne.apiKeyEnv !== undefined) lines.push(`    apiKey: env(${ts(systemOne.apiKeyEnv)}),`)
+    if (systemOne.headers !== undefined) lines.push(`    headers: ${tsObject(systemOne.headers)},`)
+    lines.push('  },')
   }
 
   if (systemTwo !== undefined) {
-    lines.push('  systemTwo: useSystemTwo({', '    endpoints: {')
+    lines.push('  systemTwo: {')
     for (const [label, spec] of Object.entries(systemTwo.endpoints)) {
-      lines.push(`      ${ts(label)}: {`)
-      lines.push(`        url: ${ts(spec.url)},`)
-      if (spec.apiKeyEnv !== undefined) lines.push(`        apiKey: env(${ts(spec.apiKeyEnv)}),`)
-      if (spec.headers !== undefined) lines.push(`        headers: ${tsObject(spec.headers)},`)
-      lines.push('      },')
+      lines.push(`    ${ts(label)}: {`)
+      lines.push(`      url: ${ts(spec.url)},`)
+      if (spec.apiKeyEnv !== undefined) lines.push(`      apiKey: env(${ts(spec.apiKeyEnv)}),`)
+      if (spec.headers !== undefined) lines.push(`      headers: ${tsObject(spec.headers)},`)
+      lines.push('    },')
     }
-    lines.push('    },')
-    const entry = entryByFaculty.get('systemTwo')
-    if (entry !== undefined) lines.push(`    entry: ${ts(entry)},`)
-    lines.push('  }),')
+    lines.push('  },')
   }
 
   lines.push('})', '')
   return lines.join('\n')
 }
-
-const useHelpers = (systemOne: unknown, systemTwo: unknown): string[] => [
-  ...(systemOne === undefined ? [] : ['useSystemOne']),
-  ...(systemTwo === undefined ? [] : ['useSystemTwo']),
-]
 
 // ---------------------------------------------------------------------------
 // The runner (shared by the JSON command and the interactive tour)
@@ -298,28 +238,6 @@ export const runInit = async (input: InitInput): Promise<InitOutput> => {
     throw new Error(`config already exists at ${configPath} — rerun with {"force": true} to overwrite`)
   }
 
-  // Scaffold provider entries first — the config references their paths.
-  const entryByFaculty = new Map<'systemOne' | 'systemTwo', string>()
-  if (input.providers !== undefined) {
-    for (const provider of input.providers) {
-      if (entryByFaculty.has(provider.faculty)) {
-        throw new Error(`only one provider per faculty — a second ${provider.faculty} entry was requested`)
-      }
-      // The file-name gate lives in the FUNNEL, not just the input schema —
-      // the interactive collector's free text bypasses the schema, and a
-      // bare file name keeps the write inside <home>/providers/ (no traversal).
-      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.ts$/.test(provider.file)) {
-        throw new Error(
-          `provider file name must be a bare .ts file name (letters, digits, dot, dash, underscore) — got ${JSON.stringify(provider.file)}`,
-        )
-      }
-      const providerPath = `providers/${provider.file}`
-      await Bun.write(join(home, providerPath), providerTemplate(provider.faculty))
-      files.push(providerPath)
-      entryByFaculty.set(provider.faculty, providerPath)
-    }
-  }
-
   const systemOne = input.systemOne === null ? undefined : { ...SYSTEM_ONE_DEFAULTS, ...(input.systemOne ?? {}) }
   const systemTwo =
     input.systemTwo === null
@@ -328,7 +246,7 @@ export const runInit = async (input: InitInput): Promise<InitOutput> => {
         ? { endpoints: { [SYSTEM_TWO_DEFAULT_LABEL]: SYSTEM_TWO_DEFAULTS } }
         : { endpoints: input.systemTwo.endpoints }
 
-  await Bun.write(configPath, renderConfig({ systemOne, systemTwo, entryByFaculty }))
+  await Bun.write(configPath, renderConfig({ systemOne, systemTwo }))
   files.unshift('config.ts')
 
   // The home must be self-resolving: the generated config imports
@@ -395,14 +313,6 @@ export const collectInitInput = async (ask: Ask): Promise<InitInput> => {
     input.systemTwo = null
   }
 
-  if (answered(await ask('Scaffold a custom provider entry? [y/N]', 'n'), false)) {
-    const faculty = withDefault(await ask('Provider faculty (systemOne | systemTwo)', 'systemOne'), 'systemOne') as
-      | 'systemOne'
-      | 'systemTwo'
-    const file = withDefault(await ask('Provider file name', 'my-one.faculty.ts'), 'my-one.faculty.ts')
-    input.providers = [{ faculty, file }]
-  }
-
   return input
 }
 
@@ -410,16 +320,16 @@ export const collectInitInput = async (ask: Ask): Promise<InitInput> => {
 // The command: interactive when empty+TTY (or forced); JSON otherwise
 // ---------------------------------------------------------------------------
 
-const INIT_HELP = `Generate <BEHAVIORAL_HOME>/config.ts (plus optional provider entries).
+const INIT_HELP = `Generate <BEHAVIORAL_HOME>/config.ts — the actuator allow-list plus the model identifiers.
 
 Run with no input at a terminal for the interactive tour; piped stdin or a JSON
 positional is the agent path. Input fields (all optional):
   systemOne  {"url", "model", "apiKeyEnv", "headers"} | null   null omits the faculty
   systemTwo  {"endpoints": {"<label>": {"url", "apiKeyEnv", "headers"}}} | null
-  providers  [{"faculty": "systemOne" | "systemTwo", "file": "name.faculty.ts"}]
   force      Overwrite an existing config
 
-Absent faculties default on (TypeSafe + OpenAI urls, env-var-name api keys).`
+Absent faculties default on (TypeSafe + OpenAI urls, env-var-name api keys);
+the actuator allow-list defaults to the whole trio (shell, store, security).`
 
 const command = makeCli({
   name: 'init',

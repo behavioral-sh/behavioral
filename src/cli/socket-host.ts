@@ -1,12 +1,12 @@
 import { join } from 'node:path'
 import type { JSONSchemaType } from 'ajv'
 import type { ServerWebSocket } from 'bun'
+import { behavioralHome } from '../actuators/behavioral-home.ts'
+import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
-import { behavioralHome } from '../old-faculties/behavioral-home.ts'
 import type { JsonRpcMessage } from './json-rpc.ts'
 import { dispatchToRuntime, type HostRuntime, type RuntimeIdentity, wireRuntimeEgress } from './serve.ts'
-import { createUiCapture, uiCaptureFileSink } from './ui-capture.ts'
 
 /**
  * The instance socket — `<home>/instance.sock`, the attach lane.

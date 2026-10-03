@@ -10,9 +10,15 @@ import {
   validateShellRequestEvent,
   validateStoreRequestEvent,
 } from '../../actuators/actuators.schemas.ts'
+import { behavioralHome } from '../../actuators/behavioral-home.ts'
 import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import {
+  foldPluginThreadSnapshots,
+  readPluginThreadRegistry,
+  watchPluginThreadRegistry,
+} from '../../cli/plugin-thread-registry.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   ADMISSION_EVENT_TYPES,
@@ -23,22 +29,16 @@ import {
 } from '../../faculties/system-one.threads.ts'
 import { startDecisionsServer } from '../../faculties/tests/fixtures/decisions-server.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
-import { behavioralHome } from '../../old-faculties/behavioral-home.ts'
-import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../../old-faculties/shell/plugin-threads.threads.ts'
+import { bProgram, type LaneBuilder } from '../b-program.ts'
+import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../plugin-threads.threads.ts'
 import {
   REMOTE_MCP_EVENT_TYPES,
   REMOTE_MCP_PROTOCOL_VERSION,
   REMOTE_MCP_STORE_COLLECTION,
   remoteMcpThreads,
-} from '../../old-faculties/shell/remote-mcp.threads.ts'
-import { rpcAuthThreads } from '../../old-faculties/shell/rpc-auth.threads.ts'
-import { shellThreads } from '../../old-faculties/shell/threads.ts'
-import { bProgram, type LaneBuilder } from '../b-program.ts'
-import {
-  foldPluginThreadSnapshots,
-  readPluginThreadRegistry,
-  watchPluginThreadRegistry,
-} from '../plugin-thread-registry.ts'
+} from '../remote-mcp.threads.ts'
+import { rpcAuthThreads } from '../rpc-auth.threads.ts'
+import { shellThreads } from '../shell.threads.ts'
 
 /**
  * bProgram — the runtime composition — through its REAL surface: the

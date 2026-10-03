@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
+import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import { behavioral } from '../../behavioral/behavioral.ts'
+import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { rpcAuthThreads } from '../rpc-auth.threads.ts'
 
 /**

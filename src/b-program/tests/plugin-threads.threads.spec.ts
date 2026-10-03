@@ -12,10 +12,10 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties.constants.ts'
+import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import { behavioral } from '../../behavioral/behavioral.ts'
+import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   PLUGIN_THREAD_IMPORT_SCRIPT,
   PLUGIN_THREADS_EVENT_TYPES,
@@ -123,7 +123,7 @@ describe('plugin threads — the join and the candidates', () => {
     expect(importedInput.threads).toHaveLength(2)
     expect(importedInput.warnings).toEqual(['a warning'])
     // one add_thread proposal per thread, correlated ids
-    const adds = selected.filter((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_request)
+    const adds = selected.filter((s) => s.type === FACULTY_MESSAGE_KINDS.remote_system_two_request)
     expect(adds.map((s) => s.detail?.id)).toEqual(['p1-add-0', 'p1-add-1'])
     for (const add of adds) {
       expect(add.detail?.op).toBe('add_thread')
@@ -138,7 +138,7 @@ describe('plugin threads — the join and the candidates', () => {
       proposal({ detail: { id: 'p2', input: { plugin: '/p', file: 'f', space: 's1' } } }),
       importResult([threadA], { source: 'p2', plugin: '/p', file: 'f', space: 's1' }),
     ])
-    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_request)
+    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.remote_system_two_request)
     const input = add?.detail?.input as { thread?: { space?: string; label?: string } }
     expect(input.thread?.space).toBe('s1')
     expect(input.thread?.label).toBe('greeter')
@@ -155,7 +155,7 @@ describe('plugin threads — the join and the candidates', () => {
     expect(call).toBeDefined()
     // The flow-through: the proposal's declared space reaches the add_thread
     // target stamp (the registry keys per space; admission owns the scope).
-    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_request)
+    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.remote_system_two_request)
     const input = add?.detail?.input as { thread?: { space?: string; label?: string } }
     expect(input.thread?.space).toBe('s1')
     expect(input.thread?.label).toBe('greeter')
@@ -167,7 +167,7 @@ describe('plugin threads — the join and the candidates', () => {
       proposal(),
       importResult([authored], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
-    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_request)
+    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.remote_system_two_request)
     const input = add?.detail?.input as { thread?: Record<string, unknown> }
     expect('space' in (input.thread ?? {})).toBe(false)
   })
@@ -177,7 +177,7 @@ describe('plugin threads — the join and the candidates', () => {
       proposal(),
       importResult([], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
-    expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_request)).toBe(false)
+    expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.remote_system_two_request)).toBe(false)
   })
 
   test('a failed import surfaces the typed failure — never a crash', () => {

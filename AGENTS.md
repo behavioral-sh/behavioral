@@ -89,8 +89,7 @@ broker env-data first, keychain floor second). Each actuator ships ONLY its
 process entry (`<name>.actuator.ts`) + implementation tests (in `tests/` —
 `<name>.actuator.spec.ts` et al.) — no threads
 (threads are composition-side, in `src/faculties/` for the browser faculties
-and `src/old-faculties/shell/` for the shell actuator's threads until the
-rewire), no overrides
+and `src/b-program/` for the shell actuator's policy packs), no overrides
 (baked-in, never overridable; the config's `actuators` array is the explicit
 allow-list of the trio ONLY), no external provider entries. **New actuators
 are RARE and earn their process: the bar is genuinely new environment
@@ -155,34 +154,62 @@ Dependency arrow: `src/b-program/` wires these entries via `useWorker`;
 `src/faculties/` → `src/behavioral/` one-way; the browser never calls an
 actuator.
 **`src/old-faculties/`** — the holding pattern: the pre-rebuild faculties
-tree, keeping the running app alive (the composition in `src/cli/` still
-imports it) until the rewire.
+tree, keeping only what the rewire has not absorbed yet until its deletion
+(slice 5).
 **`src/tools/`** — deleted (fleet 0): the ICL conversion retired the CLI tool
 fleet. Remote MCP is remote-mcp threads over the shell actuator's
-generic `rpc` op (`src/old-faculties/shell/remote-mcp.threads.ts` — the retired
+generic `rpc` op (`src/b-program/remote-mcp.threads.ts` — the retired
 `mcp` faculty's replacement; the official SDK dependency is gone);
 skill/plugin operations are the shell threads
-(`src/old-faculties/shell/threads.ts` + `src/old-faculties/shell/plugin-threads.threads.ts` —
+(`src/b-program/shell.threads.ts` + `src/b-program/plugin-threads.threads.ts` —
 the plugin-thread proposal path: a host proposal → worker import → engine-ThreadSchema
 validation → one `add_thread` candidate per validated export) + recipes + store,
 taught by `skills/skill-conventions/`.
 **`src/faculties.ts`** — the faculties public surface (package export `./faculties`):
-HOLDING PATTERN — re-pointed at `src/old-faculties/` so the generated configs
-(`behavioral init`) keep loading until the rewire; it moves to the new tree's
-shape when the composition rewires.
-**`src/b-program/`** — the composition-side wiring home (the directory
-re-forms here; the composition itself still lives in `src/cli/` until the
-rewire): `use-worker.ts` — `useWorker({ name, worker: () => new Worker(...),
-validateRequest, validateCancel, resultKind, initData })`, the worker construction a
-FACTORY at the call site (the literal stays bundler-visible AND
-respawn-after-crash re-invokes it — and re-posts the init frame),
-pre-compiled validators in, returning
-the ruled four-key lane `{ name, send, invalidEventGate, terminate }`;
-crash synthesis re-enters exactly ONE `faculty_error { faculty }`
-once-thread via `addThreads` — in-flight requests at death never answer
-(the engine's `waitFor [result, faculty_error]` pair covers it);
-`tests/` holds the lane's ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over
-a real Bun web Worker).
+the wire home — the event types + once-compiled validators
+(`faculties.types.ts`), the wire kinds, the model-identifier types riding the
+init frame (`SystemOneEndpointConfig`, `SystemTwoEndpoints`), the `Actuator`
+trio, and `useWorker`. The faculty worker entries and the root guard threads
+are internal. What a `config.ts` composes with; the composition and the
+host-minted thread packs live in `src/b-program.ts` / `src/b-program/`.
+**`src/b-program/`** — the composition home (the runtime composition and
+its host-minted policy packs; the boundary is `src/b-program.ts`, the
+`src/controller.ts` precedent): `b-program.ts` — `bProgram({ threads,
+models, actuators })`, the ruled two-key-plus-lanes surface: `threads` (every
+policy pack host-minted — shell, rpc-auth, remote-mcp, plugin-threads,
+supervision, ui_*; the root guard threads stay internal, always-mounted),
+`models` (the faculties' init-frame payloads + the ui generation target),
+and `actuators` (PRE-CONSTRUCTED four-key lanes — reachability is
+construction, never config; unknown lane names throw at wiring). The fixed
+three (remoteSystemTwo, systemOne, systemTwo) mount through `useWorker` —
+never optional, never overrides. `use-worker.ts` — `useWorker({ name,
+worker: () => new Worker(...), validateRequest, validateCancel, resultKind,
+initData })`, the worker construction a FACTORY at the call site (the
+literal stays bundler-visible AND respawn-after-crash re-invokes it — and
+re-posts the init frame), pre-compiled validators in, returning the ruled
+four-key lane `{ name, send, invalidEventGate, terminate }`; crash
+synthesis re-enters exactly ONE `faculty_error { faculty }` once-thread via
+`addThreads` — in-flight requests at death never answer (the engine's
+`waitFor [result, faculty_error]` pair covers it). The host-minted thread
+packs sit flat beside it: `shell.threads.ts` (the ICL threads —
+skill/plugin scans, catalog/manifest schema gates, links dispatchers +
+stored recipes), `rpc-auth.threads.ts` (the credential vend-and-replay
+spine), `remote-mcp.threads.ts` (the MCP layering over the rpc op),
+`plugin-threads.threads.ts` (the plugin-thread proposal path — dispatcher,
+import join, candidate carry, add_thread dispatch; the import script's
+ENGINE_SCHEMA_HOME is resolved against this file's location),
+`ui-threads.ts` (the `ui_*` producer threads — the view-generation policy:
+the standing design.md scan → store tenant + artifact compile + render
+gate, plus the per-trigger pipeline factory `uiPipelineThreads` (six
+once-threads minted by b-program's pump on each `render` ingress — scale
+preflight, generation, `ui_render`, the scoped `ui_style` serving seam,
+every correlation id per-trigger); mounted with shell + store + systemTwo,
+composition territory — no process, not a faculty), and `ui-capture.ts`
+(the autoresearch loop's capture side — the in-process lineage-keyed raw
+run consumer + the remoteSystemTwo replay builder; the socket host wires
+its file sink under `<home>/captures`). `tests/` holds the lane's
+ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over a real Bun web Worker)
+and every moved pack's specs.
 **`src/behavioral/`** — the pure language layer: types, constants, utils, the interpreter core
 (`behavioral.ts`), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
 nothing outside behavioral/ speaks its wire). Zero process entries that speak the faculty wire —
@@ -194,45 +221,37 @@ holds the AJV detail schemas for the `ui_*` wire shapes — imported by the host
 the browser bundle (types in `controller.types.ts`, schemas in the separate file). The
 controller owns no AJV at runtime; its floors are hardcoded invariants (on*, malformed
 b-trigger, scale mismatch).
-**`src/cli/`** — the `behavioral` CLI framework (`makeCliRouter`/`parseCli`) and its commands,
-registered in `bin/behavioral.ts`. `init` (`src/cli/init.ts`) generates
-`<home>/config.ts` (+ optional provider entries under `<home>/providers/`):
-interactive tour by default at a TTY (injectable `ask` collector), agent JSON
-otherwise; api keys ride as env-var-name references, never literals. The
+**`src/cli/`** — the `behavioral` CLI framework (`makeCliRouter`/`parseCli`) and its host entries
++ commands, registered in `bin/behavioral.ts`. `init` (`src/cli/init.ts`)
+generates `<home>/config.ts` in the ruled two-key shape (the `actuators`
+allow-list plus the model identifiers as data — the `useSystemOne`/
+`useSystemTwo` factory overrides are gone): interactive tour by default at a
+TTY (injectable `ask` collector), agent JSON otherwise; api keys ride as
+env-var-name references, never literals. The
 `behavioral tools` fleet dispatcher is retired with the
 fleet (0 tools); turn/config commands land here as the composition rulings build out. The
-JSON-RPC IPC host lives here too: `b-program.ts` (the runtime composition, `bProgram`),
-`json-rpc.ts` (the line codec), `serve.ts` (the `serve`
-entry — ingress messages → triggers, `ui_*` selections → client notifications, redacted
-traces out), `load-config.ts` (`<BEHAVIORAL_HOME>/config.ts`), `trace-consumer.ts`, and
+JSON-RPC IPC host lives here too: `serve.ts` (the `serve` entry —
+`createRuntime` spawns the actuator trio per the config allow-list, mints
+the thread packs + models, folds the plugin-thread registry; ingress
+messages → triggers, `ui_*` selections → client notifications, redacted
+traces out), `load-config.ts` (`<BEHAVIORAL_HOME>/config.ts` — the actuator
+allow-list plus model identifiers; the shape is closed, legacy keys fail
+fast), `trace-consumer.ts`, and
 `plugin-thread-registry.ts` (the plugin-thread admission registry under `<home>` —
-host-local, keyed (plugin, file, content hash, space): `bProgram` mounts admitted
-snapshots at boot, decided keys never re-adjudicate), and `ui-threads.ts` (the
-`ui_*` producer threads — the view-generation policy: the standing design.md
-scan → store tenant + artifact compile + render gate, plus the per-trigger
-pipeline factory `uiPipelineThreads` (six once-threads minted by b-program's
-pump on each `render` ingress — scale preflight, generation, `ui_render`,
-the scoped `ui_style` serving seam, every correlation id per-trigger); mounted with shell + store + systemTwo,
-composition territory — no process, not a faculty), and `ui-capture.ts` (the
-autoresearch loop's capture side — the in-process lineage-keyed raw run
-consumer + the remoteSystemTwo replay builder; the socket host wires its file sink
-under `<home>/captures`).
+host-local, keyed (plugin, file, content hash, space): admitted snapshots
+fold into the `threads` array at boot, decided keys never re-adjudicate)
+— the registry is ENTRY-side, never a bProgram concern.
 **`src/utils/`** — shared pure utilities.
-**`src/faculties/<faculty>/threads.ts`** — composition-side thread packs:
-`shell/threads.ts` (the ICL threads — skill/plugin scans, catalog/manifest
-schema gates, links dispatchers + stored recipes), `shell/rpc-auth.threads.ts`
-(the credential vend-and-replay spine), `shell/remote-mcp.threads.ts` (the MCP
-layering over the rpc op), `shell/plugin-threads.threads.ts` (the plugin-thread
-proposal path — dispatcher, import join, candidate carry, add_thread dispatch),
-and `system-one/threads.ts` (the admission judgment threads + the supervision
-threads — the runtime circuit breaker, its judgment, and its recovery).
-Threads are composition-side; actuators ship without theirs. `bProgram`
-mounts a faculty's threads when the faculty and its required faculties are
-on — except `faculties.threads.ts`, the composition's **root guard
-threads**, always mounted regardless of the allow-list. The
-former `src/threads/` is dissolved; its engine-layer specs live with their
-faculties (`src/faculties/<faculty>/tests/`), while specs for the shared modules
-stay in `src/faculties/tests/`.
+**`src/faculties/system-one.threads.ts` + `system-one.faculty.ts`** — the
+admission judgment threads (the BP-native blocking judge over the Decisions
+lane) and the supervision threads (the runtime circuit breaker, its
+judgment, and its recovery) — the `remote-system-two.threads.ts` pack adds
+the structural review pack (the no-systemOne admission gate). Threads are
+composition-side or faculty-side policy; actuators ship without theirs. The
+root guard threads (`src/faculties/faculties.threads.ts`) are always
+mounted regardless of the host's pack list. The former `src/threads/` is
+dissolved; specs live with their faculties (`src/faculties/tests/`) and
+with the composition (`src/b-program/tests/`).
 **`tasks/`** — Harbor skill-authoring task specs (challenge content; not shipped, not a plugin).
 **`scripts/`** — repo setup and package-maintenance shell glue.
 **`skills/`** — published reference skills.

@@ -23,10 +23,10 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs'
 import * as path from 'node:path'
+import { behavioralHome } from '../actuators/behavioral-home.ts'
+import { ROOT_SPACE } from '../actuators/store.types.ts'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { Trace, TraceListener } from '../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../old-faculties/behavioral-home.ts'
-import { ROOT_SPACE } from '../old-faculties/store/types.ts'
 import { CREDENTIAL_RULES, type CredentialRule } from './credential-patterns.ts'
 
 /** Marker substituted for every redacted value. */

@@ -1,34 +1,26 @@
 /**
- * The faculties public surface — what a `config.ts` override composes with.
+ * The faculties public surface — the faculty wire home and what a host or
+ * a `config.ts` composes with.
  *
  * @remarks
- * Exposes the override threads (`shellThreads`, `mcpThreads`), their
- * schemas and types, the `Actuator` union, `useFaculty`, and the System Two
- * config surface (`configSystemTwo` for a provider entry; `useSystemTwo` for
- * the host). The default root threads (`facultiesThreads`) is internal — the
- * composition always mounts it — and is intentionally NOT exported. The runtime
- * composition itself (`bProgram`) lives in `src/cli/b-program.ts`.
- *
- * HOLDING PATTERN: the faculties tree was renamed to `src/old-faculties/`
- * (in-flight restructuring); this boundary re-points at the renamed home so
- * the generated configs (`behavioral init`) keep loading. Nothing else changed.
+ * Exports the wire types + once-compiled validators (`faculties.types.ts` —
+ * the event schemas every lane's gate compiles from), the wire kinds
+ * (`faculties.constants.ts`), the model identifier types riding the INIT
+ * FRAME (`SystemOneEndpointConfig`, `SystemTwoEndpoints`), the `Actuator`
+ * trio, and `useWorker` — the composition-side worker wiring. The faculty
+ * worker entries and the root guard threads (`faculties.threads.ts`) are
+ * internal — the composition always mounts the guards and constructs the
+ * workers itself. The runtime composition (`bProgram`) and the host-minted
+ * policy packs live in `src/b-program.ts` / `src/b-program/`.
  *
  * @packageDocumentation
  */
 
-/** The selectable capability actuators (the `bProgram` allow-list). */
+/** The selectable actuators (the daemon config's allow-list — the trio only). */
 export type Actuator = 'shell' | 'store' | 'security'
 
-export * from './old-faculties/faculties.types.ts'
-export * from './old-faculties/security/types.ts'
-export * from './old-faculties/shell/remote-mcp.threads.ts'
-export * from './old-faculties/shell/rpc-auth.threads.ts'
-export * from './old-faculties/shell/threads.ts'
-export * from './old-faculties/shell/types.ts'
-export * from './old-faculties/store/threads.ts'
-export * from './old-faculties/store/types.ts'
-export * from './old-faculties/system-one/config.ts'
-export * from './old-faculties/system-one/types.ts'
-export * from './old-faculties/system-two/config.ts'
-export * from './old-faculties/system-two/types.ts'
-export * from './old-faculties/use-faculty.ts'
+export { useWorker } from './b-program/use-worker.ts'
+export * from './faculties/faculties.constants.ts'
+export * from './faculties/faculties.types.ts'
+export * from './faculties/system-one.types.ts'
+export * from './faculties/system-two.types.ts'

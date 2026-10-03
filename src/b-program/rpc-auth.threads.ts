@@ -29,8 +29,8 @@
  * @packageDocumentation
  */
 
-import type { Thread } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import type { Thread } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 

@@ -11,8 +11,8 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { behavioralHome } from '../../actuators/behavioral-home.ts'
 import type { Thread } from '../../behavioral/behavioral.types.ts'
-import { behavioralHome } from '../../old-faculties/behavioral-home.ts'
 import {
   PLUGIN_THREAD_REGISTRY_FILE,
   pluginThreadRegistryKey,

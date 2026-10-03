@@ -6,8 +6,16 @@ describe('defineConfig', () => {
     expect(defineConfig({})).toEqual({})
   })
 
-  test('preserves a thread-pack reference (packs are data)', () => {
-    const pack = [{ label: 'p', rules: [{ request: { type: 'x' } }] }] as Parameters<typeof defineConfig>[0]['threads']
-    expect(defineConfig({ threads: pack }).threads).toBe(pack)
+  test('preserves the actuators allow-list and the model identifiers (both are data)', () => {
+    const config = defineConfig({
+      actuators: ['shell', 'store'],
+      systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' },
+      systemTwo: { openai: { url: 'https://api.openai.com/v1' } },
+      ui: { provider: 'openai', modelId: 'gpt-x' },
+    })
+    expect(config.actuators).toEqual(['shell', 'store'])
+    expect(config.systemOne).toEqual({ url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' })
+    expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1' } })
+    expect(config.ui).toEqual({ provider: 'openai', modelId: 'gpt-x' })
   })
 })

@@ -25,7 +25,7 @@
  */
 
 import type { JSONSchemaType } from 'ajv'
-import type { JsonObject } from '../../behavioral/behavioral.types.ts'
+import type { JsonObject } from '../behavioral/behavioral.types.ts'
 
 /** Output representation for a completed execution. */
 export type ShellFormat = 'paged' | 'json' | 'raw'

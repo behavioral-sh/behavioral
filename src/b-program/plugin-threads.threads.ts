@@ -37,8 +37,8 @@
  * @packageDocumentation
  */
 
-import type { Thread } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import type { Thread } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ const PLUGIN_FILE_ENV = 'PLUGIN_THREADS_FILE'
  * child (whatever its cwd) imports the SAME module the composition trusts —
  * `ajv` + `ThreadSchema` from one home, never hand-mirrored.
  */
-const ENGINE_SCHEMA_HOME = new URL('../../behavioral/behavioral.types.ts', import.meta.url).href
+const ENGINE_SCHEMA_HOME = new URL('../behavioral/behavioral.types.ts', import.meta.url).href
 
 // ── The import script (bun-direct, executed in the worker) ──────────────────
 
