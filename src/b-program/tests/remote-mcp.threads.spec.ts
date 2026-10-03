@@ -3,9 +3,11 @@ import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { hashString } from '../../utils.ts'
 import {
   REMOTE_MCP_EVENT_TYPES,
   REMOTE_MCP_PROTOCOL_VERSION,
+  REMOTE_MCP_REGISTER_SCRIPT,
   REMOTE_MCP_STORE_COLLECTION,
   remoteMcpThreads,
 } from '../remote-mcp.threads.ts'
@@ -61,6 +63,17 @@ const rpcResult = (id: string, source: string, leg: string, extraEcho: JsonObjec
   },
 })
 
+/** A shell run-op result carrying the stamp script's jsonData — the ctx echo rides. */
+const registerResult = (id: string, source: string, output: JsonObject): BPEvent => ({
+  type: FACULTY_MESSAGE_KINDS.shell_request_result,
+  detail: {
+    id,
+    ok: true,
+    result: { jsonData: output, durationMs: 5 },
+    ctx: { echo: { source, url: URL, leg: 'register', attempt: 0 } },
+  },
+})
+
 describe('remote-mcp threads — discovery', () => {
   test('a discover event issues a stamped server/discover rpc op', () => {
     const selected = runProgram([{ type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r1', input: { url: URL } } }])
@@ -101,6 +114,12 @@ describe('remote-mcp threads — discovery', () => {
         { supportedVersions: ['2026-07-28'], capabilities: { tools: {} } },
       ),
       rpcResult('r1-tools', 'r1', 'tools', {}, { tools: [{ name: 'echo', description: 'echoes' }] }),
+      registerResult('r1-tools-register', 'r1', {
+        ok: true,
+        url: URL,
+        sourceHash: hashString(URL),
+        tools: [{ name: 'echo', description: 'echoes', handle: 'mcp_example_com__echo', sourceHash: hashString(URL) }],
+      }),
     ])
     const toolsRequest = selected.find(
       (s) =>
@@ -449,5 +468,109 @@ describe('remote-mcp threads — trace cleanliness', () => {
     const detail = retry?.detail as { id?: string; ctx?: { echo?: { attempt?: number } } }
     expect(detail.id).toBe('tc3-call')
     expect(detail.ctx?.echo?.attempt).toBe(1)
+  })
+})
+
+describe('remote-mcp threads — registration identity', () => {
+  test('the tools result issues the stamp run op — script, url + tools env, the register echo leg', () => {
+    const selected = runProgram([
+      { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r9', input: { url: URL } } },
+      rpcResult('r9-discover', 'r9', 'discover', {}, { supportedVersions: ['2026-07-28'], capabilities: {} }),
+      rpcResult('r9-tools', 'r9', 'tools', {}, { tools: [{ name: 'echo', description: 'echoes' }] }),
+    ])
+    const stamp = selected.find((s) => {
+      if (s.type !== FACULTY_MESSAGE_KINDS.shell_request) return false
+      const input = s.detail?.input as { op?: string; script?: string } | undefined
+      if (input === undefined) return false
+      return input.op === 'run' && typeof input.script === 'string' && input.script.includes('hashString')
+    })
+    expect(stamp).toBeDefined()
+    const input = stamp?.detail?.input as { env?: Record<string, string> }
+    expect(input.env?.REMOTE_MCP_URL).toBe(URL)
+    expect(JSON.parse(input.env?.REMOTE_MCP_TOOLS ?? '[]')).toEqual([{ name: 'echo', description: 'echoes' }])
+    const echo = (stamp?.detail?.ctx as { echo?: { leg?: string; source?: string; url?: string } })?.echo
+    expect(echo?.leg).toBe('register')
+    expect(echo?.source).toBe('r9')
+    expect(echo?.url).toBe(URL)
+  })
+
+  test('the stamped register result puts the registry value and surfaces the discovery — tools carry handle + sourceHash', () => {
+    const sourceHash = hashString(URL)
+    const selected = runProgram([
+      { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r10', input: { url: URL } } },
+      rpcResult('r10-discover', 'r10', 'discover', {}, { supportedVersions: ['2026-07-28'], capabilities: {} }),
+      rpcResult('r10-tools', 'r10', 'tools', {}, { tools: [{ name: 'echo', description: 'echoes' }] }),
+      registerResult('r10-tools-register', 'r10', {
+        ok: true,
+        url: URL,
+        sourceHash,
+        tools: [{ name: 'echo', description: 'echoes', handle: 'mcp_example_com__echo', sourceHash }],
+      }),
+    ])
+    const put = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.store_request)
+    expect(put).toBeDefined()
+    const input = put?.detail as {
+      op?: string
+      input?: { collection?: string; key?: string; value?: { url?: string; tools?: Array<Record<string, unknown>> } }
+    }
+    expect(input.op).toBe('put')
+    expect(input.input?.collection).toBe(REMOTE_MCP_STORE_COLLECTION)
+    expect(input.input?.key).toBe(URL)
+    expect(input.input?.value?.url).toBe(URL)
+    expect(input.input?.value?.tools?.[0]?.handle).toBe('mcp_example_com__echo')
+    expect(input.input?.value?.tools?.[0]?.sourceHash).toBe(sourceHash)
+    const surfaced = selected.find((s) => s.type === REMOTE_MCP_EVENT_TYPES.discovered)
+    expect(surfaced).toBeDefined()
+    const surfacedDetail = surfaced?.detail as { id?: string; input?: { url?: string } }
+    expect(surfacedDetail.id).toBe('r10')
+    expect(surfacedDetail.input?.url).toBe(URL)
+  })
+})
+
+describe('the remote-mcp registration stamp script (real run)', () => {
+  const runStamp = async (url: string, tools: unknown): Promise<Record<string, unknown>> => {
+    const proc = Bun.spawn(['bun', 'run', '-'], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, REMOTE_MCP_URL: url, REMOTE_MCP_TOOLS: JSON.stringify(tools) },
+    })
+    proc.stdin.write(REMOTE_MCP_REGISTER_SCRIPT)
+    proc.stdin.end()
+    const stdout = await new Response(proc.stdout).text()
+    const exitCode = await proc.exited
+    expect(exitCode).toBe(0)
+    return JSON.parse(stdout) as Record<string, unknown>
+  }
+
+  test('stamps each tool with the hostname-prefixed handle and the server-URI djb2 hash — the real hashString', async () => {
+    const out = await runStamp(URL, [{ name: 'echo', description: 'echoes' }])
+    expect(out.ok).toBe(true)
+    expect(out.url).toBe(URL)
+    expect(out.sourceHash).toBe(hashString(URL))
+    const tools = out.tools as Array<{ name?: string; handle?: string; sourceHash?: number }>
+    expect(tools).toHaveLength(1)
+    expect(tools[0]!.handle).toBe('mcp_example_com__echo')
+    expect(tools[0]!.sourceHash).toBe(hashString(URL))
+  })
+
+  test('two servers exposing the same tool name land as distinct handles with distinct hashes', async () => {
+    const a = await runStamp('https://a.example.com/mcp', [{ name: 'summarize' }])
+    const b = await runStamp('https://b.example.com/mcp', [{ name: 'summarize' }])
+    const toolsA = a.tools as Array<{ handle?: string; sourceHash?: number }>
+    const toolsB = b.tools as Array<{ handle?: string; sourceHash?: number }>
+    expect(toolsA[0]!.handle).toBe('a_example_com__summarize')
+    expect(toolsB[0]!.handle).toBe('b_example_com__summarize')
+    expect(toolsA[0]!.handle).not.toBe(toolsB[0]!.handle)
+    expect(toolsA[0]!.sourceHash).not.toBe(toolsB[0]!.sourceHash)
+  })
+
+  test('a same-named server across configs (same host, different ports) keeps the handle — the hash disambiguates', async () => {
+    const p1 = await runStamp('https://mcp.example.com:8443/mcp', [{ name: 'echo' }])
+    const p2 = await runStamp('https://mcp.example.com:9443/mcp', [{ name: 'echo' }])
+    const tools1 = p1.tools as Array<{ handle?: string; sourceHash?: number }>
+    const tools2 = p2.tools as Array<{ handle?: string; sourceHash?: number }>
+    expect(tools1[0]!.handle).toBe(tools2[0]!.handle)
+    expect(tools1[0]!.sourceHash).not.toBe(tools2[0]!.sourceHash)
   })
 })

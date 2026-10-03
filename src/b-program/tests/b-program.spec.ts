@@ -1164,10 +1164,21 @@ describe('bProgram — the runtime composition', () => {
       // the store registry put (alongside the skills/plugins tenants).
       await waitForTraces(traces, (s) => storeRequest(s, 'put', REMOTE_MCP_STORE_COLLECTION) !== undefined)
       const put = storeRequest(selectionsOf(traces), 'put', REMOTE_MCP_STORE_COLLECTION)
-      const input = (put?.selected.detail as { input?: { key?: string; value?: { tools?: Array<{ name?: string }> } } })
-        ?.input
+      const input = (
+        put?.selected.detail as {
+          input?: {
+            key?: string
+            value?: { tools?: Array<{ name?: string; handle?: string; sourceHash?: number }> }
+          }
+        }
+      )?.input
       expect(input?.key).toContain('localhost')
       expect(input?.value?.tools?.[0]?.name).toBe('echo')
+      // the registration identity, end-to-end through the REAL stamp script:
+      // the server-prefixed handle (the localhost hostname, sanitized) + the
+      // server-URI provenance hash — the same hashString mint
+      expect(input?.value?.tools?.[0]?.handle).toBe('localhost__echo')
+      expect(input?.value?.tools?.[0]?.sourceHash).toBe(hashString(`http://localhost:${rpc.port}/mcp`))
       // The outcome surfaces to the host.
       await waitForTraces(traces, (s) =>
         selectionsOf(s).some((t) => t.selected.type === REMOTE_MCP_EVENT_TYPES.discovered),

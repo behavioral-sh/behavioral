@@ -17,8 +17,11 @@
  *   the envelope; the threads stamp it.
  * - **Discovery** — `remote_mcp_discover { url }` issues `server/discover`,
  *   chains `tools/list`, registers the tools in the store registry
- *   (alongside the skills/plugins tenants), and surfaces
- *   `remote_mcp_discovered`.
+ *   (alongside the skills/plugins tenants) — each tool stamped at
+ *   registration with its invocation handle (`<host>__<tool>`, the
+ *   thread-identity ruling's server-prefixed form) and the server-URI
+ *   `sourceHash` provenance (the real `hashString`, minted by the
+ *   registration stamp run op) — and surfaces `remote_mcp_discovered`.
  * - **Execution** — `remote_mcp_call { url, tool, args }` issues `tools/call`
  *   and surfaces `remote_mcp_call_result`.
  * - **MRTR** — an `input_required` result (the reserved `inputRequests` /
@@ -255,6 +258,56 @@ const rpcSurfaceGate = (legs: string[]) =>
 
 // ── Threads ──────────────────────────────────────────────────────────────────
 
+/**
+ * The registration stamp recipe — executed bun-direct by the shell worker's
+ * `run` op (script on stdin), the url + raw tools riding env.
+ *
+ * Stamps the invocation identity the thread-identity ruling pins: each tool
+ * lands with a server-prefixed invocation handle (`<host>__<tool>` — the
+ * DOUBLE underscore, the spec-safe delimiter beside MCP's constrained tool
+ * charset; the prefix is the URL's HOSTNAME, so a same-named server across
+ * configs keeps its handle) and the server-URI `sourceHash` (the canonical
+ * masked djb2, imported from the util home — the same mint the plugin
+ * threads use; two hashes, two jobs: this is identity/provenance, the
+ * registry's content hash stays re-adjudication).
+ */
+export const REMOTE_MCP_REGISTER_SCRIPT = `
+const { hashString } = await import(${JSON.stringify(new URL('../utils/hash-string.ts', import.meta.url).href)})
+
+const url = process.env.REMOTE_MCP_URL
+const msg = (err) => (err instanceof Error ? err.message : String(err))
+
+if (url === undefined) {
+  console.log(JSON.stringify({ ok: false, error: { code: 'bad_request', message: 'missing url' } }))
+  process.exit(0)
+}
+
+let tools
+try {
+  tools = JSON.parse(process.env.REMOTE_MCP_TOOLS ?? '[]')
+} catch (err) {
+  console.log(JSON.stringify({ ok: false, error: { code: 'bad_request', message: 'unparseable tools: ' + msg(err) } }))
+  process.exit(0)
+}
+
+let host
+try {
+  host = new URL(url).hostname.replace(/[^A-Za-z0-9_-]/g, '_')
+} catch (err) {
+  console.log(JSON.stringify({ ok: false, error: { code: 'bad_request', message: 'invalid url: ' + msg(err) } }))
+  process.exit(0)
+}
+
+const sourceHash = hashString(url)
+const stamped = []
+for (const tool of Array.isArray(tools) ? tools : []) {
+  if (tool && typeof tool === 'object' && typeof tool.name === 'string' && tool.name.length > 0) {
+    stamped.push({ ...tool, handle: host + '__' + tool.name, sourceHash })
+  }
+}
+console.log(JSON.stringify({ ok: true, url, sourceHash, tools: stamped }))
+`
+
 /** discover-issue — `remote_mcp_discover` issues the stamped `server/discover` op. */
 const discoverIssue: Thread = {
   name: 'remote-mcp/discover-issue',
@@ -310,17 +363,56 @@ const toolsIssue: Thread = {
   ],
 }
 
-/** register — the tools result (trusted shape) registers the tenant and surfaces the outcome. */
-const register: Thread = {
-  name: 'remote-mcp/register',
-  description: 'Registers discovered MCP tools as named resources in the store.',
+/**
+ * The stamped run result's trusted shape — the register listeners' gate: the
+ * script's `{ ok, url, sourceHash, tools }` output (loose tool members — the
+ * stamp preserves the advertised tool shape).
+ */
+const REGISTER_RESULT_GATE = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    ok: { type: 'boolean' },
+    result: {
+      type: 'object',
+      properties: {
+        jsonData: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', minLength: 1 },
+            sourceHash: { type: 'integer', minimum: 0 },
+            tools: {
+              type: 'array',
+              items: { type: 'object', required: ['name', 'handle'], additionalProperties: true },
+            },
+          },
+          required: ['url', 'sourceHash', 'tools'],
+          additionalProperties: true,
+        },
+      },
+      required: ['jsonData'],
+    },
+  },
+  required: ['id', 'ok', 'result'],
+} as const
+
+/**
+ * register-issue — the tools result (trusted shape) issues the registration
+ * stamp run: the bun-direct script mints each tool's invocation handle
+ * (`<host>__<tool>`) and the server-URI `sourceHash` (the REAL `hashString`
+ * — imported, never re-implemented), and the put consumes its output. The
+ * tools ride the echo so a retryable run failure can re-stamp.
+ */
+const registerIssue: Thread = {
+  name: 'remote-mcp/register-issue',
+  description: 'Issues the registration stamp run op for the discovered tools (handle + provenance).',
   rules: [
     {
       transform: [
         {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
-          query: `. as $d | select($d.ok == true and $d.ctx.echo.leg == "tools") | { id: ("rmcp-register-" + $d.ctx.echo.source), op: "put", input: { collection: "${REMOTE_MCP_STORE_COLLECTION}", key: $d.ctx.echo.url, value: { url: $d.ctx.echo.url, tools: $d.result.output.tools } } }`,
-          target: FACULTY_MESSAGE_KINDS.store_request,
+          query: `. as $d | select($d.ok == true and $d.ctx.echo.leg == "tools") | { id: ($d.ctx.echo.source + "-register"), label: "${REMOTE_MCP_LABEL}", ctx: { echo: { source: $d.ctx.echo.source, url: $d.ctx.echo.url, leg: "register", attempt: 0, tools: $d.result.output.tools } }, input: { op: "run", script: ${JSON.stringify(REMOTE_MCP_REGISTER_SCRIPT)}, format: "json", env: { REMOTE_MCP_URL: $d.ctx.echo.url, REMOTE_MCP_TOOLS: ($d.result.output.tools | tojson) } } }`,
+          target: FACULTY_MESSAGE_KINDS.shell_request,
           detailSchema: {
             type: 'object',
             properties: {
@@ -335,23 +427,30 @@ const register: Thread = {
             required: ['id', 'ok', 'result'],
           },
         },
+      ],
+    },
+  ],
+}
+
+/** register — the stamped run result (trusted shape) registers the tenant and surfaces the outcome. */
+const register: Thread = {
+  name: 'remote-mcp/register',
+  description:
+    'Registers the stamped MCP tools (server-prefixed handles + the server-URI sourceHash) in the store registry.',
+  rules: [
+    {
+      transform: [
         {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
-          query: `. as $d | select($d.ok == true and $d.ctx.echo.leg == "tools") | { id: $d.ctx.echo.source, ok: true, input: { url: $d.ctx.echo.url, tools: $d.result.output.tools } }`,
+          query: `. as $d | select($d.ok == true and $d.ctx.echo.leg == "register") | { id: ("rmcp-register-" + $d.ctx.echo.source), op: "put", input: { collection: "${REMOTE_MCP_STORE_COLLECTION}", key: $d.result.jsonData.url, value: { url: $d.result.jsonData.url, tools: $d.result.jsonData.tools } } }`,
+          target: FACULTY_MESSAGE_KINDS.store_request,
+          detailSchema: REGISTER_RESULT_GATE,
+        },
+        {
+          type: FACULTY_MESSAGE_KINDS.shell_request_result,
+          query: `. as $d | select($d.ok == true and $d.ctx.echo.leg == "register") | { id: $d.ctx.echo.source, ok: true, input: { url: $d.result.jsonData.url, tools: $d.result.jsonData.tools } }`,
           target: REMOTE_MCP_EVENT_TYPES.discovered,
-          detailSchema: {
-            type: 'object',
-            properties: {
-              id: { type: 'string', minLength: 1 },
-              ok: { type: 'boolean' },
-              result: {
-                type: 'object',
-                properties: { output: REMOTE_MCP_TOOLS_LIST_RESULT_SCHEMA },
-                required: ['output'],
-              },
-            },
-            required: ['id', 'ok', 'result'],
-          },
+          detailSchema: REGISTER_RESULT_GATE,
         },
       ],
     },
@@ -510,7 +609,7 @@ const retry: Thread = {
       transform: [
         {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
-          query: `. as $d | { id: $d.id, label: "${REMOTE_MCP_LABEL}", ctx: { echo: ($d.ctx.echo + { attempt: ($d.ctx.echo.attempt + 1) }) }, input: (if $d.ctx.echo.leg == "call" then { op: "rpc", url: $d.ctx.echo.url, method: "tools/call", headers: ${STAMP_HEADERS}, params: { name: $d.ctx.echo.tool, arguments: ($d.ctx.echo.args // {}), _meta: ${STAMP_META} } } elif $d.ctx.echo.leg == "tools" then { op: "rpc", url: $d.ctx.echo.url, method: "tools/list", headers: ${STAMP_HEADERS}, params: ${STAMP_META} } else { op: "rpc", url: $d.ctx.echo.url, method: "server/discover", headers: ${STAMP_HEADERS}, params: ${STAMP_META} } end) }`,
+          query: `. as $d | { id: $d.id, label: "${REMOTE_MCP_LABEL}", ctx: { echo: ($d.ctx.echo + { attempt: ($d.ctx.echo.attempt + 1) }) }, input: (if $d.ctx.echo.leg == "call" then { op: "rpc", url: $d.ctx.echo.url, method: "tools/call", headers: ${STAMP_HEADERS}, params: { name: $d.ctx.echo.tool, arguments: ($d.ctx.echo.args // {}), _meta: ${STAMP_META} } } elif $d.ctx.echo.leg == "tools" then { op: "rpc", url: $d.ctx.echo.url, method: "tools/list", headers: ${STAMP_HEADERS}, params: ${STAMP_META} } elif $d.ctx.echo.leg == "register" then { op: "run", script: ${JSON.stringify(REMOTE_MCP_REGISTER_SCRIPT)}, format: "json", env: { REMOTE_MCP_URL: $d.ctx.echo.url, REMOTE_MCP_TOOLS: ($d.ctx.echo.tools | tojson) } } else { op: "rpc", url: $d.ctx.echo.url, method: "server/discover", headers: ${STAMP_HEADERS}, params: ${STAMP_META} } end) }`,
           target: FACULTY_MESSAGE_KINDS.shell_request,
           detailSchema: rpcRetryGate,
         },
@@ -548,7 +647,7 @@ const discoverFailure: Thread = {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
           query: `. as $d | { id: $d.ctx.echo.source, ok: false, error: { code: $d.error.code, message: $d.error.message, remoteCode: $d.error.remoteCode } }`,
           target: REMOTE_MCP_EVENT_TYPES.discovered,
-          detailSchema: rpcSurfaceGate(['discover', 'tools']),
+          detailSchema: rpcSurfaceGate(['discover', 'tools', 'register']),
         },
       ],
     },
@@ -617,6 +716,7 @@ const vendFailure: Thread = {
 export const remoteMcpThreads: Thread[] = [
   discoverIssue,
   toolsIssue,
+  registerIssue,
   register,
   callIssue,
   elicitation,
