@@ -125,4 +125,28 @@ describe('loadConfig', () => {
       await expect(loadConfig(file)).rejects.toThrow(/"ui".*"provider"/s)
     })
   })
+
+  describe('inference providers (the proxy allow-list + CSP list)', () => {
+    test('a provider origin map loads as data', async () => {
+      await withConfig(
+        `export default { inference: { providers: { typesafe: 'https://api.typesafe.ai' } } }`,
+        async (file) => {
+          const config = await loadConfig(file)
+          expect(config.inference).toEqual({ providers: { typesafe: 'https://api.typesafe.ai' } })
+        },
+      )
+    })
+
+    test('a provider origin must be an http(s) URL — fail fast on anything else', async () => {
+      await withConfig(`export default { inference: { providers: { bad: 'not a url' } } }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"inference".*"bad"/s)
+      })
+    })
+
+    test('a provider origin must not be a non-http scheme — the SSRF floor', async () => {
+      await withConfig(`export default { inference: { providers: { bad: 'file:///etc' } } }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"inference".*"bad"/s)
+      })
+    })
+  })
 })

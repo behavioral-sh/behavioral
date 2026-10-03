@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { acquireInstanceLock } from '../actuators/instance-lock.ts'
 import { attachTui } from './attach.ts'
@@ -73,7 +74,16 @@ export const attachOrStart = async ({
   // Start: foreground engine + socket host + TUI (a socket client like every
   // other client — no in-process fast path).
   const runtime = await createRuntime()
-  const host = await createSocketHost({ runtime, home, dev })
+  // The inference providers are list-is-config: the same map drives the
+  // proxy routes (R5) and the CSP connect-src emission (R6).
+  const { loadConfig } = await import('./load-config.ts')
+  const config = await loadConfig(join(home, 'config.ts'))
+  const host = await createSocketHost({
+    runtime,
+    home,
+    dev,
+    inferenceProviders: config.inference?.providers ?? {},
+  })
   let cleaned = false
   const cleanup = async (): Promise<void> => {
     if (cleaned) return

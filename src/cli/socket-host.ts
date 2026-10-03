@@ -3,7 +3,7 @@ import type { JSONSchemaType } from 'ajv'
 import type { ServerWebSocket } from 'bun'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { BunKeychain, type Keychain } from '../actuators/keychain-oauth-provider.ts'
-import { bundleBProgramWorker } from '../b-program/bundle-worker.ts'
+import { bundleBProgramWorker, connectSrcPolicy } from '../b-program/bundle-worker.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
@@ -116,6 +116,15 @@ export const createSocketHost = async ({
     keychain: keychain ?? BunKeychain(),
   })
 
+  /**
+   * R6's header (list-is-config): the emitted `connect-src` carries ONLY
+   * 'self' + the daemon origin (the request's own origin — a unix socket
+   * has no hostname) + the configured proxied provider origins. Never
+   * hardcoded, never a wildcard.
+   */
+  const cspHeader = (req: Request): string =>
+    connectSrcPolicy([new URL(req.url).origin, ...Object.values(inferenceProviders)])
+
   const server = Bun.serve({
     unix: path,
     // MINIMAL: ws idleTimeout max is 255s; long-lived attaches get the ceiling
@@ -188,15 +197,18 @@ export const createSocketHost = async ({
         const routes = await bundleController({ dev })
         const response = routes[CONNECT_BEHAVIORAL_ROUTE] ?? new Response(null, { status: 404 })
         // The browser session presentation rides the page (R3 — the cookie is
-        // httpOnly and never enters a frame).
+        // httpOnly and never enters a frame); R6's connect-src rides beside it.
         response.headers.set('set-cookie', sessionCookie(sessionToken))
+        response.headers.set('content-security-policy', cspHeader(req))
         return response
       }
       if (url.pathname === B_PROGRAM_WORKER_PATH) {
         // The composition worker at the controller's conventional spawn path —
         // the self-booting wrapper (the socket-lane actuator default).
         const routes = await bundleBProgramWorker({ dev })
-        return routes[B_PROGRAM_WORKER_PATH] ?? new Response(null, { status: 404 })
+        const response = routes[B_PROGRAM_WORKER_PATH] ?? new Response(null, { status: 404 })
+        response.headers.set('content-security-policy', cspHeader(req))
+        return response
       }
       return server.upgrade(req)
         ? undefined

@@ -25,6 +25,16 @@ export type BehavioralConfig = {
   systemTwo?: SystemTwoEndpoints | null
   /** The ui generation target within the systemTwo map. */
   ui?: { provider?: string; modelId?: string }
+  /**
+   * The inference providers (the transport ruling): provider id →
+   * allow-listed forward base. The daemon proxy routes
+   * `/v1/inference/<id>` resolve here (R5 — the egress allow-list), the
+   * keychain entries key by the same id (R2), and the CSP `connect-src`
+   * list carries these origins (R6). Product-path destinations are
+   * SELF-HOSTED inference servers; vendor-cloud entries are dev/eval
+   * tooling only (the sovereignty ruling).
+   */
+  inference?: { providers?: Record<string, string> }
 }
 
 /** The selectable actuators a config may enable (the trio only). */
@@ -44,7 +54,7 @@ const isStringRecord = (value: unknown): boolean =>
 
 /** Validate the model-identifier keys — fail fast with the path and a fix hint. */
 const validateModels = (config: Record<string, unknown>, configPath: string): void => {
-  const { systemOne, systemTwo, ui } = config
+  const { systemOne, systemTwo, ui, inference } = config
   // Each guard's happy path sits in an `else` block — the plain narrowing
   // (a never-returning call as a bare statement does not narrow).
   if (systemOne !== undefined && systemOne !== null) {
@@ -99,6 +109,30 @@ const validateModels = (config: Record<string, unknown>, configPath: string): vo
       invalid(configPath, '"systemTwo" must be a provider-label → endpoint map (or null)')
     }
   }
+  if (inference !== undefined) {
+    if (isRecord(inference)) {
+      const { providers } = inference
+      if (providers !== undefined) {
+        if (!isStringRecord(providers)) {
+          invalid(configPath, '"inference"."providers" must be a record of provider id → origin string')
+        }
+        for (const [id, base] of Object.entries(providers as Record<string, string>)) {
+          const parsed: URL | null = (() => {
+            try {
+              return new URL(base)
+            } catch {
+              return null
+            }
+          })()
+          if (parsed === null || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) {
+            invalid(configPath, `"inference"."providers"."${id}" must be an http(s) origin (got "${base}")`)
+          }
+        }
+      }
+    } else {
+      invalid(configPath, '"inference" must be { providers?: Record<string, string> }')
+    }
+  }
   if (ui !== undefined) {
     if (isRecord(ui)) {
       const { provider, modelId } = ui
@@ -136,7 +170,7 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
   validateModels(config, configPath)
   // The shape is closed — a legacy key (the retired factory overrides) is
   // a stale config, and a stale config must fail fast, never silently shrink.
-  const known = new Set(['actuators', 'systemOne', 'systemTwo', 'ui'])
+  const known = new Set(['actuators', 'systemOne', 'systemTwo', 'ui', 'inference'])
   const stale = Object.keys(config).filter((key) => !known.has(key))
   if (stale.length > 0) {
     invalid(

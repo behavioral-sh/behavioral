@@ -312,6 +312,27 @@ describe('createSocketHost', () => {
     }
   })
 
+  test('a configured provider list emits the CSP connect-src — self + the daemon origin + exactly those origins', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const host = await createSocketHost({
+      runtime: fake.runtime,
+      home,
+      inferenceProviders: {
+        typesafe: 'https://api.typesafe.ai',
+        selfhosted: 'https://blackwell.lan/v1',
+      },
+    })
+    try {
+      const response = await fetch(`http://localhost${CONNECT_BEHAVIORAL_ROUTE}`, { unix: host.path })
+      expect(response.status).toBe(200)
+      const csp = response.headers.get('content-security-policy')
+      expect(csp).toBe("connect-src 'self' http://localhost https://api.typesafe.ai https://blackwell.lan/v1")
+    } finally {
+      await host.close()
+    }
+  })
+
   test('the inference proxy rides the carrier: the page mints the session cookie, the cookie authenticates the proxied call', async () => {
     const home = tempHome()
     const fake = fakeRuntime()
