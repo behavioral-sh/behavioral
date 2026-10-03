@@ -234,21 +234,26 @@ export const createSocketHost = async ({
           // The R3 scope declaration rides the attach lane as its own
           // notification (first frame, transport-level — never dispatched).
           // Fail-closed: the composition capability additionally requires the
-          // session (the bearer presentation); an unauthenticated composition
-          // declaration downgrades to driver.
+          // session (the bearer presentation).
           if (parsed.method === 'attach_scope') {
-            // Fail-closed: the composition capability additionally requires the
-            // session (checked at upgrade — the bearer/cookie presentation);
-            // an unauthenticated composition declaration stays driver.
+            // Fail-closed AND fail loud (pilot ruling 2026-09-28): a
+            // composition declaration that cannot be granted is an EXPLICIT
+            // refusal the client observes — never a silent downgrade. The
+            // session verdict was captured at upgrade (the bearer/cookie
+            // presentation); driver declarations need no session and stay
+            // silent-accepted.
             const params = parsed.params as { scope?: string; space?: string } | undefined
             const client = clients.get(ws)
             const sessioned = (ws.data as { sessioned?: boolean } | undefined)?.sessioned === true
-            if (
-              client !== undefined &&
-              params?.scope === 'composition' &&
-              typeof params.space === 'string' &&
-              sessioned
-            ) {
+            if (params?.scope === 'composition' && client !== undefined) {
+              if (!sessioned) {
+                ws.send(frame('attach_scope_rejected', { reason: 'session_required' }))
+                return
+              }
+              if (typeof params.space !== 'string') {
+                ws.send(frame('attach_scope_rejected', { reason: 'space_required' }))
+                return
+              }
               clients.set(ws, { scope: 'composition', space: params.space })
             }
             return
