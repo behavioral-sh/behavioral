@@ -4,7 +4,15 @@ import {
   CONTROLLER_INCOMING_MESSAGE_TYPES,
   CONTROLLER_OUTGOING_MESSAGE_TYPES,
 } from '../controller/controller.constants.ts'
-import { ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS, ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import {
+  validateSecurityCancelEvent,
+  validateSecurityRequestEvent,
+  validateShellCancelEvent,
+  validateShellRequestEvent,
+  validateStoreRequestEvent,
+} from '../faculties/faculties.types.ts'
+import { socketLane } from '../faculties/socket-lane.ts'
 import { uuid } from '../utils.ts'
 import { bProgram, type LaneBuilder } from './b-program.ts'
 import {
@@ -67,11 +75,51 @@ import { redactTrace } from './trace-redact.ts'
  * full stream lives).
  */
 
+/** The daemon bridge's conventional WS path — the thin faculty host serves the faculty wire here. */
+export const DAEMON_BRIDGE_PATH = '/faculty-wire'
+
+/** The worker-scope origin as a ws(s) URL — empty where no location exists (a Bun worker). */
+const bridgeOrigin = (): string => (typeof location === 'undefined' ? '' : `${location.origin.replace(/^http/, 'ws')}`)
+
+/**
+ * The DEFAULT actuator leg: the trio over the socket lane, pointed at the
+ * daemon bridge (the thin faculty host — later work; this lands DARK: the
+ * lanes construct at boot but connect only when a request routes, so an
+ * unused leg never opens a socket). Tauri/native-bridge transports swap
+ * behind the same LaneBuilder interface.
+ */
+export const defaultActuatorLanes = (url: string | (() => string)): LaneBuilder[] => [
+  socketLane({
+    url,
+    name: 'shell',
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.shell_request_result,
+  }),
+  socketLane({
+    url,
+    name: 'store',
+    validateRequest: validateStoreRequestEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.store_request_result,
+  }),
+  socketLane({
+    url,
+    name: 'security',
+    validateRequest: validateSecurityRequestEvent,
+    validateCancel: validateSecurityCancelEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.credential_result,
+  }),
+]
+
 /** The entry's compile-time options — the runtime data (models) rides the attach frame. */
 export type CompositionWorkerOptions = {
   /** Host-minted policy packs (shell, rpc-auth, remote-mcp, plugin-threads, supervision, ui_*). */
   threads?: Parameters<typeof bProgram>[0]['threads']
-  /** The pre-built actuator lane builders — reachability is construction, never config. */
+  /**
+   * The pre-built actuator lane builders — reachability is construction, never
+   * config. Absent = the default socket-lane trio over the daemon bridge; an
+   * EXPLICIT empty array means the engine alone.
+   */
   actuators?: LaneBuilder[]
 }
 
@@ -94,7 +142,8 @@ const workerSelf = self as unknown as {
  * boot-order law — boot traces are observable). The entry is a
  * dedicated-worker script — the browser calls this once per worker.
  */
-export const runCompositionWorker = ({ threads = [], actuators = [] }: CompositionWorkerOptions = {}): void => {
+export const runCompositionWorker = ({ threads = [], actuators }: CompositionWorkerOptions = {}): void => {
+  const laneBuilders = actuators ?? defaultActuatorLanes(() => `${bridgeOrigin()}${DAEMON_BRIDGE_PATH}`)
   const validateAttach = ajv.compile(CompositionPortAttachFrameSchema)
   const validateSubscribe = ajv.compile(CompositionPortTraceSubscribeFrameSchema)
   const subscription: TraceSubscription = {}
@@ -118,7 +167,7 @@ export const runCompositionWorker = ({ threads = [], actuators = [] }: Compositi
    */
   const boot = (models: Parameters<typeof bProgram>[0]['models']): Runtime => {
     if (runtime !== undefined) return runtime
-    const booted = bProgram({ threads, models, actuators })
+    const booted = bProgram({ threads, models, actuators: laneBuilders })
     booted.useTrace((trace: Trace) => {
       if (subscription.space === undefined) return // attach is the admission
       if (subscription.kinds !== undefined && !subscription.kinds.has(trace.kind)) return

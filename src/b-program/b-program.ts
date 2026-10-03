@@ -57,21 +57,11 @@ import { useWorker } from './use-worker.ts'
  * lifecycle, never the event lane's.
  */
 
-/** The ruled four-key lane — what every faculty wiring returns. */
-export type FacultyLane = {
-  name: string
-  send: (event: BPEvent) => void
-  invalidEventGate: (event: BPEvent) => boolean
-  terminate: () => void
-}
+// The ruled lane types live in the wire home (the socket lane is the third
+// lane beside spawn and worker); the composition re-exports them.
+export type { FacultyLane, LaneBuilder } from '../faculties/faculties.types.ts'
 
-/**
- * A pre-built actuator lane: the host entry's `useActuator(...)` /
- * socket-lane return. The composition invokes it with its addThreads —
- * binding the lane's re-entries to the re-entry law — and owns the
- * resulting lifecycle.
- */
-export type LaneBuilder = (addThreads: (threads: Thread[]) => void) => FacultyLane
+import type { LaneBuilder } from '../faculties/faculties.types.ts'
 
 /** The in-run decided key — the registry key's dimensions joined (a separator the data can't contain). */
 const decidedKey = (meta: { plugin: string; file: string; hash: string; space?: string }): string =>

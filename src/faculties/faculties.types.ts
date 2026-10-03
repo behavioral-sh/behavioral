@@ -1,4 +1,5 @@
 import type { JSONSchemaType } from 'ajv'
+import type { BPEvent } from '../behavioral/behavioral.types.ts'
 import { ajv, type JsonObject, type Thread } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
 
@@ -481,3 +482,22 @@ export const validateStoreRequestEvent = ajv.compile(StoreRequestEventSchema)
 export const validateStoreRequestResultEvent = ajv.compile(StoreRequestResultEventSchema)
 
 export type AddThreads = (newThreads: Thread[]) => void
+
+/**
+ * The ruled four-key lane — what every faculty wiring returns (worker, spawn,
+ * or socket). The composition routes on it; the wire home owns the shape.
+ */
+export type FacultyLane = {
+  name: string
+  send: (event: BPEvent) => void
+  invalidEventGate: (event: BPEvent) => boolean
+  terminate: () => void
+}
+
+/**
+ * A pre-built lane builder: the host entry's `useWorker(...)` /
+ * `socketLane(...)` return. The composition invokes it with its addThreads —
+ * binding the lane's re-entries to the re-entry law — and owns the resulting
+ * lifecycle.
+ */
+export type LaneBuilder = (addThreads: AddThreads) => FacultyLane

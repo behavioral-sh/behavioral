@@ -109,8 +109,16 @@ web worker on every host, one file per faculty, flattened to the actuators
 pattern. Shared modules sit at the top:
 - the wire home (`faculties.types.ts` + `faculties.constants.ts` — every
   request/result event kind, validators compiled once here, both sides
-  reference, the kind registry) and `faculties.threads.ts` (the composition's
-  root guard threads, always mounted);
+  reference, the kind registry, the ruled lane types (`FacultyLane`,
+  `LaneBuilder`), and `ROOT_SPACE` — the browser-side wire home; the daemon
+  carries byte-identical copies per the two-homes ruling) and
+  `faculties.threads.ts` (the composition's root guard threads, always
+  mounted);
+- the socket lane (`socket-lane.ts` — the faculty wire's WS client, the
+  ruled THIRD lane beside spawn and worker: queue-before-open, bounded
+  reconnect backoff, results re-entering through addThreads, malformed
+  frames + socket death fail-visible as faculty_error; lands DARK — the
+  daemon bridge is the thin-faculty-host work later),
 - the in-worker bootstrap (`create-worker.ts` — called at the TOP LEVEL of
   each faculty entry; gates on SCOPE (`typeof window` + `Bun.isMainThread`,
   never `import.meta` — classic bundles cannot touch it and Bun's main
