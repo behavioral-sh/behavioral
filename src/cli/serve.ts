@@ -1,11 +1,35 @@
 import { join } from 'node:path'
+import { ACTUATOR_MESSAGE_KINDS } from '../actuators/actuators.constants.ts'
+import {
+  validateSecurityCancelEvent,
+  validateSecurityRequestEvent,
+  validateShellCancelEvent,
+  validateShellRequestEvent,
+  validateStoreRequestEvent,
+} from '../actuators/actuators.schemas.ts'
+import { useActuator } from '../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
-import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject, Thread } from '../behavioral/behavioral.types.ts'
+import {
+  supervisionJudgmentThreads,
+  supervisionRecoveryThreads,
+  supervisionThreads,
+} from '../faculties/system-one.threads.ts'
 import { behavioralHome } from '../old-faculties/behavioral-home.ts'
-import { bProgram } from './b-program.ts'
+import { pluginThreadsThreads } from '../old-faculties/shell/plugin-threads.threads.ts'
+import { remoteMcpThreads } from '../old-faculties/shell/remote-mcp.threads.ts'
+import { rpcAuthThreads } from '../old-faculties/shell/rpc-auth.threads.ts'
+import { shellThreads } from '../old-faculties/shell/threads.ts'
+import { bProgram, type LaneBuilder } from './b-program.ts'
 import { createJsonRpcServer, type JsonRpcMessage, type JsonRpcServer } from './json-rpc.ts'
 import { loadConfig } from './load-config.ts'
+import {
+  foldPluginThreadSnapshots,
+  readPluginThreadRegistry,
+  watchPluginThreadRegistry,
+} from './plugin-thread-registry.ts'
 import { collectSecretValues, createTraceConsumer, traceLogSink } from './trace-consumer.ts'
+import { uiThreads } from './ui-threads.ts'
 
 /** The engine identity a host hands to its clients — the hello's payload. */
 export type RuntimeIdentity = { instanceId: string; sessionId: string }
@@ -101,13 +125,114 @@ export const createHost = ({
 }
 
 /**
+ * The entry-side runtime constructor — the ruled reachability-is-construction
+ * seam: THIS owns actuator spawning (the trio via `useActuator`, per the
+ * config's allow-list), the thread-pack minting (the packs' reachability
+ * conditions are the entry's — it built the lanes), the plugin-thread
+ * registry fold + durable-write watcher (Registry/E — never a bProgram
+ * concern), and the `models` assembly. `bProgram` takes the assembled
+ * `threads` + `models` + the pre-built lane builders and nothing else.
+ *
+ * TRANSITIONAL (the config reshape is the next slice): the legacy config
+ * shape carries `useFaculty` factory overrides — the rewired composition has
+ * no override legs, so the factories are acknowledged and IGNORED (a stderr
+ * note names each); their endpoint data re-lands as `models` data when the
+ * templates regenerate.
+ */
+export const createRuntime = (config: Parameters<typeof bProgram>[0] = {}): HostRuntime => {
+  const home = behavioralHome()
+  const legacy = config as unknown as {
+    actuators?: string[]
+    supervision?: { watch: string[]; threshold?: number }
+    ui?: { provider?: string; modelId?: string }
+    models?: { systemOne?: JsonObject; systemTwo?: JsonObject }
+    shell?: unknown
+    store?: unknown
+    security?: unknown
+    systemOne?: unknown
+    systemTwo?: unknown
+  }
+  const enabled = new Set<string>(legacy.actuators ?? ['shell', 'store', 'security'])
+
+  for (const key of ['shell', 'store', 'security', 'systemOne', 'systemTwo'] as const) {
+    if (typeof legacy[key] === 'function')
+      console.error(
+        `[behavioral] config.${key} is a legacy useFaculty override — ignored by the rewired composition; regenerate via behavioral init (the endpoints re-land as models data)`,
+      )
+  }
+
+  // ── The actuator lanes: the trio per the allow-list (pre-built builders). ──
+  const laneBuilders: LaneBuilder[] = []
+  if (enabled.has('shell'))
+    laneBuilders.push(
+      useActuator({
+        command: ['bun', 'run', 'shell.actuator.ts'],
+        name: 'shell',
+        validateRequest: validateShellRequestEvent,
+        validateCancel: validateShellCancelEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
+      }),
+    )
+  if (enabled.has('store'))
+    laneBuilders.push(
+      useActuator({
+        command: ['bun', 'run', 'store.actuator.ts'],
+        name: 'store',
+        // No cancel contract — the request schema is the gate.
+        validateRequest: validateStoreRequestEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
+      }),
+    )
+  if (enabled.has('security'))
+    laneBuilders.push(
+      useActuator({
+        command: ['bun', 'run', 'security.actuator.ts'],
+        name: 'security',
+        validateRequest: validateSecurityRequestEvent,
+        validateCancel: validateSecurityCancelEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.credential_result,
+      }),
+    )
+
+  // ── The thread packs: minted here, where the reachability is known. ────────
+  const threads: Thread[] = []
+  if (enabled.has('shell') && enabled.has('store')) threads.push(...shellThreads)
+  if (enabled.has('shell')) threads.push(...pluginThreadsThreads)
+  if (enabled.has('shell') && enabled.has('security')) threads.push(...rpcAuthThreads)
+  if (enabled.has('shell') && enabled.has('security') && enabled.has('store')) threads.push(...remoteMcpThreads)
+  const supervision = legacy.supervision
+  if (supervision !== undefined) {
+    threads.push(
+      ...supervisionThreads(supervision),
+      ...supervisionJudgmentThreads,
+      ...supervisionRecoveryThreads(supervision),
+    )
+  }
+  const systemTwoConfigured = legacy.models?.systemTwo !== undefined || typeof legacy.systemTwo === 'function'
+  if (enabled.has('shell') && enabled.has('store') && systemTwoConfigured) threads.push(...uiThreads)
+  // The registry's boot fold: admitted snapshots mount as threads.
+  threads.push(...foldPluginThreadSnapshots(readPluginThreadRegistry(home)))
+
+  // ── The models: init-frame payloads + the ui generation target. ────────────
+  const models: Parameters<typeof bProgram>[0]['models'] = {}
+  if (legacy.models?.systemOne !== undefined) models.systemOne = legacy.models.systemOne
+  if (legacy.models?.systemTwo !== undefined) models.systemTwo = legacy.models.systemTwo
+  if (legacy.ui !== undefined) models.ui = legacy.ui
+
+  const runtime = bProgram({ threads, models, actuators: laneBuilders })
+  // The registry's durable-write legs: the entry's own trace subscription.
+  watchPluginThreadRegistry({ runtime, home })
+  return runtime
+}
+
+/**
  * The stdio entry: compose the runtime from the home config and serve IPC until
  * the client closes the input stream.
  *
  * @public
  */
 export const serve = async (): Promise<void> => {
-  const runtime = bProgram(await loadConfig())
+  const runtime = createRuntime(await loadConfig())
   const { rpc } = createHost({
     runtime,
     input: Bun.stdin.stream(),

@@ -58,8 +58,8 @@ export const useWorker = ({
   worker: () => Worker
   /** The wire home's once-compiled request validator. */
   validateRequest: ValidateFunction
-  /** The wire home's once-compiled cancel validator. */
-  validateCancel: ValidateFunction
+  /** The wire home's once-compiled cancel validator — absent for faculties with no cancel contract (sync analyses). */
+  validateCancel?: ValidateFunction
   /** The inbound lane's seal: only this result kind re-enters. */
   resultKind: string
   /**
@@ -139,7 +139,8 @@ export const useWorker = ({
       worker.postMessage(event)
     }
 
-    const invalidEventGate = (event: BPEvent): boolean => !validateRequest(event) && !validateCancel(event)
+    const invalidEventGate = (event: BPEvent): boolean =>
+      !validateRequest(event) && (validateCancel === undefined || !validateCancel(event))
 
     return {
       name,

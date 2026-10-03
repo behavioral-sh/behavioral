@@ -115,17 +115,17 @@ export type FacultyErrorEvent = {
 }
 
 /** Frontier operations — its own worker faculty, like the responses client. */
-export type FrontierOp = 'replay' | 'explore' | 'verify' | 'add_thread'
+export type RemoteSystemTwoOp = 'replay' | 'explore' | 'verify' | 'add_thread'
 
-export type FrontierRequestEvent = {
-  type: typeof FACULTY_MESSAGE_KINDS.frontier_request
+export type RemoteSystemTwoRequestEvent = {
+  type: typeof FACULTY_MESSAGE_KINDS.remote_system_two_request
   /** `op` selects the analysis; the worker shares no event types with the tools faculty. */
-  detail: { id: string; op: FrontierOp; input: JsonObject }
+  detail: { id: string; op: RemoteSystemTwoOp; input: JsonObject }
   space?: string
 }
 
-export type FrontierRequestResultEvent = {
-  type: typeof FACULTY_MESSAGE_KINDS.frontier_request_result
+export type RemoteSystemTwoRequestResultEvent = {
+  type: typeof FACULTY_MESSAGE_KINDS.remote_system_two_request_result
   detail: WorkerResultDetail
   space?: string
 }
@@ -141,7 +141,7 @@ export type StoreRequestEvent = {
   space?: string
 }
 
-// No store cancel: ops are short-lived (frontier rule).
+// No store cancel: ops are short-lived (remoteSystemTwo rule).
 export type StoreRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.store_request_result
   detail: WorkerResultDetail
@@ -184,8 +184,8 @@ export type WorkerEvent =
   | SecurityRequestEvent
   | SecurityRequestResultEvent
   | SecurityCancelEvent
-  | FrontierRequestEvent
-  | FrontierRequestResultEvent
+  | RemoteSystemTwoRequestEvent
+  | RemoteSystemTwoRequestResultEvent
   | StoreRequestEvent
   | StoreRequestResultEvent
   | FacultyErrorEvent
@@ -423,12 +423,12 @@ export const validateShellCancelEvent = ajv.compile(ShellCancelEventSchema)
 export const validateSecurityRequestEvent = ajv.compile(SecurityRequestEventSchema)
 export const validateSecurityRequestResultEvent = ajv.compile(SecurityRequestResultEventSchema)
 export const validateSecurityCancelEvent = ajv.compile(SecurityCancelEventSchema)
-// No frontier cancel event: analyses are synchronous — nothing is in flight
+// No remoteSystemTwo cancel event: analyses are synchronous — nothing is in flight
 // to abort (the async faculties keep their cancels).
-export const FrontierRequestEventSchema: JSONSchemaType<FrontierRequestEvent> = {
+export const RemoteSystemTwoRequestEventSchema: JSONSchemaType<RemoteSystemTwoRequestEvent> = {
   type: 'object',
   properties: {
-    type: { type: 'string', const: FACULTY_MESSAGE_KINDS.frontier_request },
+    type: { type: 'string', const: FACULTY_MESSAGE_KINDS.remote_system_two_request },
     detail: {
       type: 'object',
       properties: {
@@ -445,9 +445,11 @@ export const FrontierRequestEventSchema: JSONSchemaType<FrontierRequestEvent> = 
   additionalProperties: false,
 }
 
-export const FrontierRequestResultEventSchema = resultEventSchema(FACULTY_MESSAGE_KINDS.frontier_request_result)
+export const RemoteSystemTwoRequestResultEventSchema = resultEventSchema(
+  FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+)
 
-// No store cancel: ops are short-lived (same rule as frontier).
+// No store cancel: ops are short-lived (same rule as remoteSystemTwo).
 export const StoreRequestEventSchema: JSONSchemaType<StoreRequestEvent> = {
   type: 'object',
   properties: {
@@ -473,8 +475,8 @@ export const StoreRequestEventSchema: JSONSchemaType<StoreRequestEvent> = {
 export const StoreRequestResultEventSchema = resultEventSchema(FACULTY_MESSAGE_KINDS.store_request_result)
 
 export const validateBehaviorErrorEvent = ajv.compile(FacultyErrorEventSchema)
-export const validateFrontierRequestEvent = ajv.compile(FrontierRequestEventSchema)
-export const validateFrontierRequestResultEvent = ajv.compile(FrontierRequestResultEventSchema)
+export const validateRemoteSystemTwoRequestEvent = ajv.compile(RemoteSystemTwoRequestEventSchema)
+export const validateRemoteSystemTwoRequestResultEvent = ajv.compile(RemoteSystemTwoRequestResultEventSchema)
 export const validateStoreRequestEvent = ajv.compile(StoreRequestEventSchema)
 export const validateStoreRequestResultEvent = ajv.compile(StoreRequestResultEventSchema)
 

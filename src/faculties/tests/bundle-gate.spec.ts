@@ -87,12 +87,15 @@ describe('the bundle-clean gate — faculty entries build and boot for the brows
   })
 
   test('frontier: the browser artifact initializes and answers a request', async () => {
-    const { worker, results } = await bootBundledEntry(new URL('../frontier.faculty.ts', import.meta.url))
+    const { worker, results } = await bootBundledEntry(new URL('../remote-system-two.faculty.ts', import.meta.url))
     try {
       worker.postMessage({ kind: INIT_FRAME_KIND, data: {} as JsonObject })
-      worker.postMessage({ type: 'frontier_request', detail: { id: 'b1', op: 'replay', input: { threads: [] } } })
+      worker.postMessage({
+        type: 'remote_system_two_request',
+        detail: { id: 'b1', op: 'replay', input: { threads: [] } },
+      })
       const result = await resultFor(results, 'b1')
-      expect(result.type).toBe('frontier_request_result')
+      expect(result.type).toBe('remote_system_two_request_result')
       expect(result.detail.ok).toBe(true)
     } finally {
       worker.terminate()

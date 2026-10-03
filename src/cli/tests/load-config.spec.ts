@@ -24,13 +24,17 @@ describe('loadConfig', () => {
 
   test('a present config file yields its default export', async () => {
     await withConfig(`export default { actuators: ['shell'] }`, async (file) => {
-      expect(await loadConfig(file)).toEqual({ actuators: ['shell'] })
+      // The legacy view: the config is data-shaped until the reshape lands.
+      const config = (await loadConfig(file)) as unknown as { actuators: string[] }
+      expect(config).toEqual({ actuators: ['shell'] })
     })
   })
 
   test('accepts a useFaculty-style function override', async () => {
     await withConfig(`const shell = () => 'wired'\nexport default { shell }`, async (file) => {
-      const config = await loadConfig(file)
+      // TRANSITIONAL: the legacy factory shape still validates (the reshape
+      // is the next slice) — the rewired composition ignores the factories.
+      const config = (await loadConfig(file)) as unknown as { shell: unknown }
       expect(typeof config.shell).toBe('function')
     })
   })
@@ -62,7 +66,8 @@ describe('loadConfig', () => {
     process.env.BEHAVIORAL_HOME = home
     try {
       await Bun.write(join(home, 'config.ts'), `export default { actuators: ['store'] }`)
-      expect(await loadConfig()).toEqual({ actuators: ['store'] })
+      const config = (await loadConfig()) as unknown as { actuators: string[] }
+      expect(config).toEqual({ actuators: ['store'] })
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
       else process.env.BEHAVIORAL_HOME = previous

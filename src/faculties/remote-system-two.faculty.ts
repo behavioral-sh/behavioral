@@ -1,13 +1,13 @@
 /**
- * Frontier faculty worker entry — the reachability analysis engine: replays,
+ * The remoteSystemTwo faculty worker entry — the reachability analysis engine: replays,
  * explores, and verifies behavioral thread sets off the host thread.
  *
  * @remarks
  * One file, one faculty: the analysis engine (the former fleet tool
  * implementation, moved wholesale — only the boundary changed) behind the
  * top-level `createWorker` bootstrap. It speaks the behavioral event wire —
- * `frontier_request` events in (dispatched by `detail.op`: replay / explore /
- * verify / add_thread), one `frontier_request_result` out with the request
+ * `remote_system_two_request` events in (dispatched by `detail.op`: replay / explore /
+ * verify / add_thread), one `remote_system_two_request_result` out with the request
  * `space` echoed. It needs no cancel event and no timeout: analyses are
  * synchronous, nothing is in flight to abort.
  *
@@ -15,7 +15,7 @@
  * structured-clone payload, this faculty's simulation state is private, and
  * its own calls in the host trace are logical breakpoints.
  *
- * MINIMAL: results are synchronous analyses; a frontier call blocks this
+ * MINIMAL: results are synchronous analyses; an analysis call blocks this
  * worker only, never the host — no stream lane needed. The in-process
  * `bindEmit` embed does not enter this tree (it stays in old-faculties for
  * the running app until the rewire).
@@ -53,7 +53,7 @@ import {
 import { uuid } from '../utils/uuid.ts'
 import { createWorker, type FacultyRespond } from './create-worker.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
-import { type FrontierOp, validateFrontierRequestEvent } from './faculties.types.ts'
+import { type RemoteSystemTwoOp, validateRemoteSystemTwoRequestEvent } from './faculties.types.ts'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -1497,12 +1497,12 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
 // DATA through the same result shape, per op) — the bootstrap's input
 // boundary mirrors the wire home's detail contract: the op enum and a loose
 // input object.
-type FrontierRequestDetail = { op: FrontierOp; input: JsonObject }
+type FrontierRequestDetail = { op: RemoteSystemTwoOp; input: JsonObject }
 
 const FrontierRequestDetailSchema: JSONSchemaType<FrontierRequestDetail> = {
   type: 'object',
   properties: {
-    // Mirrors the wire home's FrontierRequestEventSchema.detail (op enum +
+    // Mirrors the wire home's RemoteSystemTwoRequestEventSchema.detail (op enum +
     // loose input) — per-op input validity is the runners' (error data).
     // `id` (and any bootstrap bookkeeping) rides along: additionalProperties
     // stays open — the wire home's event validator is the strict boundary.
@@ -1513,7 +1513,7 @@ const FrontierRequestDetailSchema: JSONSchemaType<FrontierRequestDetail> = {
   additionalProperties: true,
 }
 
-const frontierRespond: FacultyRespond<FrontierRequestDetail> = async (detail) => {
+const remoteSystemTwoRespond: FacultyRespond<FrontierRequestDetail> = async (detail) => {
   const runner = OP_RUNNERS[detail.op]
   if (runner === undefined) return { isError: true, message: `unknown frontier operation: ${detail.op}` }
   if (!runner.validate(detail.input)) return { isError: true, message: `invalid input: ${runner.errors()}` }
@@ -1528,9 +1528,9 @@ const frontierRespond: FacultyRespond<FrontierRequestDetail> = async (detail) =>
 // (timeoutMs 0): a long analysis answers when it answers, never a
 // fabricated timeout.
 export const wiring = createWorker<FrontierRequestDetail>({
-  respond: frontierRespond,
-  validateRequest: validateFrontierRequestEvent,
+  respond: remoteSystemTwoRespond,
+  validateRequest: validateRemoteSystemTwoRequestEvent,
   validateInput: ajv.compile(FrontierRequestDetailSchema),
-  resultKind: FACULTY_MESSAGE_KINDS.frontier_request_result,
+  resultKind: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
   timeoutMs: 0,
 })

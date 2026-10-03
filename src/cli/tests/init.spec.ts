@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ajv } from '../../behavioral/behavioral.types.ts'
-import { bProgram } from '../b-program.ts'
 import { type Ask, collectInitInput, type InitInput, InitInputSchema, init, runInit as runInitDirect } from '../init.ts'
 import { loadConfig } from '../load-config.ts'
+import { createRuntime } from '../serve.ts'
 
 /**
  * `behavioral init` — the config generator — through its real CLI handler
@@ -86,10 +86,16 @@ describe('behavioral init — the runner', () => {
       expect(output.files).toContain('node_modules/@behavioral/sh')
       expect(existsSync(join(home, 'node_modules/@behavioral/sh/package.json'))).toBe(true)
       // The full loop: loadConfig (dynamic import from the home) + compose.
-      const config = await loadConfig(configPath())
+      const config = (await loadConfig(configPath())) as unknown as {
+        systemOne: unknown
+        systemTwo: unknown
+      }
       expect(typeof config.systemOne).toBe('function')
       expect(typeof config.systemTwo).toBe('function')
-      const runtime = bProgram(config)
+      // TRANSITIONAL: the legacy factory shape composes through the entry
+      // constructor (the overrides are ignored with a note until the
+      // templates regenerate — the next slice).
+      const runtime = createRuntime(config as never)
       runtime.terminate()
     } finally {
       // Restore, never delete: the env is the caller's, not this spec's — a

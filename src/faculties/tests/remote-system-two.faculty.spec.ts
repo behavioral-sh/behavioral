@@ -28,9 +28,9 @@ type WireResult = {
 /** The frontier WORKER harness — a REAL Bun web Worker on the TS entry, the way the composition wires it. */
 const spawnFrontierWorker = () => {
   const faculty = spawnFacultyWorker({
-    url: new URL('../frontier.faculty.ts', import.meta.url),
-    requestType: FACULTY_MESSAGE_KINDS.frontier_request,
-    resultType: FACULTY_MESSAGE_KINDS.frontier_request_result,
+    url: new URL('../remote-system-two.faculty.ts', import.meta.url),
+    requestType: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+    resultType: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
   })
   const call = (id: string, op: string, input: unknown, space?: string): void => {
     faculty.call({ id, op, input } as JsonObject, space)
@@ -75,7 +75,7 @@ const threads: Thread[] = [
 ]
 
 describe('frontier worker — event wire', () => {
-  test('a frontier_request returns one frontier_request_result carrying the id', async () => {
+  test('a remote_system_two_request returns one remote_system_two_request_result carrying the id', async () => {
     const frontier = spawnFrontierWorker()
     try {
       frontier.call('r0', 'replay', { threads })

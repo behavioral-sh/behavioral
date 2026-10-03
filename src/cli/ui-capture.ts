@@ -41,7 +41,7 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../old-faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import { uuid } from '../utils.ts'
 import { UI_RENDER_TRIGGER_TYPE } from './ui-threads.ts'
 
@@ -234,7 +234,7 @@ const replayThreads = (run: UiRun, upTo: number): Thread[] => [
 ]
 
 /**
- * The replay pass — build the `frontier_request { op: 'replay' }` event over
+ * The replay pass — build the `remote_system_two_request { op: 'replay' }` event over
  * a captured run. The default replays the whole run (the end state); pass
  * `upTo` (a message count) to replay a PREFIX and re-derive a mid-run state
  * — e.g. the index of the browser's scale reply for the preflight hold.
@@ -242,7 +242,7 @@ const replayThreads = (run: UiRun, upTo: number): Thread[] => [
  * result re-enters as a selection carrying `{ frontier, stateKey, pendingCount }`.
  */
 export const uiReplayRequest = (run: UiRun, upTo = run.messages.length): BPEvent => ({
-  type: FACULTY_MESSAGE_KINDS.frontier_request,
+  type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
   detail: {
     id: `ui-replay-${uuid()}`,
     op: 'replay',

@@ -68,7 +68,8 @@ export const useActuator = ({
   /** The outbound gate — the wire home's once-compiled request validator. */
   validateRequest: ValidateFunction
   /** The outbound gate — the wire home's once-compiled cancel validator. */
-  validateCancel: ValidateFunction
+  /** The wire home's once-compiled cancel validator — absent for actuators with no cancel contract. */
+  validateCancel?: ValidateFunction
   /** The inbound lane's seal: only this result kind re-enters. */
   resultKind: string
 }) => {
@@ -176,7 +177,8 @@ export const useActuator = ({
       proc.stdin?.write(`${JSON.stringify(event)}\n`)
     }
 
-    const invalidEventGate = (event: BPEvent): boolean => !validateRequest(event) && !validateCancel(event)
+    const invalidEventGate = (event: BPEvent): boolean =>
+      !validateRequest(event) && (validateCancel === undefined || !validateCancel(event))
 
     return {
       name,

@@ -28,8 +28,11 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ajv, type Thread, ThreadSchema } from '../behavioral/behavioral.types.ts'
+import { ajv, type Thread, ThreadSchema, validateThread } from '../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import { ADMISSION_EVENT_TYPES, validateAdmissionVerdict } from '../faculties/system-one.threads.ts'
 import { behavioralHome } from '../old-faculties/behavioral-home.ts'
+import { PLUGIN_THREADS_EVENT_TYPES } from '../old-faculties/shell/plugin-threads.threads.ts'
 
 /** The registry file under `<home>` — one JSON document, the whole registry. */
 export const PLUGIN_THREAD_REGISTRY_FILE = 'plugin-threads.json'
@@ -124,4 +127,104 @@ export const writePluginThreadRegistry = (home: string, registry: PluginThreadRe
     throw new Error(`plugin-threads registry entry is invalid: ${ajv.errorsText(validateRegistry.errors)}`)
   }
   writeFileSync(pluginThreadRegistryPath(home), `${JSON.stringify(registry, null, 2)}\n`, 'utf8')
+}
+
+/**
+ * The entry-side boot fold — the registry's only composition-facing surface
+ * is the `threads` array: admitted snapshots mount at boot (never re-importing
+ * the plugin file); rejected keys fold nothing (their hold-out is the absence).
+ * The entry (serve/attach-or-start) calls this when assembling the array.
+ */
+export const foldPluginThreadSnapshots = (registry: PluginThreadRegistry): Thread[] =>
+  Object.values(registry)
+    .filter((entry) => entry.status === 'admitted')
+    .map((entry) => (entry.status === 'admitted' ? entry.thread : null))
+    .filter((thread): thread is Thread => thread !== null)
+
+/**
+ * The entry-side durable-write legs — the registry's decision records ride
+ * the entry's OWN trace subscription (the composition no longer knows the
+ * registry). The join is the candidate→verdict→outcome chain, all visible
+ * as selections:
+ *
+ * - `plugin_threads_candidate` { id, input: { thread, plugin, file, hash, space? } }
+ *   registers the proposal (the thread leg validated against the engine's
+ *   ThreadSchema home — a non-conforming thread is a null snapshot, never an
+ *   admission);
+ * - `remote_system_two_request_result` { id, ok, result/error } captures the structural
+ *   verdict (a failed verdict carries its reason);
+ * - `thread_admission` / `thread_admission_rejected` { id, reason? } is the
+ *   outcome: the write fires exactly once per registered id — the admitted
+ *   snapshot only when BOTH legs passed, the rejection otherwise.
+ */
+export const watchPluginThreadRegistry = ({
+  runtime,
+  home,
+}: {
+  runtime: { useTrace: (listener: (trace: unknown) => void) => unknown }
+  home: string
+}): void => {
+  const registry = readPluginThreadRegistry(home)
+  type Pending = {
+    thread: Thread | null
+    plugin: string
+    file: string
+    hash: string
+    space?: string
+    verdictReason?: string
+  }
+  const pending = new Map<string, Pending>()
+  runtime.useTrace((trace) => {
+    if (typeof trace !== 'object' || trace === null) return
+    const t = trace as { kind?: string; selected?: { type?: string; detail?: Record<string, unknown> } }
+    if (t.kind !== 'selection' || t.selected === undefined) return
+    const candidate = t.selected as { type: string; detail?: Record<string, unknown> }
+    const detail = candidate.detail ?? {}
+    if (candidate.type === PLUGIN_THREADS_EVENT_TYPES.candidate) {
+      const input = detail.input as
+        | { thread?: unknown; plugin?: unknown; file?: unknown; hash?: unknown; space?: unknown }
+        | undefined
+      if (
+        typeof detail.id !== 'string' ||
+        typeof input?.plugin !== 'string' ||
+        typeof input?.file !== 'string' ||
+        typeof input?.hash !== 'string'
+      )
+        return
+      pending.set(detail.id, {
+        thread: validateThread(input.thread) ? (input as { thread: Thread }).thread : null,
+        plugin: input.plugin,
+        file: input.file,
+        hash: input.hash,
+        ...(typeof input.space === 'string' ? { space: input.space } : {}),
+      })
+      return
+    }
+    if (candidate.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result && pending.has(detail.id as string)) {
+      const rec = pending.get(detail.id as string)!
+      if (detail.ok === false)
+        rec.verdictReason =
+          (detail.error as { message?: string } | undefined)?.message ??
+          `structural verdict: ${(detail.result as { status?: string } | undefined)?.status ?? 'failed'}`
+      return
+    }
+    if (
+      (candidate.type === ADMISSION_EVENT_TYPES.admitted || candidate.type === ADMISSION_EVENT_TYPES.rejected) &&
+      pending.has(detail.id as string)
+    ) {
+      const rec = pending.get(detail.id as string)!
+      pending.delete(detail.id as string)
+      const admitted =
+        candidate.type === ADMISSION_EVENT_TYPES.admitted &&
+        validateAdmissionVerdict(candidate.detail) &&
+        rec.thread !== null
+      registry[pluginThreadRegistryKey(rec)] = admitted
+        ? { status: 'admitted', thread: rec.thread! }
+        : {
+            status: 'rejected',
+            reason: (detail.reason as string | undefined) ?? rec.verdictReason ?? 'admission rejected',
+          }
+      writePluginThreadRegistry(home, registry)
+    }
+  })
 }

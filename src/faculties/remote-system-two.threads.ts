@@ -76,7 +76,7 @@ export const admissionAnalysisInput = (input: JsonObject): JsonObject => {
 
 /**
  * The add_thread proposal's shape — the gate's trigger. Scoped to the op so
- * every other frontier_request (replay/explore/verify) passes the gate by.
+ * every other remote_system_two_request (replay/explore/verify) passes the gate by.
  */
 const ADD_THREAD_REQUEST_SCHEMA = {
   type: 'object',
@@ -135,11 +135,11 @@ const ADD_THREAD_APPROVAL_SCHEMA = {
 const reviewGate: Thread = {
   label: 'frontier/admission-review-gate',
   rules: [
-    { waitFor: [{ type: FACULTY_MESSAGE_KINDS.frontier_request, detailSchema: ADD_THREAD_REQUEST_SCHEMA }] },
+    { waitFor: [{ type: FACULTY_MESSAGE_KINDS.remote_system_two_request, detailSchema: ADD_THREAD_REQUEST_SCHEMA }] },
     {
       block: [{ type: ADMISSION_EVENT_TYPES.admitted }],
       waitFor: [
-        { type: FACULTY_MESSAGE_KINDS.frontier_request_result, detailSchema: ADD_THREAD_APPROVAL_SCHEMA },
+        { type: FACULTY_MESSAGE_KINDS.remote_system_two_request_result, detailSchema: ADD_THREAD_APPROVAL_SCHEMA },
         { type: ADMISSION_EVENT_TYPES.rejected },
       ],
     },
@@ -159,14 +159,14 @@ const reviewVerdict: Thread = {
     {
       transform: [
         {
-          type: FACULTY_MESSAGE_KINDS.frontier_request_result,
+          type: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           query:
             '. as $d | select(($d.ok // false) == true and ($d.result.ok // false) == true) | { id: $d.id, admit: true }',
           target: ADMISSION_EVENT_TYPES.admitted,
           detailSchema: ADD_THREAD_RESULT_SCHEMA,
         },
         {
-          type: FACULTY_MESSAGE_KINDS.frontier_request_result,
+          type: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           query:
             '. as $d | select((($d.ok // false) != true) or (($d.result.ok // false) != true)) | { id: $d.id, admit: false }',
           target: ADMISSION_EVENT_TYPES.rejected,

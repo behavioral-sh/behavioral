@@ -21,20 +21,18 @@ import { describe, expect, test } from 'bun:test'
 import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ACTUATOR_MESSAGE_KINDS } from '../../actuators/actuators.constants.ts'
+import {
+  validateShellCancelEvent,
+  validateShellRequestEvent,
+  validateStoreRequestEvent,
+} from '../../actuators/actuators.schemas.ts'
+import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, PendingBidsTrace, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../old-faculties/faculties.constants.ts'
-import {
-  ShellCancelEventSchema,
-  ShellRequestEventSchema,
-  ShellRequestResultEventSchema,
-  StoreRequestEventSchema,
-  StoreRequestResultEventSchema,
-} from '../../old-faculties/faculties.types.ts'
-import { useSystemTwo } from '../../old-faculties/system-two/config.ts'
-import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../old-faculties/system-two/tests/fixtures/model-server.ts'
-import { useFaculty } from '../../old-faculties/use-faculty.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { bProgram } from '../b-program.ts'
 import { createHost, dispatchToRuntime } from '../serve.ts'
 import {
@@ -721,29 +719,31 @@ const homeEnv = (home: string) => ({ BEHAVIORAL_HOME: home })
 
 const tempHome = () => mkdtempSync(join(tmpdir(), 'behavioral-ui-home-'))
 
-/** The shell faculty override: the default construction + the temp home env. */
-const shellWithHome = (home: string) =>
-  useFaculty({
-    command: ['bun', 'run', '../actuators/shell.actuator.ts'],
+/** The shell lane: the default construction + the temp home env (the one spawn env seam). */
+const shellWithHome = (home: string) => ({
+  name: 'shell' as const,
+  build: useActuator({
+    command: ['bun', 'run', 'shell.actuator.ts'],
     name: 'shell',
-    threads: [],
     env: homeEnv(home),
-    requestSchema: ShellRequestEventSchema,
-    cancelSchema: ShellCancelEventSchema,
-    resultSchema: ShellRequestResultEventSchema,
-  })
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
+  }),
+})
 
-/** The store faculty override: the default construction + the temp home env. */
-const storeWithHome = (home: string) =>
-  useFaculty({
-    command: ['bun', 'run', '../actuators/store.actuator.ts'],
+/** The store lane: the default construction + the temp home env. */
+const storeWithHome = (home: string) => ({
+  name: 'store' as const,
+  build: useActuator({
+    command: ['bun', 'run', 'store.actuator.ts'],
     name: 'store',
-    threads: [],
     env: homeEnv(home),
-    requestSchema: StoreRequestEventSchema,
-    cancelSchema: StoreRequestEventSchema, // no cancel; the request schema is the gate
-    resultSchema: StoreRequestResultEventSchema,
-  })
+    // No cancel contract — the request schema is the gate.
+    validateRequest: validateStoreRequestEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
+  }),
+})
 
 describe('ui threads — the composition mount', () => {
   test('with systemTwo on, the boot scan self-starts through the composition and the tenant lands', async () => {
@@ -756,9 +756,9 @@ describe('ui threads — the composition mount', () => {
       // a system_two_request). The shell/store overrides carry the temp home
       // to the faculty processes (the one env seam Bun.spawn honors mid-run).
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: 'http://unused.local' } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: 'http://unused.local' } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -804,9 +804,9 @@ describe('ui threads — the composition mount', () => {
     try {
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: 'http://unused.local' } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: 'http://unused.local' } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -885,9 +885,9 @@ describe('ui threads — the composition mount', () => {
       const server = await startOpenResponsesServer()
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: server.url } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: server.url } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -963,9 +963,9 @@ describe('ui threads — the composition mount', () => {
       const server = await startOpenResponsesServer()
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: server.url } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: server.url } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -1025,10 +1025,12 @@ describe('ui threads — the composition mount', () => {
       const server = await startOpenResponsesServer()
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { named: { url: server.url } } }),
-        ui: { provider: 'named', modelId: 'named-model' },
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: {
+          systemTwo: { named: { url: server.url } },
+          ui: { provider: 'named', modelId: 'named-model' },
+        },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -1070,11 +1072,11 @@ describe('ui threads — the composition mount', () => {
     }
   }, 10_000)
 
-  test('absent systemTwo a render ingress mints no pipeline — the pump guard holds', async () => {
+  test('absent ui pack a render ingress mints no pipeline — the pump guard holds', async () => {
     const home = tempHome()
     try {
       const traces: Trace[] = []
-      const runtime = bProgram({ shell: shellWithHome(home), store: storeWithHome(home) })
+      const runtime = bProgram({ actuators: [shellWithHome(home).build, storeWithHome(home).build] })
       runtime.useTrace((trace) => {
         traces.push(trace)
       })
@@ -1105,9 +1107,9 @@ describe('ui threads — the composition mount', () => {
       const server = await startOpenResponsesServer()
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: server.url } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: server.url } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -1195,9 +1197,9 @@ describe('ui threads — the composition mount', () => {
       const server = await startOpenResponsesServer()
       const traces: Trace[] = []
       const runtime = bProgram({
-        shell: shellWithHome(home),
-        store: storeWithHome(home),
-        systemTwo: useSystemTwo({ endpoints: { default: { url: server.url } } }),
+        actuators: [shellWithHome(home).build, storeWithHome(home).build],
+        models: { systemTwo: { default: { url: server.url } } },
+        threads: [...uiThreads],
       })
       runtime.useTrace((trace) => {
         traces.push(trace)
@@ -1252,12 +1254,12 @@ describe('ui threads — the composition mount', () => {
     }
   }, 10_000)
 
-  test('absent systemTwo there is no generation lane — the ui threads do not mount', async () => {
+  test('absent ui pack the ui threads do not mount — the host mint is the switch', async () => {
     const home = tempHome()
     try {
       writeFileSync(join(home, 'DESIGN.md'), '---\ncolors:\n  primary: "#0A0A0A"\n---\n\n## Overview\n\nMine.\n')
       const traces: Trace[] = []
-      const runtime = bProgram({ shell: shellWithHome(home), store: storeWithHome(home) })
+      const runtime = bProgram({ actuators: [shellWithHome(home).build, storeWithHome(home).build] })
       runtime.useTrace((trace) => {
         traces.push(trace)
       })

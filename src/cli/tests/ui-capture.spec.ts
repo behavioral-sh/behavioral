@@ -2,7 +2,7 @@
  * The ui autoresearch loop — the in-process raw capture consumer (the eval
  * ruling's canonical path: in-process = raw, a second `useTrace` subscriber
  * coexisting with the redacted lane) plus the minimal frontier-analysis pass
- * over a captured run (`frontier_request { op: replay }` — the divergence
+ * over a captured run (`remote_system_two_request { op: replay }` — the divergence
  * view: where requests blocked, what the frontier looked like when the hold
  * happened). The graders are consumer-authored; this pins the wiring.
  *
@@ -17,22 +17,21 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ACTUATOR_MESSAGE_KINDS } from '../../actuators/actuators.constants.ts'
+import {
+  validateShellCancelEvent,
+  validateShellRequestEvent,
+  validateStoreRequestEvent,
+} from '../../actuators/actuators.schemas.ts'
+import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../old-faculties/faculties.constants.ts'
-import {
-  ShellCancelEventSchema,
-  ShellRequestEventSchema,
-  ShellRequestResultEventSchema,
-  StoreRequestEventSchema,
-  StoreRequestResultEventSchema,
-} from '../../old-faculties/faculties.types.ts'
-import { useSystemTwo } from '../../old-faculties/system-two/config.ts'
-import { startOpenResponsesServer } from '../../old-faculties/system-two/tests/fixtures/model-server.ts'
-import { useFaculty } from '../../old-faculties/use-faculty.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { bProgram } from '../b-program.ts'
 import { createHost, dispatchToRuntime } from '../serve.ts'
 import { createUiCapture, type UiRun, uiReplayRequest } from '../ui-capture.ts'
+import { uiThreads } from '../ui-threads.ts'
 
 const selectionsOf = (traces: Trace[]): SelectionTrace[] =>
   traces.filter((t): t is SelectionTrace => t.kind === TRACE_MESSAGE_KINDS.selection)
@@ -50,25 +49,23 @@ const waitForTraces = async (traces: Trace[], until: (selections: SelectionTrace
 const homeEnv = (home: string) => ({ BEHAVIORAL_HOME: home })
 
 const shellWithHome = (home: string) =>
-  useFaculty({
-    command: ['bun', 'run', '../actuators/shell.actuator.ts'],
+  useActuator({
+    command: ['bun', 'run', 'shell.actuator.ts'],
     name: 'shell',
-    threads: [],
     env: homeEnv(home),
-    requestSchema: ShellRequestEventSchema,
-    cancelSchema: ShellCancelEventSchema,
-    resultSchema: ShellRequestResultEventSchema,
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
   })
 
 const storeWithHome = (home: string) =>
-  useFaculty({
-    command: ['bun', 'run', '../actuators/store.actuator.ts'],
+  useActuator({
+    command: ['bun', 'run', 'store.actuator.ts'],
     name: 'store',
-    threads: [],
     env: homeEnv(home),
-    requestSchema: StoreRequestEventSchema,
-    cancelSchema: StoreRequestEventSchema, // no cancel; the request schema is the gate
-    resultSchema: StoreRequestResultEventSchema,
+    // No cancel contract — the request schema is the gate.
+    validateRequest: validateStoreRequestEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
   })
 
 /**
@@ -85,9 +82,9 @@ const runPipelineSession = async () => {
   const traces: Trace[] = []
   const runs: UiRun[] = []
   const runtime = bProgram({
-    shell: shellWithHome(home),
-    store: storeWithHome(home),
-    systemTwo: useSystemTwo({ endpoints: { default: { url: server.url } } }),
+    actuators: [shellWithHome(home), storeWithHome(home)],
+    models: { systemTwo: { default: { url: server.url } } },
+    threads: [...uiThreads],
   })
   runtime.useTrace((trace) => {
     traces.push(trace)
@@ -287,7 +284,7 @@ const replay = async (
   for (;;) {
     const found = selectionsOf(traces).find(
       (t) =>
-        t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result &&
+        t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
         (t.selected.detail as { id?: string } | undefined)?.id === (request.detail as { id: string }).id,
     )
     if (found !== undefined)

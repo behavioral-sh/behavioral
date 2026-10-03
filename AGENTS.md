@@ -92,7 +92,10 @@ process entry (`<name>.actuator.ts`) + implementation tests (in `tests/` —
 and `src/old-faculties/shell/` for the shell actuator's threads until the
 rewire), no overrides
 (baked-in, never overridable; the config's `actuators` array is the explicit
-allow-list of the trio ONLY), no external provider entries. The shared spawn
+allow-list of the trio ONLY), no external provider entries. **New actuators
+are RARE and earn their process: the bar is genuinely new environment
+access (keychain, sensors, filesystem) — authenticated HTTP is an op,
+policy is threads.** The shared spawn
 primitive (`use-actuator.ts` — spawn, wire in/out, exit-code crash synthesis
 as `faculty_error`, respawn on demand, terminate; no schema compilation — the
 wire home's once-compiled validators flow in), the shared spec harness
@@ -127,14 +130,15 @@ pattern. Shared modules sit at the top:
   browser target and boots the artifact through a real round-trip.
 The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
 (+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
-(+ types/schemas), `frontier.faculty.ts` (+ `.threads.ts`): each entry is a
-`respond` behind the top-level `createWorker` (system-one: TypeSafe/OpenRouter
-Decisions, 429/529 retry-after; system-two: Open Responses, the endpoints
-map via the init frame, per-provider `transport: 'rest' | 'webgpu'` — rest
-URLs point at the daemon's provider-shaped proxy for static-key vendors
-(the key attaches daemon-side, never in a browser context), webgpu runs the
-local runtime (`system-two.webgpu.ts`, lazy-imported); frontier: the
-reachability analyses — synchronous, no cancel contract, no timeout).
+(+ types/schemas), `remote-system-two.faculty.ts` (+ `.threads.ts`): each
+entry is a `respond` behind the top-level `createWorker` (system-one:
+TypeSafe/OpenRouter Decisions, 429/529 retry-after — ALWAYS LOCAL, no
+remote variant; system-two: Open Responses, the endpoints map via the init
+frame, per-provider `transport: 'rest' | 'webgpu'` — rest URLs point at the
+daemon's provider-shaped proxy for static-key vendors (the key attaches
+daemon-side, never in a browser context), webgpu runs the local runtime
+(`system-two.webgpu.ts`, lazy-imported); remoteSystemTwo: the reachability
+analyses — synchronous, no cancel contract, no timeout).
 Endpoints/config arrive as the init frame — the secret never enters a
 request message. `system-one.threads.ts` carries the
 admission judgment threads (the BP-native blocking judge over the Decisions
@@ -211,7 +215,7 @@ pump on each `render` ingress — scale preflight, generation, `ui_render`,
 the scoped `ui_style` serving seam, every correlation id per-trigger); mounted with shell + store + systemTwo,
 composition territory — no process, not a faculty), and `ui-capture.ts` (the
 autoresearch loop's capture side — the in-process lineage-keyed raw run
-consumer + the frontier replay builder; the socket host wires its file sink
+consumer + the remoteSystemTwo replay builder; the socket host wires its file sink
 under `<home>/captures`).
 **`src/utils/`** — shared pure utilities.
 **`src/faculties/<faculty>/threads.ts`** — composition-side thread packs:

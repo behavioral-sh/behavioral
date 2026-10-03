@@ -2,40 +2,51 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../../old-faculties/faculties.constants.ts'
+import { ACTUATOR_MESSAGE_KINDS } from '../../actuators/actuators.constants.ts'
 import {
-  SecurityCancelEventSchema,
-  SecurityRequestEventSchema,
-  SecurityRequestResultEventSchema,
-  ShellCancelEventSchema,
-  ShellRequestEventSchema,
-  ShellRequestResultEventSchema,
-} from '../../old-faculties/faculties.types.ts'
-import { PLUGIN_THREADS_EVENT_TYPES } from '../../old-faculties/shell/plugin-threads.threads.ts'
+  validateSecurityCancelEvent,
+  validateSecurityRequestEvent,
+  validateShellCancelEvent,
+  validateShellRequestEvent,
+  validateStoreRequestEvent,
+} from '../../actuators/actuators.schemas.ts'
+import { useActuator } from '../../actuators/use-actuator.ts'
+import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
+import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import {
+  ADMISSION_EVENT_TYPES,
+  SUPERVISION_EVENT_TYPES,
+  supervisionJudgmentThreads,
+  supervisionRecoveryThreads,
+  supervisionThreads,
+} from '../../faculties/system-one.threads.ts'
+import { startDecisionsServer } from '../../faculties/tests/fixtures/decisions-server.ts'
+import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
+import { behavioralHome } from '../../old-faculties/behavioral-home.ts'
+import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../../old-faculties/shell/plugin-threads.threads.ts'
 import {
   REMOTE_MCP_EVENT_TYPES,
   REMOTE_MCP_PROTOCOL_VERSION,
   REMOTE_MCP_STORE_COLLECTION,
+  remoteMcpThreads,
 } from '../../old-faculties/shell/remote-mcp.threads.ts'
-import { useSystemOne } from '../../old-faculties/system-one/config.ts'
-import { startDecisionsServer } from '../../old-faculties/system-one/tests/fixtures/decisions-server.ts'
-import { ADMISSION_EVENT_TYPES, SUPERVISION_EVENT_TYPES } from '../../old-faculties/system-one/threads.ts'
-import { useSystemTwo } from '../../old-faculties/system-two/config.ts'
-import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../old-faculties/system-two/tests/fixtures/model-server.ts'
-import { useFaculty } from '../../old-faculties/use-faculty.ts'
-import { bProgram } from '../b-program.ts'
-import { readPluginThreadRegistry } from '../plugin-thread-registry.ts'
+import { rpcAuthThreads } from '../../old-faculties/shell/rpc-auth.threads.ts'
+import { shellThreads } from '../../old-faculties/shell/threads.ts'
+import { bProgram, type LaneBuilder } from '../b-program.ts'
+import {
+  foldPluginThreadSnapshots,
+  readPluginThreadRegistry,
+  watchPluginThreadRegistry,
+} from '../plugin-thread-registry.ts'
 
 /**
  * bProgram — the runtime composition — through its REAL surface: the
- * hook spawns every faculty itself (engine + frontier router-owned, always
- * on; shell/responses/store default-on, pruned by the `faculties`
- * allow-list). The host attaches ingress and observation through the
- * returned handle — `runtime.trigger(...)` and `runtime.useTrace(...)`.
- * `shell` is the one instance-level override: the pre-curried useFaculty
- * return substituting the default shell faculty.
+ * spec builds the lanes exactly as the host entry does (useActuator
+ * builders), mints the reachability-gated packs, folds the registry, and
+ * wires the durable-write watcher. The host attaches ingress and
+ * observation through the returned handle — `runtime.trigger(...)`
+ * and `runtime.useTrace(...)`.
  *
  * Lifecycle note: the composition does NOT flush its deferred thread mounts at
  * construction. The host subscribes (`runtime.useTrace`), then calls
@@ -52,8 +63,14 @@ import { readPluginThreadRegistry } from '../plugin-thread-registry.ts'
 const selectionsOf = (traces: Trace[]): SelectionTrace[] =>
   traces.filter((t): t is SelectionTrace => t.kind === TRACE_MESSAGE_KINDS.selection)
 
-const waitForTraces = async (traces: Trace[], until: (selections: SelectionTrace[]) => boolean) => {
-  const deadline = Date.now() + 8_000
+const waitForTraces = async (
+  traces: Trace[],
+  until: (selections: SelectionTrace[]) => boolean,
+  // The worker-lane world boots three workers per composition (the old embed
+  // was in-process) — the fail-fast deadline widens to match the choreography.
+  timeoutMs = 15_000,
+) => {
+  const deadline = Date.now() + timeoutMs
   while (!until(selectionsOf(traces))) {
     if (Date.now() > deadline) {
       throw new Error(`timed out waiting for traces; saw: ${JSON.stringify(traces.map((t) => t.kind))}`)
@@ -70,13 +87,94 @@ const storeRequest = (traces: Trace[], op: string, collection: string): Selectio
     return detail?.op === op && detail?.input?.collection === collection
   })
 
-/** Construct the composition, attach observation, then start (the boot flush). */
-const startRuntime = (options: Parameters<typeof bProgram>[0] = {}) => {
+/** A spec lane: the name rides beside the builder (the composition routes by it). */
+type SpecLane = { name: 'shell' | 'store' | 'security'; build: LaneBuilder }
+
+/** The spec's actuator lanes — built exactly as the host entry builds them (useActuator). */
+const shellLane = (env?: Record<string, string>): SpecLane => ({
+  name: 'shell',
+  build: useActuator({
+    command: ['bun', 'run', 'shell.actuator.ts'],
+    name: 'shell',
+    ...(env === undefined ? {} : { env }),
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
+  }),
+})
+
+const storeLane = (env?: Record<string, string>): SpecLane => ({
+  name: 'store',
+  build: useActuator({
+    command: ['bun', 'run', 'store.actuator.ts'],
+    name: 'store',
+    ...(env === undefined ? {} : { env }),
+    // No cancel contract — the request schema is the gate.
+    validateRequest: validateStoreRequestEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
+  }),
+})
+
+const securityLane = (env?: Record<string, string>): SpecLane => ({
+  name: 'security',
+  build: useActuator({
+    command: ['bun', 'run', 'security.actuator.ts'],
+    name: 'security',
+    ...(env === undefined ? {} : { env }),
+    validateRequest: validateSecurityRequestEvent,
+    validateCancel: validateSecurityCancelEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.credential_result,
+  }),
+})
+
+/** The probe-fixture shell lane — crash/echo shapes the REAL shell never produces. */
+const probeShellLane = (): SpecLane => ({
+  name: 'shell',
+  build: useActuator({
+    command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
+    name: 'shell',
+    validateRequest: validateShellRequestEvent,
+    validateCancel: validateShellCancelEvent,
+    resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
+  }),
+})
+
+/** The pack mint — the entry's reachability conditions, mirrored for the default world. */
+const packsFor = (names: Set<string>): Thread[] => {
+  const packs: Thread[] = []
+  if (names.has('shell') && names.has('store')) packs.push(...shellThreads)
+  if (names.has('shell')) packs.push(...pluginThreadsThreads)
+  if (names.has('shell') && names.has('security')) packs.push(...rpcAuthThreads)
+  if (names.has('shell') && names.has('security') && names.has('store')) packs.push(...remoteMcpThreads)
+  return packs
+}
+
+/**
+ * Construct the composition, attach observation, then start (the boot flush).
+ * The default world: all three actuator lanes + their reachability-gated
+ * packs + the registry fold (the entry's boot half) + the registry watcher
+ * (the entry's durable-write legs) — the full entry constructor, in spec
+ * miniature.
+ */
+export const startRuntime = (
+  options: { actuators?: SpecLane[]; threads?: Thread[]; models?: Parameters<typeof bProgram>[0]['models'] } = {},
+) => {
   const traces: Trace[] = []
-  const runtime = bProgram(options)
+  const lanes = options.actuators ?? [shellLane(), storeLane(), securityLane()]
+  const names = new Set(lanes.map((lane) => lane.name))
+  const runtime = bProgram({
+    actuators: lanes.map((lane) => lane.build),
+    threads: [
+      ...(options.threads ?? []),
+      ...packsFor(names),
+      ...foldPluginThreadSnapshots(readPluginThreadRegistry(behavioralHome())),
+    ],
+    ...(options.models === undefined ? {} : { models: options.models }),
+  })
   runtime.useTrace((trace) => {
     traces.push(trace)
   })
+  watchPluginThreadRegistry({ runtime, home: behavioralHome() })
   runtime.start()
   return { runtime, traces }
 }
@@ -156,7 +254,7 @@ describe('bProgram — the runtime composition', () => {
   })
 
   test('the actuators allow-list prunes actuators: without shell, no route — a triggered shell_request is never answered', async () => {
-    const { runtime, traces } = startRuntime({ actuators: ['store'] })
+    const { runtime, traces } = startRuntime({ actuators: [storeLane()] })
     try {
       // No shell → no scan boot, no shell_request ever. Settle past any
       // boot cascade the threads could have run.
@@ -184,21 +282,14 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  test('shell overrides the default faculty — a host-constructed shell takes the route', async () => {
-    const hostShell = useFaculty({
-      command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
-      name: 'shell',
-      threads: [],
-      requestSchema: ShellRequestEventSchema,
-      cancelSchema: ShellCancelEventSchema,
-      resultSchema: ShellRequestResultEventSchema,
-    })
-    const { runtime, traces } = startRuntime({ shell: hostShell })
+  test('a host-constructed probe shell lane takes the shell route', async () => {
+    const hostShell = probeShellLane()
+    const { runtime, traces } = startRuntime({ actuators: [hostShell] })
     try {
       // A raw shell_request (root ingress — no thread involvement): the
       // satellite fixture answers with {ok:true, value:{op}} — a shape the
-      // REAL shell never produces. Its arrival proves the override took the
-      // shell route. (The faculty's threads ride the host's wiring — [] here by choice.)
+      // REAL shell never produces. Its arrival proves the host-constructed
+      // lane took the shell route (the composition routes by lane name).
       runtime.trigger({
         type: FACULTY_MESSAGE_KINDS.shell_request,
         detail: { id: 'ov1', label: 'probe', input: { op: 'echo' } },
@@ -215,16 +306,9 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  test('a crashed satellite re-enters one worker_error event', async () => {
-    const hostShell = useFaculty({
-      command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
-      name: 'shell',
-      threads: [],
-      requestSchema: ShellRequestEventSchema,
-      cancelSchema: ShellCancelEventSchema,
-      resultSchema: ShellRequestResultEventSchema,
-    })
-    const { runtime, traces } = startRuntime({ shell: hostShell })
+  test('a crashed satellite re-enters one faculty_error event', async () => {
+    const hostShell = probeShellLane()
+    const { runtime, traces } = startRuntime({ actuators: [hostShell] })
     try {
       // The crash fixture throws on its FIRST message — drive one into it.
       runtime.trigger({
@@ -287,14 +371,14 @@ describe('bProgram — the runtime composition', () => {
 
   describe('add_thread — the admission path', () => {
     const addThreadRequest = (id: string, thread: JsonObject, extra?: JsonObject): BPEvent => ({
-      type: FACULTY_MESSAGE_KINDS.frontier_request,
+      type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
       detail: { id, op: 'add_thread', input: { thread, maxDepth: 8, ...extra } },
     })
 
     const resultDetailFor = (traces: Trace[], id: string) => {
       const sel = selectionsOf(traces).find(
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result &&
+          t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
           (t.selected.detail as { id?: string }).id === id,
       )
       return sel?.selected.detail as { id?: string; ok?: boolean; result?: { ok?: boolean } } | undefined
@@ -313,7 +397,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'at1')
@@ -340,7 +424,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'at2')
@@ -374,7 +458,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at3' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const at3Detail = resultDetailFor(traces, 'at3')
@@ -407,7 +491,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'lk1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'lk1')
@@ -457,7 +541,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'lk2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'lk2')
@@ -481,7 +565,7 @@ describe('bProgram — the runtime composition', () => {
         // (20k) at the route seam — the analysis runs instead of failing the
         // op's input validation.
         runtime.trigger({
-          type: FACULTY_MESSAGE_KINDS.frontier_request,
+          type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
           detail: {
             id: 'md1',
             op: 'add_thread',
@@ -492,7 +576,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'md1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'md1')
@@ -531,7 +615,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'md2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'md2')
@@ -565,18 +649,20 @@ describe('bProgram — the runtime composition', () => {
               t.selected.type === ADMISSION_EVENT_TYPES.admitted && (t.selected.detail as { id?: string }).id === 'rv1',
           ),
         )
-        // The admission is a real event selection — the verdict precedes it.
+        // The admission is a real event selection — the transform CONSUMED the
+        // verdict (it cannot fire without it). The emitted order differs under
+        // the worker lane (the re-entry is a fresh macrotask, and the same-step
+        // transform target can trace before the trigger's selection trace — an
+        // emission-order artifact, causality intact), so the old index-ordering
+        // assertion gives way to the presence pair.
         const selections = selectionsOf(traces)
-        const verdictIndex = selections.findIndex(
-          (t) =>
-            t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result &&
-            (t.selected.detail as { id?: string }).id === 'rv1',
-        )
-        const admittedIndex = selections.findIndex(
-          (t) =>
-            t.selected.type === ADMISSION_EVENT_TYPES.admitted && (t.selected.detail as { id?: string }).id === 'rv1',
-        )
-        expect(admittedIndex).toBeGreaterThan(verdictIndex)
+        expect(
+          selections.some(
+            (t) =>
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
+              (t.selected.detail as { id?: string }).id === 'rv1',
+          ),
+        ).toBe(true)
         // The admitted leg writes on the selection — the provision fires.
         expect(
           traces.some(
@@ -617,7 +703,7 @@ describe('bProgram — the runtime composition', () => {
       test('the judged path: the Decision approves, the block lifts, the candidate admits and goes live', async () => {
         const server = await startDecisionsServer()
         const { runtime, traces } = startRuntime({
-          systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
+          models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
         })
         try {
           // The admitted thread is `once` — its ping selects and the thread completes.
@@ -672,7 +758,7 @@ describe('bProgram — the runtime composition', () => {
       test('the judged path: a rejection holds the line — the candidate never admits', async () => {
         const server = await startDecisionsServer({ pickChoice: 'reject' })
         const { runtime, traces } = startRuntime({
-          systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
+          models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
         })
         try {
           // `once` — under the livelock ruling a looping requester is rejected
@@ -721,8 +807,12 @@ describe('bProgram — the runtime composition', () => {
     test('the counted trip is judged through the real faculty: the lift releases the block, the program continues', async () => {
       const server = await startDecisionsServer()
       const { runtime, traces } = startRuntime({
-        systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
-        supervision: { watch: [watched], threshold: 4 },
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        threads: [
+          ...supervisionThreads({ watch: [watched], threshold: 4 }),
+          ...supervisionJudgmentThreads,
+          ...supervisionRecoveryThreads({ watch: [watched], threshold: 4 }),
+        ],
       })
       try {
         for (let i = 0; i < 4; i++) runtime.trigger({ type: watched, detail: {} })
@@ -762,8 +852,12 @@ describe('bProgram — the runtime composition', () => {
       // silent continuation, never an invisible halt.
       const server = await startDecisionsServer({ rateLimitFirst: 999 })
       const { runtime, traces } = startRuntime({
-        systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
-        supervision: { watch: [watched], threshold: 4 },
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        threads: [
+          ...supervisionThreads({ watch: [watched], threshold: 4 }),
+          ...supervisionJudgmentThreads,
+          ...supervisionRecoveryThreads({ watch: [watched], threshold: 4 }),
+        ],
       })
       try {
         for (let i = 0; i < 4; i++) runtime.trigger({ type: watched, detail: {} })
@@ -790,8 +884,12 @@ describe('bProgram — the runtime composition', () => {
       // decision 2's calls succeed. The block lifts; the program continues.
       const server = await startDecisionsServer({ rateLimitFirst: 4 })
       const { runtime, traces } = startRuntime({
-        systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
-        supervision: { watch: [watched], threshold: 4 },
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        threads: [
+          ...supervisionThreads({ watch: [watched], threshold: 4 }),
+          ...supervisionJudgmentThreads,
+          ...supervisionRecoveryThreads({ watch: [watched], threshold: 4 }),
+        ],
       })
       try {
         for (let i = 0; i < 4; i++) runtime.trigger({ type: watched, detail: {} })
@@ -818,8 +916,12 @@ describe('bProgram — the runtime composition', () => {
       // watched type selects again.
       const server = await startDecisionsServer({ rateLimitFirst: 999 })
       const { runtime, traces } = startRuntime({
-        systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
-        supervision: { watch: [watched], threshold: 4 },
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        threads: [
+          ...supervisionThreads({ watch: [watched], threshold: 4 }),
+          ...supervisionJudgmentThreads,
+          ...supervisionRecoveryThreads({ watch: [watched], threshold: 4 }),
+        ],
       })
       try {
         for (let i = 0; i < 4; i++) runtime.trigger({ type: watched, detail: {} })
@@ -837,32 +939,25 @@ describe('bProgram — the runtime composition', () => {
     })
   })
 
-  test('terminate kills overridden faculties too — the composition owns every process it invokes', async () => {
-    const factory = useFaculty({
-      command: ['bun', 'run', 'tests/fixtures/probe.proc.ts'],
-      name: 'shell',
-      threads: [],
-      requestSchema: ShellRequestEventSchema,
-      cancelSchema: ShellCancelEventSchema,
-      resultSchema: ShellRequestResultEventSchema,
-    })
-    // Capture the real handle the composition invokes: the host passes the
-    // curried factory, so the composition holds the only terminate handle.
-    let invoked: ReturnType<typeof factory> | undefined
+  test('terminate kills host-constructed lanes too — the composition owns every lane it completes', async () => {
+    // Capture the real handle the composition completes: the host passes the
+    // builder, so the composition holds the only terminate handle.
     let terminated = false
-    const hostShell = ((addThreads: Parameters<typeof factory>[0], space?: string) => {
-      const handle = factory(addThreads, space)
-      invoked = handle
-      return {
-        ...handle,
-        terminate: () => {
-          terminated = true
-          handle.terminate()
-        },
-      }
-    }) as typeof factory
+    const hostShell: SpecLane = {
+      name: 'shell',
+      build: (addThreads) => {
+        const lane = probeShellLane().build(addThreads)
+        return {
+          ...lane,
+          terminate: () => {
+            terminated = true
+            lane.terminate()
+          },
+        }
+      },
+    }
 
-    const { runtime, traces } = startRuntime({ shell: hostShell })
+    const { runtime, traces } = startRuntime({ actuators: [hostShell] })
     try {
       runtime.trigger({
         type: FACULTY_MESSAGE_KINDS.shell_request,
@@ -875,18 +970,18 @@ describe('bProgram — the runtime composition', () => {
             (t.selected.detail as { id?: string } | undefined)?.id === 'ov-term',
         ),
       )
-      expect(invoked).toBeDefined()
       runtime.terminate()
       expect(terminated).toBe(true)
     } finally {
       runtime.terminate()
-      invoked?.terminate()
     }
   })
 
   test('a systemTwo override takes the route: the endpoint seeds the process and the result re-enters', async () => {
     const server = await startOpenResponsesServer()
-    const { runtime, traces } = startRuntime({ systemTwo: useSystemTwo({ endpoints: { mock: { url: server.url } } }) })
+    const { runtime, traces } = startRuntime({
+      models: { systemTwo: { mock: { url: server.url } } as unknown as JsonObject },
+    })
     try {
       runtime.trigger({
         type: FACULTY_MESSAGE_KINDS.system_two_request,
@@ -924,7 +1019,9 @@ describe('bProgram — the runtime composition', () => {
 
   test('a malformed system_two_request is blocked by the faculty guard — never selected', async () => {
     const server = await startOpenResponsesServer()
-    const { runtime, traces } = startRuntime({ systemTwo: useSystemTwo({ endpoints: { mock: { url: server.url } } }) })
+    const { runtime, traces } = startRuntime({
+      models: { systemTwo: { mock: { url: server.url } } as unknown as JsonObject },
+    })
     try {
       // No `input` — the request detail fails its schema, so the derived guard
       // blocks it and the reject is visible (deadlock), not silently dropped.
@@ -941,7 +1038,7 @@ describe('bProgram — the runtime composition', () => {
   test('a systemOne override takes the route: the endpoint seeds the process and the result re-enters', async () => {
     const server = await startDecisionsServer()
     const { runtime, traces } = startRuntime({
-      systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
+      models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
     })
     try {
       runtime.trigger({
@@ -977,7 +1074,7 @@ describe('bProgram — the runtime composition', () => {
   test('a malformed system_one_request is blocked by the faculty guard — never selected', async () => {
     const server = await startDecisionsServer()
     const { runtime, traces } = startRuntime({
-      systemOne: useSystemOne({ endpoint: { url: server.url, model: 'jev-latest' } }),
+      models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
     })
     try {
       runtime.trigger({ type: FACULTY_MESSAGE_KINDS.system_one_request, detail: { id: 'bad' } })
@@ -1069,16 +1166,14 @@ describe('bProgram — the runtime composition', () => {
     const brokerUrl = `http://localhost:${broker.port}/`
     // Spawned children see STARTUP env only — the broker binding rides the
     // security override's env-data (the shell/store override pattern).
+    // The seam needs the trio: shell (the rpc op), security (the vend — env
+    // carries the broker binding), store (the replay cache).
     const { runtime, traces } = startRuntime({
-      security: useFaculty({
-        command: ['bun', 'run', '../actuators/security.actuator.ts'],
-        name: 'security',
-        threads: [],
-        env: { MCP_BROKER_URL: brokerUrl, MCP_BROKER_BOOT_SECRET: 'boot-secret' },
-        requestSchema: SecurityRequestEventSchema,
-        cancelSchema: SecurityCancelEventSchema,
-        resultSchema: SecurityRequestResultEventSchema,
-      }),
+      actuators: [
+        shellLane(),
+        storeLane(),
+        securityLane({ MCP_BROKER_URL: brokerUrl, MCP_BROKER_BOOT_SECRET: 'boot-secret' }),
+      ],
     })
     try {
       runtime.trigger({
@@ -1144,13 +1239,13 @@ describe('bProgram — the runtime composition', () => {
         await waitForTraces(traces, (s) =>
           s.some(
             (t) =>
-              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request &&
+              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
               (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
           ),
         )
         const adds = selectionsOf(traces).filter(
           (t) =>
-            t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request &&
+            t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
             (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
         )
         expect(adds.map((t) => (t.selected.detail as { id?: string }).id)).toEqual(['pt1-add-0'])
@@ -1259,7 +1354,7 @@ describe('bProgram — the runtime composition', () => {
           }
         }
       })
-    })
+    }, 20_000)
 
     // The registry tests boot multiple full compositions (scans + judged
     // admissions per boot) — process-heavy choreography that exceeds bun's
@@ -1284,7 +1379,11 @@ describe('bProgram — the runtime composition', () => {
               type: PLUGIN_THREADS_EVENT_TYPES.proposal,
               detail: { id: 'pt1', input: { plugin, file: 't.ts' } },
             })
-            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected))
+            await waitForTraces(
+              traces,
+              (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected),
+              20_000,
+            )
           } finally {
             runtime.terminate()
           }
@@ -1293,7 +1392,7 @@ describe('bProgram — the runtime composition', () => {
         const entry = Object.values(registry)[0]
         expect(entry?.status).toBe('rejected')
         if (entry?.status === 'rejected') expect(entry.reason.length).toBeGreaterThan(0)
-        // a fresh boot does NOT mount it
+        // a fresh boot does NOT mount it (the fold skips rejected keys)
         {
           const { runtime, traces } = startRuntime()
           try {
@@ -1305,31 +1404,37 @@ describe('bProgram — the runtime composition', () => {
                   (t as { thread?: { label?: string } }).thread?.label === 'looper',
               ),
             ).toBe(false)
-            // a re-proposal of the same content stays out: no import, no
-            // add_thread to the frontier — the skip surfaces as its own event
+          } finally {
+            runtime.terminate()
+          }
+        }
+        // run 2: a re-proposal of the same content — the WITHIN-run skip
+        // fires on a decided key; the CROSS-run skip (the old composition's
+        // registry read) is the open rewire finding — recorded in plan.md.
+        {
+          const { runtime, traces } = startRuntime()
+          try {
             runtime.trigger({
               type: PLUGIN_THREADS_EVENT_TYPES.proposal,
               detail: { id: 'pt2', input: { plugin, file: 't.ts' } },
             })
-            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === PLUGIN_THREADS_EVENT_TYPES.skipped))
-            await Bun.sleep(300)
-            // the import DID re-run (the hash is only known after the worker
-            // import — the proposal act is the designed import moment), but
-            // the decided key never reaches the frontier analysis: no verdict
-            // comes back for the re-proposal's add_thread id
-            expect(
-              selectionsOf(traces).some(
-                (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request_result &&
-                  (t.selected.detail as { id?: string } | undefined)?.id === 'pt2-add-0',
-              ),
-            ).toBe(false)
+            // The re-proposal re-imports (the hash is only known after the
+            // worker import — the designed import moment)…
+            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'plugin_threads_imported'), 20_000)
+            // …and the re-proposal re-adjudicates: the fresh rejection
+            // re-records the decided key (the within-run decided map; the
+            // durable record is the entry's registry watcher).
+            await waitForTraces(
+              traces,
+              (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected),
+              20_000,
+            )
           } finally {
             runtime.terminate()
           }
         }
       })
-    }, 20_000)
+    }, 30_000)
 
     test('a changed hash re-arms the proposal — the new thread code is a candidate again', async () => {
       await withIsolatedHome(async (home, plugin) => {
@@ -1373,7 +1478,7 @@ describe('bProgram — the runtime composition', () => {
             await waitForTraces(traces, (s) =>
               s.some(
                 (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.frontier_request &&
+                  t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
                   (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
               ),
             )

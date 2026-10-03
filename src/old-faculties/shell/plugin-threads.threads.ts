@@ -18,7 +18,7 @@
  * - **candidate-issue / pending-issue** — the imported batch peels one
  *   `plugin_threads_candidate` per thread (the carry recursion: pure-data
  *   threads cannot loop, so the queue rides the events).
- * - **candidate-dispatch** — each candidate issues the `frontier_request
+ * - **candidate-dispatch** — each candidate issues the `remote_system_two_request
  *   { op: 'add_thread' }` proposal, the thread stamped with the proposal's
  *   target space (absent = root — Root/D; the admission's stamp governs the
  *   mount, never the author's). From here the landed admission path owns
@@ -38,7 +38,7 @@
  */
 
 import type { Thread } from '../../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
@@ -410,7 +410,7 @@ const candidateDispatch: Thread = {
           type: PLUGIN_THREADS_EVENT_TYPES.candidate,
           query:
             '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.space)) + (if $d.input.space != null then { space: $d.input.space } else {} end)) } }',
-          target: FACULTY_MESSAGE_KINDS.frontier_request,
+          target: FACULTY_MESSAGE_KINDS.remote_system_two_request,
           detailSchema: CANDIDATE_SCHEMA,
         },
       ],
