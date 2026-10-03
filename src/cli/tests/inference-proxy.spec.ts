@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Keychain } from '../../actuators/keychain-oauth-provider.ts'
 import { InMemoryKeychain } from '../../actuators/keychain-oauth-provider.ts'
-import { providerTokenKey } from '../../actuators/provider-keys.ts'
+import { saveProviderToken } from '../../actuators/provider-keys.ts'
 import {
   PROVIDER_TOKEN,
   type ProviderFixture,
@@ -55,7 +55,9 @@ const seedCredential = async (
   provider: string,
   token: string,
 ): Promise<void> => {
-  await h.keychain.set(providerTokenKey(provider), token)
+  // Custody writes the origin-stamped blob — the same floor the proxy vends
+  // through (issuer-bound to the provider's allow-listed origin).
+  await saveProviderToken({ provider, origin: new URL(h.provider.url).origin, token, keychain: h.keychain })
 }
 
 const post = (proxyUrl: string, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>

@@ -9,7 +9,7 @@ import {
 } from '../actuators/actuators.schemas.ts'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import type { Keychain } from '../actuators/keychain-oauth-provider.ts'
-import { providerTokenKey } from '../actuators/provider-keys.ts'
+import { vendProviderToken } from '../actuators/provider-keys.ts'
 import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
@@ -199,11 +199,11 @@ export const createInferenceProxy = ({
     }
 
     // R2 custody: resolve by the provider id — the same identifier the route
-    // is named with. Absent custody fails closed (the body is never sent).
+    // is named with, issuer-bound to the allow-listed origin. Absent custody
+    // fails closed (the body is never sent).
     let credential: string | undefined
     try {
-      const raw = await keychain.get(providerTokenKey(provider))
-      credential = raw === null || raw === '' ? undefined : raw
+      credential = await vendProviderToken({ provider, origin: originUrl.origin, keychain })
     } catch {
       credential = undefined
     }

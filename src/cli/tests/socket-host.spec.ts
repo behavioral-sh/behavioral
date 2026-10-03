@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { InMemoryKeychain } from '../../actuators/keychain-oauth-provider.ts'
+import { saveProviderToken } from '../../actuators/provider-keys.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
 import { CONNECT_BEHAVIORAL_ROUTE } from '../../controller/bundle-controller.ts'
@@ -316,7 +317,12 @@ describe('createSocketHost', () => {
     const fake = fakeRuntime()
     const provider = await startInferenceProvider({ token: PROVIDER_TOKEN })
     const keychain = InMemoryKeychain()
-    await keychain.set('provider:typesafe:token', PROVIDER_TOKEN)
+    await saveProviderToken({
+      provider: 'typesafe',
+      origin: new URL(provider.url).origin,
+      token: PROVIDER_TOKEN,
+      keychain,
+    })
     const host = await createSocketHost({
       runtime: fake.runtime,
       home,
