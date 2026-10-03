@@ -251,6 +251,65 @@ describe('plugin threads — the join and the candidates', () => {
 })
 
 describe('plugin threads — the import script (real run)', () => {
+  test("a thread name colliding with the plugin's skill or MCP surface is skipped with a warning — clean siblings still import", async () => {
+    const plugin = mkdtempSync(join(tmpdir(), 'plugin-threads-'))
+    try {
+      // the plugin's claimed namespaces: a skill dir named 'greeter', an MCP
+      // server named 'farewell' — the within-plugin union the pass enforces
+      mkdirSync(join(plugin, 'skills/greeter'), { recursive: true })
+      writeFileSync(join(plugin, 'skills/greeter/SKILL.md'), '---\nname: greeter\ndescription: d\n---\nbody')
+      writeFileSync(
+        join(plugin, 'mcp.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+          mcpServers: { farewell: { type: 'stdio', command: './run.sh' } },
+        }),
+      )
+      const dir = join(plugin, 'sh.behavioral/threads')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(
+        join(dir, 't.ts'),
+        "export const a = { name: 'greeter', description: 'Test thread.', once: true, rules: [{ request: { type: 'a' } }] }\n" +
+          "export const b = { name: 'farewell', description: 'Test thread.', once: true, rules: [{ request: { type: 'b' } }] }\n" +
+          "export const c = { name: 'clean', description: 'Test thread.', once: true, rules: [{ request: { type: 'c' } }] }\n",
+      )
+      const out = await runScript({ PLUGIN_THREADS_ROOT: plugin, PLUGIN_THREADS_FILE: 't.ts' })
+      const threads = out.threads as { name?: string }[]
+      expect(threads.map((t) => t?.name).sort()).toEqual(['clean'])
+      const warnings = out.warnings as string[]
+      expect(warnings.some((w) => w.includes('greeter') && w.includes('collision'))).toBe(true)
+      expect(warnings.some((w) => w.includes('farewell') && w.includes('collision'))).toBe(true)
+    } finally {
+      rmSync(plugin, { recursive: true, force: true })
+    }
+  })
+
+  test('two plugins MAY export the same thread name — cross-plugin uniqueness is not a concern (the source hash disambiguates)', async () => {
+    const source =
+      "export const greeter = { name: 'greeter', description: 'Test thread.', once: true, rules: [{ request: { type: 'hello' } }] }\n"
+    const pluginA = mkdtempSync(join(tmpdir(), 'plugin-threads-a-'))
+    const pluginB = mkdtempSync(join(tmpdir(), 'plugin-threads-b-'))
+    try {
+      for (const plugin of [pluginA, pluginB]) {
+        const dir = join(plugin, 'sh.behavioral/threads')
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 't.ts'), source)
+      }
+      const outA = await runScript({ PLUGIN_THREADS_ROOT: pluginA, PLUGIN_THREADS_FILE: 't.ts' })
+      const outB = await runScript({ PLUGIN_THREADS_ROOT: pluginB, PLUGIN_THREADS_FILE: 't.ts' })
+      for (const out of [outA, outB]) {
+        const threads = out.threads as { name?: string; sourceHash?: number }[]
+        expect(threads).toHaveLength(1)
+        expect(threads[0]?.name).toBe('greeter')
+      }
+      // same name, distinct provenance — the source hash disambiguates
+      expect(outA.sourceHash).not.toBe(outB.sourceHash)
+    } finally {
+      rmSync(pluginA, { recursive: true, force: true })
+      rmSync(pluginB, { recursive: true, force: true })
+    }
+  })
+
   const runScript = async (env: Record<string, string>): Promise<Record<string, unknown>> => {
     const proc = Bun.spawn(['bun', 'run', '-'], {
       stdin: 'pipe',

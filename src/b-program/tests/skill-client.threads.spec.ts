@@ -159,4 +159,40 @@ describe('skill scan recipe — frontmatter validation (real run)', () => {
       rmSync(home, { recursive: true, force: true })
     }
   })
+
+  test('name/dir mismatch warns but the skill still loads — the INTENTIONAL leniency (do not harden)', async () => {
+    // PIN (the thread-identity ruling): the agentskills spec requires name ==
+    // parent directory, but the scan is deliberately lenient — the mismatch
+    // surfaces as a visible warning while the skill loads. The within-plugin
+    // collision pass can rely on directory names (filesystem-precluded
+    // duplicates); the frontmatter name staying off is the operator's signal.
+    const project = mkdtempSync(join(tmpdir(), 'skill-scan-mismatch-'))
+    try {
+      mkdirSync(join(project, '.agents/skills/misnamed'), { recursive: true })
+      writeFileSync(
+        join(project, '.agents/skills/misnamed/SKILL.md'),
+        '---\nname: other-name\ndescription: mismatched but loads\n---\nbody',
+      )
+      const proc = Bun.spawn(['bun', 'run', '-'], {
+        cwd: project,
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, HOME: project },
+      })
+      proc.stdin.write(SKILL_SCAN_SCRIPT)
+      proc.stdin.end()
+      const stdout = await new Response(proc.stdout).text()
+      const exitCode = await proc.exited
+      expect(exitCode).toBe(0)
+      const out = JSON.parse(stdout) as { skills: JsonObject[]; warnings: string[] }
+      // the skill LOADED under its frontmatter name…
+      expect(out.skills).toHaveLength(1)
+      expect(out.skills[0]).toMatchObject({ name: 'other-name' })
+      // …and the mismatch is VISIBLE, never silent
+      expect(out.warnings.some((w) => w.includes('does not match parent directory'))).toBe(true)
+    } finally {
+      rmSync(project, { recursive: true, force: true })
+    }
+  })
 })

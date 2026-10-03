@@ -29,6 +29,12 @@
  * `ThreadSchema` — imported from the engine schema home (the same module
  * the composition itself trusts), never hand-mirrored. An invalid export
  * is skipped with a warning; an unparseable file surfaces the typed error.
+ * The script also runs the within-plugin COLLISION PASS (the thread-identity
+ * ruling): a thread export may not claim a name the plugin already claims
+ * via its skills or its MCP surface, nor duplicate a sibling export — the
+ * colliding export is skipped with a visible warning, clean siblings still
+ * import. Cross-plugin name reuse is explicitly NOT a concern; the
+ * provenance `sourceHash` disambiguates.
  *
  * Requires the shell faculty (its `run` op) — bProgram mounts it when
  * shell is on. The label `plugin-threads` stamps the proposal-lane ops
@@ -94,6 +100,7 @@ const UTIL_SCHEMA_HOME = new URL('../utils/hash-string.ts', import.meta.url).hre
 export const PLUGIN_THREAD_IMPORT_SCRIPT = `
 import { CryptoHasher } from 'bun'
 import * as path from 'node:path'
+import { readdirSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const { ajv, ThreadSchema } = await import(${JSON.stringify(ENGINE_SCHEMA_HOME)})
@@ -131,13 +138,39 @@ try {
 const validate = ajv.compile(ThreadSchema)
 const threads = []
 const warnings = []
+
+// The within-plugin collision pass: a thread export must not claim a name
+// the plugin already claims via its skills (skills/*/SKILL.md dir names) or
+// its MCP servers (mcp.json server names) — nor duplicate a sibling export.
+// Skill-vs-skill collision is structurally precluded (the spec requires
+// name == directory; the filesystem forbids duplicates). Cross-plugin
+// uniqueness is NOT a concern: the provenance sourceHash disambiguates
+// same-named threads across plugins.
+const claimed = new Set()
+try {
+  for (const entry of readdirSync(path.join(root, 'skills'), { withFileTypes: true })) {
+    if (entry.isDirectory()) claimed.add(entry.name)
+  }
+} catch {}
+try {
+  const mcp = JSON.parse(await Bun.file(path.join(root, 'mcp.json')).text())
+  if (mcp && typeof mcp === 'object' && mcp.mcpServers && typeof mcp.mcpServers === 'object') {
+    for (const name of Object.keys(mcp.mcpServers)) claimed.add(name)
+  }
+} catch {}
+
 for (const name of Object.keys(mod)) {
   const value = mod[name]
-  if (validate(value)) {
-    threads.push(value)
-  } else {
+  if (!validate(value)) {
     warnings.push('Skipped export "' + name + '": ' + ajv.errorsText(validate.errors))
+    continue
   }
+  if (claimed.has(value.name)) {
+    warnings.push('Skipped export "' + name + '": thread name "' + value.name + '" collision — the plugin already claims that name (skill or MCP surface)')
+    continue
+  }
+  threads.push(value)
+  claimed.add(value.name)
 }
 console.log(JSON.stringify({ threads, warnings, hash, sourceHash: hashString(root) }))
 `

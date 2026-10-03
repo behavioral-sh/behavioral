@@ -105,6 +105,15 @@ describe('behavioral schemas', () => {
     expect(validateThread({ description: 'd', rules: [] })).toBe(false)
   })
 
+  test('the description cap is exactly 512 — the intentional asymmetry with skills (1024)', () => {
+    // PIN (the thread-identity ruling): skills allow 1024 description chars
+    // (the agentskills spec — a skill has a body behind its description); a
+    // thread IS the body, so its description caps at 512 (one short
+    // paragraph). Do not "align" them.
+    const description = ThreadSchema.properties.description as { maxLength?: number }
+    expect(description.maxLength).toBe(512)
+  })
+
   test('Thread validator requires non-empty name and rules', () => {
     expect(validateThread({ name: 'a', description: 'd', rules: [] })).toBe(true)
     expect(validateThread({ name: 'a', description: 'd', once: true, rules: [] })).toBe(true)
