@@ -390,23 +390,30 @@ export type Threads = Thread[]
 /**
  * The serialized (plain-JSON) mirror of an authored {@link Thread} — the ONE
  * home for wire consumers that validate an authored thread structurally
- * (frontier's replay/add_thread input schemas) instead of hand-mirroring the
- * shape. Rules stay permissive here (idiom internals as plain objects) — a
- * caller's `detailSchema` reaches the runtime validator verbatim; the engine's
+ * (frontier's replay/add_thread input schemas). DERIVED from
+ * {@link ThreadSchema} — the tuple fields are the admission gate's own
+ * properties (spread) and `required` is the same array, so a tuple-field
+ * change propagates here by construction; the ONLY override is `rules`,
+ * permissive on the wire (idiom internals as plain objects) — a caller's
+ * `detailSchema` reaches the runtime validator verbatim, and the engine's
  * `ThreadSchema` gate re-validates at registration.
  *
  * @internal
  */
+const serializedThreadRulesDescription = (ThreadSchema.properties?.rules as { description?: string } | undefined)
+  ?.description
+
 export const SerializedThreadSchema = {
   type: 'object',
   properties: {
-    name: { type: 'string', minLength: 1, description: 'Human-readable thread name.' },
-    description: { type: 'string', maxLength: 512 },
-    sourceHash: { type: 'integer', minimum: 0 },
-    once: { type: 'boolean', enum: [true], nullable: true },
-    rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    ...(ThreadSchema.properties as NonNullable<JSONSchemaType<Thread>['properties']>),
+    rules: {
+      type: 'array',
+      items: { type: 'object', additionalProperties: true },
+      ...(serializedThreadRulesDescription === undefined ? {} : { description: serializedThreadRulesDescription }),
+    },
   },
-  required: ['name', 'description', 'rules'],
+  required: ThreadSchema.required,
   additionalProperties: false,
 } as const
 

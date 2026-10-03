@@ -73,10 +73,15 @@ describe('behavioral schemas', () => {
     expect(ThreadSchema.required).toContain('description')
   })
 
-  test('SerializedThreadSchema — the one home for the serialized authored-thread shape', () => {
-    expect(SerializedThreadSchema.required).toContain('name')
-    expect(SerializedThreadSchema.required).toContain('description')
-    expect(SerializedThreadSchema.required).toContain('rules')
+  test('SerializedThreadSchema — derived from ThreadSchema, the one home for the serialized shape', () => {
+    // DERIVED from ThreadSchema: the tuple fields are the admission gate's own
+    // (spread), `required` is the SAME array — a tuple-field change propagates
+    // to the wire gate; only `rules` is overridden permissive.
+    expect(SerializedThreadSchema.required).toBe(ThreadSchema.required)
+    const properties = SerializedThreadSchema.properties as Record<string, Record<string, unknown>>
+    for (const key of ['space', 'name', 'description', 'once', 'sourceHash']) {
+      expect(properties[key]).toEqual(ThreadSchema.properties[key as keyof typeof ThreadSchema.properties])
+    }
     expect(SerializedThreadSchema.additionalProperties).toBe(false)
     // Rules stay permissive — a caller's detailSchema reaches the runtime
     // validator verbatim; the engine's ThreadSchema gate re-validates.
@@ -88,6 +93,9 @@ describe('behavioral schemas', () => {
         rules: [{ waitFor: [{ type: 'x', detailSchema: { type: 'object' } }] }],
       }),
     ).toBe(true)
+    expect(validate({ name: 'a', description: 'd', rules: [{ waitFor: [{ type: 'x', bogus: true }] }] })).toBe(true)
+    // the authored tuple's optional space stamp rides the wire shape
+    expect(validate({ name: 'a', description: 'd', rules: [], space: 's1' })).toBe(true)
     expect(validate({ name: 'a', rules: [] })).toBe(false)
   })
 
