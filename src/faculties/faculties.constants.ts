@@ -44,3 +44,11 @@ export const ACTUATOR_ROUTE: Record<string, string[]> = {
   store: [FACULTY_MESSAGE_KINDS.store_request],
   security: [FACULTY_MESSAGE_KINDS.credential_request, FACULTY_MESSAGE_KINDS.credential_cancel],
 }
+
+/**
+ * The trace push kind — the composition worker's upstream trace leg rides
+ * the faculty-wire framing as `{ type: 'trace', detail: <trace> }`. The
+ * bridge folds it into the daemon's one observability stream; the daemon
+ * fan-out delivers it to scoped clients only.
+ */
+export const TRACE_PUSH_KIND = 'trace'

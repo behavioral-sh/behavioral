@@ -105,6 +105,49 @@ const storeRequest = (
 })
 
 describe('the faculty bridge', () => {
+  test('a trace push folds into the daemon stream — the composition scope only', async () => {
+    const { createFacultyBridge, DAEMON_BRIDGE_PATH } = await import('../faculty-bridge.ts')
+    const pushed: unknown[] = []
+    const bridge = createFacultyBridge({
+      laneBuilders: [storeLane()],
+      session: (req) => validSession(req, 'sess-1'),
+      pushTrace: (trace) => pushed.push(trace),
+    })
+    const server = Bun.serve<FacultyBridgeSocketData>({
+      port: 0,
+      fetch: (req, srv) =>
+        new URL(req.url).pathname === DAEMON_BRIDGE_PATH
+          ? bridge.upgrade(req, (r, options) => srv.upgrade(r, options as never))
+          : new Response('not found', { status: 404 }),
+      websocket: {
+        open: (ws) => bridge.open(ws),
+        message: (ws, m) => bridge.message(ws, typeof m === 'string' ? m : new TextDecoder().decode(m)),
+        close: (ws) => bridge.close(ws),
+      },
+    })
+    let client: BridgeClient | undefined
+    try {
+      client = await attach(`http://localhost:${server.port}`)
+      client.send({ type: 'trace', detail: { kind: 'idle', timestamp: 1 } })
+      const deadline = Date.now() + 5_000
+      while (pushed.length === 0) {
+        if (Date.now() > deadline) throw new Error('the trace push never folded')
+        await Bun.sleep(10)
+      }
+      expect(pushed[0]).toEqual({ kind: 'idle', timestamp: 1 })
+      // The fold does not disturb the faculty routing.
+      client.send(storeRequest('s9'))
+      const result = await client.waitFor<{ detail: { id: string } }>(
+        (frame) => (frame as { detail?: { id?: string } }).detail?.id === 's9',
+        'the post-push result',
+      )
+      expect(result).toBeDefined()
+    } finally {
+      client?.close()
+      server.stop(true)
+    }
+  })
+
   test('an unauthenticated attach is rejected closed — 401, no upgrade, no faculty-wire traffic', async () => {
     const { url, stop } = startBridge([storeLane()])
     try {

@@ -63,12 +63,16 @@ type TestClient = {
   close: () => void
 }
 
-const attachClient = (path: string): Promise<TestClient> =>
+const attachClient = (
+  path: string,
+  { headers, onOpen }: { headers?: Record<string, string>; onOpen?: (socket: WebSocket) => void } = {},
+): Promise<TestClient> =>
   new Promise((resolveClient, reject) => {
-    const socket = new WebSocket(`ws+unix://${path}`)
+    const socket = new WebSocket(`ws+unix://${path}`, { headers } as never)
     const frames: unknown[] = []
     let nextId = 1
     socket.addEventListener('open', () => {
+      if (onOpen !== undefined) onOpen(socket)
       resolveClient({
         send: (message) => {
           const id = nextId++
@@ -385,6 +389,80 @@ describe('createSocketHost', () => {
     } finally {
       await host.close()
       await provider.close()
+    }
+  })
+
+  test('the trace fan-out is scoped: a composition client receives its space, a driver receives root — disjoint', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const { actuatorLaneBuilders } = await import('../serve.ts')
+    const host = await createSocketHost({
+      runtime: fake.runtime,
+      home,
+      facultyLanes: actuatorLaneBuilders(['store']),
+    })
+    try {
+      const token = (await Bun.file(sessionTokenPath(home)).text()).trim()
+      const bridgeHeaders = { authorization: `Bearer ${token}` }
+
+      // Two attach-lane clients with different scopes.
+      const composition = await attachClient(host.path, {
+        headers: bridgeHeaders,
+        onOpen: (socket) =>
+          socket.send(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'attach_scope',
+              params: { scope: 'composition', space: 'tab_a' },
+            }),
+          ),
+      })
+      const driver = await attachClient(host.path)
+
+      // The bridge's push leg (composition scope by the gate — proven at the
+      // bridge level) folds into host.pushTrace; drive the fold directly (the
+      // WS hop is the bridge spec's).
+      host.pushTrace({
+        kind: 'idle',
+        space: 'tab_a',
+        timestamp: 1,
+        instanceId: 'i',
+        sessionId: 's',
+        step: 1,
+      } as unknown as Trace)
+
+      // The composition-scoped client receives the pushed tab_a trace.
+      await composition.waitFor<{ method: string; params: { kind?: string; space?: string } }>(
+        (frame) =>
+          (frame as { method?: string }).method === 'trace' &&
+          (frame as { params?: { space?: string } }).params?.space === 'tab_a',
+        'the pushed tab_a trace',
+      )
+
+      // The daemon engine's own root trace goes to the driver only.
+      fake.emit(traceOf(TRACE_MESSAGE_KINDS.idle))
+      await driver.waitFor<{ method: string; params: { kind?: string } }>(
+        (frame) => (frame as { method?: string }).method === 'trace',
+        'the root trace',
+      )
+
+      // Disjoint: the driver never saw the composition's space-stamped trace;
+      // the composition client never saw the daemon's root trace.
+      await Bun.sleep(150)
+      const traceOf_ = (client: { frames: unknown[] }) =>
+        client.frames.filter((frame) => (frame as { method?: string }).method === 'trace') as Array<{
+          params?: { kind?: string; space?: string }
+        }>
+      expect(traceOf_(driver).some((frame) => frame.params?.space === 'tab_a')).toBe(false)
+      expect(
+        traceOf_(composition).some((frame) => frame.params?.space === undefined || frame.params?.space === 'root'),
+      ).toBe(false)
+      expect(traceOf_(composition).some((frame) => frame.params?.space === 'tab_a')).toBe(true)
+      expect(traceOf_(driver).length).toBeGreaterThan(0)
+      composition.close()
+      driver.close()
+    } finally {
+      await host.close()
     }
   })
 

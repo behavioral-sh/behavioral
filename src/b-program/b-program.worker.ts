@@ -13,6 +13,7 @@ import {
   validateStoreRequestEvent,
 } from '../faculties/faculties.types.ts'
 import { socketLane } from '../faculties/socket-lane.ts'
+import { tracePipe } from '../faculties/trace-pipe.ts'
 import { uuid } from '../utils.ts'
 import { bProgram, type LaneBuilder } from './b-program.ts'
 import {
@@ -144,6 +145,14 @@ const workerSelf = self as unknown as {
  */
 export const runCompositionWorker = ({ threads = [], actuators }: CompositionWorkerOptions = {}): void => {
   const laneBuilders = actuators ?? defaultActuatorLanes(() => `${bridgeOrigin()}${DAEMON_BRIDGE_PATH}`)
+  // The trace leg (the one-observability-stream ruling): armed when the
+  // actuator leg is the DEFAULT socket-lane trio (the daemon bridge is this
+  // worker's environment) — the worker's redacted stream pushes upstream,
+  // folding into the daemon's one observability stream. Scoped by
+  // construction: the pipe connects to the session-gated bridge; no token
+  // rides any frame (the browser attaches the cookie). A fixture-provided
+  // actuator leg has no daemon bridge — no pipe.
+  const pipe = actuators === undefined ? tracePipe({ url: () => `${bridgeOrigin()}${DAEMON_BRIDGE_PATH}` }) : undefined
   const validateAttach = ajv.compile(CompositionPortAttachFrameSchema)
   const validateSubscribe = ajv.compile(CompositionPortTraceSubscribeFrameSchema)
   const subscription: TraceSubscription = {}
@@ -169,6 +178,10 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
     if (runtime !== undefined) return runtime
     const booted = bProgram({ threads, models, actuators: laneBuilders })
     booted.useTrace((trace: Trace) => {
+      // The upstream trace leg pushes the full redacted stream (the daemon is
+      // the persistence home — full fidelity, independent of the page's
+      // subscription).
+      pipe?.push(redactTrace(trace))
       if (subscription.space === undefined) return // attach is the admission
       if (subscription.kinds !== undefined && !subscription.kinds.has(trace.kind)) return
       const redacted = redactTrace(trace)

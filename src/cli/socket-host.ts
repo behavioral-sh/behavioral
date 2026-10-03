@@ -4,10 +4,13 @@ import type { ServerWebSocket } from 'bun'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { BunKeychain, type Keychain } from '../actuators/keychain-oauth-provider.ts'
 import { bundleBProgramWorker, connectSrcPolicy } from '../b-program/bundle-worker.ts'
+import { traceSpaceOf } from '../b-program/composition-port.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
+import type { Trace } from '../behavioral/behavioral.types.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
 import { B_PROGRAM_WORKER_PATH } from '../controller/worker-transport.ts'
+import { ROOT_SPACE } from '../faculties/faculties.constants.ts'
 import {
   createFacultyBridge,
   DAEMON_BRIDGE_PATH,
@@ -24,6 +27,7 @@ import {
   wireRuntimeEgress,
 } from './serve.ts'
 import { ensureSessionToken, sessionCookie, validSession } from './session.ts'
+import { traceLogSink } from './trace-consumer.ts'
 
 /**
  * The instance socket — `<home>/instance.sock`, the attach lane.
@@ -49,6 +53,13 @@ export const instanceSocketPath = (home: string): string => join(home, 'instance
 export type SocketHost = {
   path: string
   close: () => Promise<void>
+  /**
+   * The trace fold's entry: an (already-redacted) trace enters the daemon's
+   * ONE observability stream — the JSONL persistence home + the scoped
+   * fan-out. The bridge's push leg wires here; the daemon-pipe consumers
+   * (the e2e fixture host) reuse it.
+   */
+  pushTrace: (trace: Trace) => void
 }
 
 /**
@@ -116,8 +127,24 @@ export const createSocketHost = async ({
     .delete()
     .catch(() => {})
 
-  const clients = new Set<ServerWebSocket<unknown>>()
+  /** The attach lane's clients, with their R3 scope (composition vs driver). */
+  type ClientScope = { scope: 'composition' | 'driver'; space?: string }
+  const clients = new Map<ServerWebSocket<unknown>, ClientScope>()
   const frame = (method: string, params: unknown): string => JSON.stringify({ jsonrpc: '2.0', method, params })
+
+  /**
+   * The scoped trace delivery (pin 3): a composition-scoped client receives
+   * ONLY its declared space's traces; a driver client receives ONLY the
+   * daemon's root-space traffic. The two streams are disjoint — a client's
+   * scope never widens what it receives. Default (no declaration): driver.
+   */
+  const emitTrace = (trace: unknown): void => {
+    const space = traceSpaceOf(trace as Trace)
+    for (const [ws, client] of clients) {
+      const deliver = client.scope === 'composition' ? space === client.space : space === ROOT_SPACE
+      if (deliver) ws.send(frame('trace', trace))
+    }
+  }
 
   // The session (R3): minted per instance, revocable at `<home>/session.token`.
   // The browser gets the httpOnly cookie (set with the page); CLI attachers
@@ -131,11 +158,24 @@ export const createSocketHost = async ({
 
   // The faculty bridge (the thin faculty host): the composition capability —
   // the actuator trio over the landed socket-lane framing, session-gated.
-  // Closed when the host configures no lanes (fail-closed).
+  // Closed when the host configures no lanes (fail-closed). The trace leg's
+  // fold wires here too: the bridge's pushed (already-redacted) stream lands
+  // in the daemon's ONE observability stream — the JSONL persistence home +
+  // the scoped fan-out. Scoped by construction: only sessioned composition
+  // connects reach the bridge's push leg.
+  const pushedSink = traceLogSink({ root: join(home, 'traces') })
+  const pushTrace = (trace: Trace): void => {
+    pushedSink(trace)
+    emitTrace(trace)
+  }
   const facultyBridge =
     facultyLanes === undefined
       ? undefined
-      : createFacultyBridge({ laneBuilders: facultyLanes, session: (req) => validSession(req, sessionToken) })
+      : createFacultyBridge({
+          laneBuilders: facultyLanes,
+          session: (req) => validSession(req, sessionToken),
+          pushTrace,
+        })
 
   /**
    * R6's header (list-is-config): the emitted `connect-src` carries ONLY
@@ -146,18 +186,18 @@ export const createSocketHost = async ({
   const cspHeader = (req: Request): string =>
     connectSrcPolicy([new URL(req.url).origin, ...Object.values(inferenceProviders)])
 
-  const server = Bun.serve<FacultyBridgeSocketData | undefined>({
+  const server = Bun.serve<FacultyBridgeSocketData | { sessioned: boolean } | undefined>({
     unix: path,
     // MINIMAL: ws idleTimeout max is 255s; long-lived attaches get the ceiling
     // until a heartbeat/reconnect story is needed.
     websocket: {
       idleTimeout: 255,
       open: (ws) => {
-        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+        if ((ws.data as { kind?: string } | undefined)?.kind === FACULTY_BRIDGE_SOCKET) {
           facultyBridge?.open(ws as ServerWebSocket<FacultyBridgeSocketData>)
           return
         }
-        clients.add(ws)
+        clients.set(ws, { scope: 'driver' })
         // Hello-with-id: one connection-scoped notification carrying the
         // engine identity, before any trace traffic — an attacher learns the
         // instance id immediately, even on a fresh idle instance. Not an
@@ -171,7 +211,7 @@ export const createSocketHost = async ({
         }
       },
       message: (ws, message) => {
-        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+        if ((ws.data as { kind?: string } | undefined)?.kind === FACULTY_BRIDGE_SOCKET) {
           facultyBridge?.message(
             ws as ServerWebSocket<FacultyBridgeSocketData>,
             typeof message === 'string' ? message : new TextDecoder().decode(message),
@@ -191,6 +231,28 @@ export const createSocketHost = async ({
           return
         }
         if (parsed.id === undefined) {
+          // The R3 scope declaration rides the attach lane as its own
+          // notification (first frame, transport-level — never dispatched).
+          // Fail-closed: the composition capability additionally requires the
+          // session (the bearer presentation); an unauthenticated composition
+          // declaration downgrades to driver.
+          if (parsed.method === 'attach_scope') {
+            // Fail-closed: the composition capability additionally requires the
+            // session (checked at upgrade — the bearer/cookie presentation);
+            // an unauthenticated composition declaration stays driver.
+            const params = parsed.params as { scope?: string; space?: string } | undefined
+            const client = clients.get(ws)
+            const sessioned = (ws.data as { sessioned?: boolean } | undefined)?.sessioned === true
+            if (
+              client !== undefined &&
+              params?.scope === 'composition' &&
+              typeof params.space === 'string' &&
+              sessioned
+            ) {
+              clients.set(ws, { scope: 'composition', space: params.space })
+            }
+            return
+          }
           // A notification has no response channel; a handler failure must not
           // reject the event loop and kill the host.
           try {
@@ -218,7 +280,7 @@ export const createSocketHost = async ({
         }
       },
       close: (ws) => {
-        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+        if ((ws.data as { kind?: string } | undefined)?.kind === FACULTY_BRIDGE_SOCKET) {
           facultyBridge?.close(ws as ServerWebSocket<FacultyBridgeSocketData>)
           return
         }
@@ -252,18 +314,20 @@ export const createSocketHost = async ({
         response.headers.set('content-security-policy', cspHeader(req))
         return response
       }
-      return server.upgrade(req, { data: undefined })
+      return server.upgrade(req, { data: { sessioned: validSession(req, sessionToken) } })
         ? undefined
         : new Response('behavioral instance socket — a WebSocket upgrade is required\n', { status: 426 })
     },
   })
 
-  // Egress: one redaction pass, the JSONL log, then fan out to every client.
+  // Egress: one redaction pass, the JSONL log, then fan out — traces scoped
+  // per client (pin 3), other emissions (the ui_* selections) unscoped.
   wireRuntimeEgress({
     runtime,
     home,
     emit: (method, params) => {
-      for (const ws of clients) ws.send(frame(method, params))
+      if (method === 'trace') return emitTrace(params)
+      for (const ws of clients.keys()) ws.send(frame(method, params))
     },
   })
 
@@ -277,6 +341,7 @@ export const createSocketHost = async ({
 
   return {
     path,
+    pushTrace,
     close: async () => {
       await server.stop(true)
       await Bun.file(path)

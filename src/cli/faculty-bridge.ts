@@ -36,8 +36,8 @@
  */
 
 import { DAEMON_BRIDGE_PATH } from '../b-program/b-program.worker.ts'
-import type { BPEvent, JsonObject, Thread } from '../behavioral/behavioral.types.ts'
-import { ACTUATOR_ROUTE, FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import type { BPEvent, JsonObject, Thread, Trace } from '../behavioral/behavioral.types.ts'
+import { ACTUATOR_ROUTE, FACULTY_MESSAGE_KINDS, TRACE_PUSH_KIND } from '../faculties/faculties.constants.ts'
 import type { FacultyLane, FacultyWireFrame, LaneBuilder } from '../faculties/faculties.types.ts'
 import { validSession } from './session.ts'
 
@@ -116,11 +116,19 @@ const pumpFor =
 export const createFacultyBridge = ({
   laneBuilders,
   session = (req: Request): boolean => validSession(req, ''),
+  pushTrace,
 }: {
   /** The actuator lane builders (the trio per the config allow-list). */
   laneBuilders: LaneBuilder[]
   /** The session gate (R3) — an unauthenticated attach never reaches the lanes. */
   session?: (req: Request) => boolean
+  /**
+   * The one-observability-stream fold: a pushed trace (the composition
+   * worker's already-redacted stream) enters the daemon's stream here —
+   * the JSONL persistence home + the scoped fan-out. Scoped by
+   * construction: only sessioned composition connects reach this leg.
+   */
+  pushTrace?: (trace: Trace) => void
 }): FacultyBridge => ({
   upgrade: (req, upgrade) => {
     // Pin 3, fail-closed: no session → no faculty-wire traffic, ever.
@@ -161,6 +169,13 @@ export const createFacultyBridge = ({
     }
     if (typeof frame?.type !== 'string' || typeof frame.detail !== 'object' || frame.detail === null) {
       failVisible(ws, 'bridge', `malformed frame: expected a wire event with a type and detail object`)
+      return
+    }
+    // The trace leg (the one-observability-stream ruling): the worker's
+    // already-redacted stream folds into the daemon's stream — never routed
+    // to the lanes.
+    if (frame.type === TRACE_PUSH_KIND) {
+      pushTrace?.(frame.detail as unknown as Trace)
       return
     }
     const lane = ws.data.routes.get(frame.type)
