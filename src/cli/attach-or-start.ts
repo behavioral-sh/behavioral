@@ -91,6 +91,8 @@ export const attachOrStart = async ({
     if (cleaned) return
     cleaned = true
     await host.close()
+    // The exit-flush rule: no terminate with registry puts in flight.
+    await runtime.flush?.()
     runtime.terminate()
     await lock.release()
   }

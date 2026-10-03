@@ -10,15 +10,9 @@ import {
   validateShellRequestEvent,
   validateStoreRequestEvent,
 } from '../../actuators/actuators.schemas.ts'
-import { behavioralHome } from '../../actuators/behavioral-home.ts'
 import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
-import {
-  foldPluginThreadSnapshots,
-  readPluginThreadRegistry,
-  watchPluginThreadRegistry,
-} from '../../cli/plugin-thread-registry.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   ADMISSION_EVENT_TYPES,
@@ -31,6 +25,13 @@ import { startDecisionsServer } from '../../faculties/tests/fixtures/decisions-s
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { hashString } from '../../utils.ts'
 import { bProgram, type LaneBuilder } from '../b-program.ts'
+import {
+  PLUGIN_THREADS_REGISTRY_COLLECTION,
+  PLUGIN_THREADS_REGISTRY_KEY,
+  PLUGIN_THREADS_REGISTRY_VERSION,
+  pluginThreadInstanceHash,
+  watchPluginThreadRegistry,
+} from '../plugin-threads.registry.ts'
 import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../plugin-threads.threads.ts'
 import {
   REMOTE_MCP_EVENT_TYPES,
@@ -153,31 +154,62 @@ const packsFor = (names: Set<string>): Thread[] => {
 /**
  * Construct the composition, attach observation, then start (the boot flush).
  * The default world: all three actuator lanes + their reachability-gated
- * packs + the registry fold (the entry's boot half) + the registry watcher
- * (the entry's durable-write legs) — the full entry constructor, in spec
- * miniature.
+ * packs + the registry watcher (the entry's durable-write legs) — the full
+ * entry constructor, in spec miniature.
+ *
+ * THE TEMP-HOME TRIPWIRE: every lane boots against a per-call temp home via
+ * the spawn env-override pattern (`env: { BEHAVIORAL_HOME: <temp> }` —
+ * explicit threading, never runtime mutation). The terminate wrapper removes
+ * the home, so no spec leaks store-db debris into the real home.
  */
 export const startRuntime = (
-  options: { actuators?: SpecLane[]; threads?: Thread[]; models?: Parameters<typeof bProgram>[0]['models'] } = {},
+  options: {
+    actuators?: SpecLane[]
+    threads?: Thread[]
+    models?: Parameters<typeof bProgram>[0]['models']
+    /** Caller-owned home — shared across runs (multi-run choreographies); the caller cleans it. */
+    home?: string
+  } = {},
 ) => {
+  const callerHome = options.home
+  const home = callerHome ?? mkdtempSync(join(tmpdir(), 'bprogram-spec-'))
+  const env = { BEHAVIORAL_HOME: home }
   const traces: Trace[] = []
-  const lanes = options.actuators ?? [shellLane(), storeLane(), securityLane()]
+  const lanes = options.actuators ?? [shellLane(env), storeLane(env), securityLane(env)]
   const names = new Set(lanes.map((lane) => lane.name))
   const runtime = bProgram({
     actuators: lanes.map((lane) => lane.build),
-    threads: [
-      ...(options.threads ?? []),
-      ...packsFor(names),
-      ...foldPluginThreadSnapshots(readPluginThreadRegistry(behavioralHome())),
-    ],
+    threads: [...(options.threads ?? []), ...packsFor(names)],
     ...(options.models === undefined ? {} : { models: options.models }),
   })
   runtime.useTrace((trace) => {
     traces.push(trace)
   })
-  watchPluginThreadRegistry({ runtime, home: behavioralHome() })
+  const registry = names.has('store') ? watchPluginThreadRegistry({ runtime }) : undefined
   runtime.start()
-  return { runtime, traces }
+  let cleaned = false
+  const cleanup = async (): Promise<void> => {
+    if (cleaned) return
+    cleaned = true
+    await registry?.flush()
+    runtime.terminate()
+    if (callerHome === undefined) rmSync(home, { recursive: true, force: true })
+  }
+  return {
+    runtime: {
+      ...runtime,
+      // Terminate stays SYNCHRONOUS (the lanes die with the call — the
+      // ownership pin); the temp-home sweep rides after it.
+      terminate: (): void => {
+        runtime.terminate()
+        if (callerHome === undefined) rmSync(home, { recursive: true, force: true })
+      },
+    },
+    traces,
+    home,
+    registry,
+    cleanup,
+  }
 }
 
 describe('bProgram — the runtime composition', () => {
@@ -1341,22 +1373,20 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  // The plugin-thread admission registry — host-local under `<home>`
-  // (BEHAVIORAL_HOME isolates a whole harness instance, the documented
-  // mechanism): admitted decisions snapshot the validated thread, a fresh
-  // boot mounts the snapshot and never re-imports the plugin file; rejected
-  // decisions stay out, visibly; a changed content hash re-arms the proposal.
-  describe('the plugin-thread admission registry', () => {
-    const withIsolatedHome = async (run: (home: string, plugin: string) => Promise<void>): Promise<void> => {
-      const home = mkdtempSync(join(tmpdir(), 'bprogram-home-'))
+  // The plugin-thread admission registry — the STORE-RESIDENT record (the
+  // file registry died): admitted decisions snapshot the validated thread
+  // stamped with the instance identity, rejected decisions carry the reason,
+  // a changed content hash re-arms the proposal. Read-back is a second store
+  // spawn against the SAME per-spec temp home (the tripwire: explicit
+  // env threading, never runtime mutation). The boot-mount semantics (the
+  // unchanged-key snapshot mount, never re-import) belong to the boot
+  // reconciliation slice.
+  describe('the plugin-thread admission registry (store record)', () => {
+    const withIsolatedHome = async (run: (plugin: string) => Promise<void>): Promise<void> => {
       const plugin = mkdtempSync(join(tmpdir(), 'bprogram-plugin-'))
-      const prevHome = process.env.BEHAVIORAL_HOME
-      process.env.BEHAVIORAL_HOME = home
       try {
-        await run(home, plugin)
+        await run(plugin)
       } finally {
-        process.env.BEHAVIORAL_HOME = prevHome
-        rmSync(home, { recursive: true, force: true })
         rmSync(plugin, { recursive: true, force: true })
       }
     }
@@ -1371,12 +1401,41 @@ describe('bProgram — the runtime composition', () => {
       )
     }
 
-    test('admit → a fresh boot mounts the snapshot with no plugin-file import — the OLD snapshot survives a post-admission file mutation', async () => {
-      await withIsolatedHome(async (home, plugin) => {
+    /** The record reader — a second store spawn against the SAME temp home db. */
+    const readRegistryRecord = async (home: string): Promise<Record<string, unknown>> => {
+      const store = storeLane({ BEHAVIORAL_HOME: home })
+      const results: Array<Record<string, unknown>> = []
+      const probe = bProgram({ actuators: [store.build] })
+      probe.useTrace((trace) => {
+        if (trace.kind === TRACE_MESSAGE_KINDS.selection) results.push(trace.selected.detail as Record<string, unknown>)
+      })
+      probe.start()
+      probe.trigger({
+        type: FACULTY_MESSAGE_KINDS.store_request,
+        detail: {
+          id: 'record-read',
+          op: 'get',
+          input: { collection: PLUGIN_THREADS_REGISTRY_COLLECTION, key: PLUGIN_THREADS_REGISTRY_KEY },
+        },
+      })
+      const deadline = Date.now() + 8000
+      for (;;) {
+        const found = results.find((d) => d.id === 'record-read' && d.ok !== undefined)
+        if (found !== undefined) {
+          probe.terminate()
+          return ((found.result as { value?: { entries?: Record<string, unknown> } } | undefined)?.value?.entries ??
+            {}) as Record<string, unknown>
+        }
+        if (Date.now() > deadline) throw new Error('registry record never read back')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+
+    test('admit → the record snapshots the validated thread with the stamped instance identity', async () => {
+      await withIsolatedHome(async (plugin) => {
         writePluginThread(plugin, 'hello')
-        // run 1: the proposal admits, the registry snapshots the validated thread
         {
-          const { runtime, traces } = startRuntime()
+          const { runtime, traces, registry, home } = startRuntime()
           try {
             runtime.trigger({
               type: PLUGIN_THREADS_EVENT_TYPES.proposal,
@@ -1389,44 +1448,23 @@ describe('bProgram — the runtime composition', () => {
                   (t as { thread?: { name?: string } }).thread?.name === 'greeter',
               ),
             )
-          } finally {
-            runtime.terminate()
-          }
-        }
-        expect(Object.keys(readPluginThreadRegistry(home))).toHaveLength(1)
-        // the registry's admitted snapshot carries the provenance join — the
-        // agent query joins thread → plugin origin on the source hash (the
-        // registry's OWN content hash stays the re-adjudication key; two
-        // hashes, two jobs)
-        {
-          const [entry] = Object.values(readPluginThreadRegistry(home))
-          expect(entry?.status).toBe('admitted')
-          expect(entry?.status === 'admitted' && entry.thread.sourceHash).toBe(hashString(plugin))
-        }
-        // the plugin file mutates post-admission — the content hash re-arms…
-        writePluginThread(plugin, 'hello2')
-        // …but a fresh boot mounts the SNAPSHOT: greeter is live with NO
-        // proposal, NO import shell_request — the old requested event fires.
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            await waitForTraces(traces, () =>
-              traces.some(
-                (t) =>
-                  t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { name?: string } }).thread?.name === 'greeter',
-              ),
-            )
-            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'hello'))
-            expect(selectionsOf(traces).some((t) => t.selected.type === 'hello2')).toBe(false)
-            expect(
-              selectionsOf(traces).some(
-                (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.shell_request &&
-                  (t.selected.detail as { label?: string } | undefined)?.label === 'plugin-threads',
-              ),
-            ).toBe(false)
-            expect(selectionsOf(traces).some((t) => t.selected.type === 'hello')).toBe(true)
+            await registry?.flush()
+            const entries = await readRegistryRecord(home)
+            expect(Object.keys(entries)).toHaveLength(1)
+            const [entry] = Object.values(entries) as Array<{
+              status: string
+              thread?: { sourceHash?: number; instanceHash?: number }
+              instanceHash?: number
+              v?: number
+            }>
+            expect(entry?.status).toBe('admitted')
+            expect(entry?.thread?.sourceHash).toBe(hashString(plugin))
+            // THE THIRD HASH: djb2(canonical plugin path + space + NAME) — the
+            // registry's OWN content hash stays the re-adjudication key; two
+            // hashes, two jobs, plus the mount identity.
+            expect(entry?.instanceHash).toBe(pluginThreadInstanceHash({ plugin, name: 'greeter' }))
+            expect(entry?.thread?.instanceHash).toBe(entry?.instanceHash)
+            expect(entry?.v).toBe(PLUGIN_THREADS_REGISTRY_VERSION)
           } finally {
             runtime.terminate()
           }
@@ -1434,14 +1472,8 @@ describe('bProgram — the runtime composition', () => {
       })
     }, 20_000)
 
-    // The registry tests boot multiple full compositions (scans + judged
-    // admissions per boot) — process-heavy choreography that exceeds bun's
-    // 5s default on slow runners (the CI lesson: green on CI with margin,
-    // 5.6s on a 4x-slow container). The explicit timeout buys the runner
-    // headroom; waitForTraces' own 8s deadline still fails fast on a
-    // genuine break.
-    test('reject → the registry holds it out: no boot mount, no re-adjudication — the skip is visible', async () => {
-      await withIsolatedHome(async (home, plugin) => {
+    test('reject → the record holds the reason, visibly', async () => {
+      await withIsolatedHome(async (plugin) => {
         const dir = join(plugin, 'sh.behavioral/threads')
         mkdirSync(dir, { recursive: true })
         // a self-sustaining request loop — the livelock guard rejects it
@@ -1449,123 +1481,86 @@ describe('bProgram — the runtime composition', () => {
           join(dir, 't.ts'),
           "export const looper = { name: 'looper',          description: 'Test thread.', rules: [{ request: { type: 'spin' } }] }\n",
         )
-        // run 1: the proposal is rejected — the outcome is visible, the registry records why
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            runtime.trigger({
-              type: PLUGIN_THREADS_EVENT_TYPES.proposal,
-              detail: { id: 'pt1', input: { plugin, file: 't.ts' } },
-            })
-            await waitForTraces(
-              traces,
-              (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected),
-              20_000,
-            )
-          } finally {
-            runtime.terminate()
-          }
-        }
-        const registry = readPluginThreadRegistry(home)
-        const entry = Object.values(registry)[0]
-        expect(entry?.status).toBe('rejected')
-        if (entry?.status === 'rejected') expect(entry.reason.length).toBeGreaterThan(0)
-        // a fresh boot does NOT mount it (the fold skips rejected keys)
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            await Bun.sleep(300)
-            expect(
-              traces.some(
-                (t) =>
-                  t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { name?: string } }).thread?.name === 'looper',
-              ),
-            ).toBe(false)
-          } finally {
-            runtime.terminate()
-          }
-        }
-        // run 2: a re-proposal of the same content — the WITHIN-run skip
-        // fires on a decided key; the CROSS-run skip (the old composition's
-        // registry read) is the open rewire finding — recorded in plan.md.
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            runtime.trigger({
-              type: PLUGIN_THREADS_EVENT_TYPES.proposal,
-              detail: { id: 'pt2', input: { plugin, file: 't.ts' } },
-            })
-            // The re-proposal re-imports (the hash is only known after the
-            // worker import — the designed import moment)…
-            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'plugin_threads_imported'), 20_000)
-            // …and the re-proposal re-adjudicates: the fresh rejection
-            // re-records the decided key (the within-run decided map; the
-            // durable record is the entry's registry watcher).
-            await waitForTraces(
-              traces,
-              (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected),
-              20_000,
-            )
-          } finally {
-            runtime.terminate()
-          }
+        const { runtime, traces, registry, home } = startRuntime()
+        try {
+          runtime.trigger({
+            type: PLUGIN_THREADS_EVENT_TYPES.proposal,
+            detail: { id: 'pt1', input: { plugin, file: 't.ts' } },
+          })
+          await waitForTraces(traces, (s) => s.some((t) => t.selected.type === ADMISSION_EVENT_TYPES.rejected), 20_000)
+          await registry?.flush()
+          const entries = await readRegistryRecord(home)
+          const entry = Object.values(entries)[0] as { status: string; reason?: string; v?: number }
+          expect(entry?.status).toBe('rejected')
+          expect(entry?.reason?.length).toBeGreaterThan(0)
+          expect(entry?.v).toBe(PLUGIN_THREADS_REGISTRY_VERSION)
+        } finally {
+          runtime.terminate()
         }
       })
     }, 30_000)
 
-    test('a changed hash re-arms the proposal — the new thread code is a candidate again', async () => {
-      await withIsolatedHome(async (home, plugin) => {
-        writePluginThread(plugin, 'hello')
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            runtime.trigger({
-              type: PLUGIN_THREADS_EVENT_TYPES.proposal,
-              detail: { id: 'pt1', input: { plugin, file: 't.ts' } },
-            })
-            await waitForTraces(traces, () =>
-              traces.some(
-                (t) =>
-                  t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { name?: string } }).thread?.name === 'greeter',
-              ),
-            )
-          } finally {
-            runtime.terminate()
+    test('a changed hash re-arms the proposal — the record holds both hashes as independent decisions', async () => {
+      await withIsolatedHome(async (plugin) => {
+        // ONE home across both runs — the store record is cross-run state.
+        const sharedHome = mkdtempSync(join(tmpdir(), 'bprogram-shared-'))
+        try {
+          writePluginThread(plugin, 'hello')
+          {
+            const { runtime, traces, registry, home } = startRuntime({ home: sharedHome })
+            try {
+              runtime.trigger({
+                type: PLUGIN_THREADS_EVENT_TYPES.proposal,
+                detail: { id: 'pt1', input: { plugin, file: 't.ts' } },
+              })
+              await waitForTraces(traces, () =>
+                traces.some(
+                  (t) =>
+                    t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+                    (t as { thread?: { name?: string } }).thread?.name === 'greeter',
+                ),
+              )
+              await registry?.flush()
+              expect(Object.keys(await readRegistryRecord(home))).toHaveLength(1)
+            } finally {
+              runtime.terminate()
+            }
           }
-        }
-        // the plugin updates — the content hash changes, the proposal re-arms
-        writePluginThread(plugin, 'hello2')
-        {
-          const { runtime, traces } = startRuntime()
-          try {
-            runtime.trigger({
-              type: PLUGIN_THREADS_EVENT_TYPES.proposal,
-              detail: { id: 'pt2', input: { plugin, file: 't.ts' } },
-            })
-            // the import re-runs in the worker (a new shell_request)…
-            await waitForTraces(traces, (s) =>
-              s.some(
-                (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.shell_request &&
-                  (t.selected.detail as { label?: string } | undefined)?.label === 'plugin-threads',
-              ),
-            )
-            // …and the NEW code proposes add_thread again — never silently admitted
-            await waitForTraces(traces, (s) =>
-              s.some(
-                (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
-                  (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
-              ),
-            )
-            await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'hello2'))
-            // the registry now holds both hashes — independent decisions
-            expect(Object.keys(readPluginThreadRegistry(home))).toHaveLength(2)
-          } finally {
-            runtime.terminate()
+          // the plugin updates — the content hash changes, the proposal re-arms
+          writePluginThread(plugin, 'hello2')
+          {
+            const { runtime, traces, registry, home } = startRuntime({ home: sharedHome })
+            try {
+              runtime.trigger({
+                type: PLUGIN_THREADS_EVENT_TYPES.proposal,
+                detail: { id: 'pt2', input: { plugin, file: 't.ts' } },
+              })
+              // the import re-runs in the worker (a new shell_request)…
+              await waitForTraces(traces, (s) =>
+                s.some(
+                  (t) =>
+                    t.selected.type === FACULTY_MESSAGE_KINDS.shell_request &&
+                    (t.selected.detail as { label?: string } | undefined)?.label === 'plugin-threads',
+                ),
+              )
+              // …and the NEW code proposes add_thread again — never silently admitted
+              await waitForTraces(traces, (s) =>
+                s.some(
+                  (t) =>
+                    t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
+                    (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
+                ),
+              )
+              await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'hello2'))
+              await registry?.flush()
+              // the record now holds both hashes — independent decisions
+              expect(Object.keys(await readRegistryRecord(home))).toHaveLength(2)
+            } finally {
+              runtime.terminate()
+            }
           }
+        } finally {
+          rmSync(sharedHome, { recursive: true, force: true })
         }
       })
     }, 20_000)

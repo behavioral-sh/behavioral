@@ -25,6 +25,7 @@ import {
   CompositionPortTraceSubscribeFrameSchema,
   traceSpaceOf,
 } from './composition-port.ts'
+import { watchPluginThreadRegistry } from './plugin-threads.registry.ts'
 import { validateHelloDetail } from './runtime-identity.ts'
 import { redactTrace } from './trace-redact.ts'
 
@@ -177,6 +178,12 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
   const boot = (models: Parameters<typeof bProgram>[0]['models']): Runtime => {
     if (runtime !== undefined) return runtime
     const booted = bProgram({ threads, models, actuators: laneBuilders })
+    // The registry's durable-write legs — over the default leg's socket-lane
+    // store (queue-before-open covers the boot window; a fixture-provided
+    // actuator leg has no known store lane — no watcher, the trace-pipe
+    // precedent). No exit exists in-browser; the flush gate is a daemon
+    // concern.
+    if (actuators === undefined) watchPluginThreadRegistry({ runtime: booted })
     booted.useTrace((trace: Trace) => {
       // The upstream trace leg pushes the full redacted stream (the daemon is
       // the persistence home — full fidelity, independent of the page's

@@ -14,6 +14,7 @@ import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
 import { INFERENCE_PROXY_PREFIX } from '../b-program/composition-port.ts'
+import { watchPluginThreadRegistry } from '../b-program/plugin-threads.registry.ts'
 import { pluginThreadsThreads } from '../b-program/plugin-threads.threads.ts'
 import { remoteMcpThreads } from '../b-program/remote-mcp.threads.ts'
 import { rpcAuthThreads } from '../b-program/rpc-auth.threads.ts'
@@ -29,22 +30,23 @@ import {
 } from '../faculties/system-one.threads.ts'
 import { createJsonRpcServer, type JsonRpcMessage, type JsonRpcServer } from './json-rpc.ts'
 import { type BehavioralConfig, loadConfig } from './load-config.ts'
-import {
-  foldPluginThreadSnapshots,
-  readPluginThreadRegistry,
-  watchPluginThreadRegistry,
-} from './plugin-thread-registry.ts'
 import { collectSecretValues, createTraceConsumer, traceLogSink } from './trace-consumer.ts'
 
 /** The engine identity a host hands to its clients — the hello's payload. */
 export type RuntimeIdentity = { instanceId: string; sessionId: string }
 
 /**
- * The host's runtime surface — a narrow view of {@link bProgram}'s handle.
+ * The host's runtime surface — a narrow view of {@link bProgram}'s handle,
+ * plus the durable-write exit gate when the store lane is on: `flush` awaits
+ * the registry watcher's in-flight puts (the composition must not terminate
+ * with puts in flight — the exit-flush rule); absent without a store lane.
  *
  * @public
  */
-export type HostRuntime = Pick<ReturnType<typeof bProgram>, 'trigger' | 'useTrace' | 'start' | 'terminate' | 'identity'>
+export type HostRuntime = Pick<
+  ReturnType<typeof bProgram>,
+  'trigger' | 'useTrace' | 'start' | 'terminate' | 'identity'
+> & { flush?: () => Promise<void> }
 
 /**
  * Map one inbound JSON-RPC message onto the engine — the ONE host-side
@@ -296,7 +298,6 @@ export const actuatorLaneBuilders = (enabled: Iterable<string>): LaneBuilder[] =
  * when shell + store + systemTwo are on.
  */
 export const createRuntime = (config: BehavioralConfig = {}): HostRuntime => {
-  const home = behavioralHome()
   const enabled = new Set<string>(config.actuators ?? ['shell', 'store', 'security'])
   const systemOneConfigured = config.systemOne !== undefined && config.systemOne !== null
   const systemTwoConfigured = config.systemTwo !== undefined && config.systemTwo !== null
@@ -322,8 +323,9 @@ export const createRuntime = (config: BehavioralConfig = {}): HostRuntime => {
     )
   }
   if (enabled.has('shell') && enabled.has('store') && systemTwoConfigured) threads.push(...uiThreads)
-  // The registry's boot fold: admitted snapshots mount as threads.
-  threads.push(...foldPluginThreadSnapshots(readPluginThreadRegistry(home)))
+  // (The file registry's boot fold is GONE: admitted snapshots mount through
+  // the store-resident record's boot reconciliation — a later slice. The
+  // pre-boot synchronous fold died with the file.)
 
   // ── The models: init-frame payloads + the ui generation target. ────────────
   const models: Parameters<typeof bProgram>[0]['models'] = {}
@@ -332,9 +334,11 @@ export const createRuntime = (config: BehavioralConfig = {}): HostRuntime => {
   if (config.ui !== undefined) models.ui = config.ui
 
   const runtime = bProgram({ threads, models, actuators: laneBuilders })
-  // The registry's durable-write legs: the entry's own trace subscription.
-  watchPluginThreadRegistry({ runtime, home })
-  return runtime
+  // The registry's durable-write legs: the entry's own trace subscription,
+  // writing store puts through the composition's routing. The flush handle
+  // rides the runtime surface — the exit-flush rule's gate.
+  const registry = enabled.has('store') ? watchPluginThreadRegistry({ runtime }) : undefined
+  return { ...runtime, ...(registry === undefined ? {} : { flush: registry.flush }) }
 }
 
 /**
@@ -353,5 +357,7 @@ export const serve = async (): Promise<void> => {
     },
   })
   await rpc.done
+  // The exit-flush rule: no terminate with registry puts in flight.
+  await runtime.flush?.()
   runtime.terminate()
 }
