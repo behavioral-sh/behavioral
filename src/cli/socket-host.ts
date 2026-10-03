@@ -2,13 +2,22 @@ import { join } from 'node:path'
 import type { JSONSchemaType } from 'ajv'
 import type { ServerWebSocket } from 'bun'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
+import { BunKeychain, type Keychain } from '../actuators/keychain-oauth-provider.ts'
 import { bundleBProgramWorker } from '../b-program/bundle-worker.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
 import { B_PROGRAM_WORKER_PATH } from '../controller/worker-transport.ts'
 import type { JsonRpcMessage } from './json-rpc.ts'
-import { dispatchToRuntime, type HostRuntime, type RuntimeIdentity, wireRuntimeEgress } from './serve.ts'
+import {
+  createInferenceProxy,
+  dispatchToRuntime,
+  type HostRuntime,
+  INFERENCE_PROXY_PREFIX,
+  type RuntimeIdentity,
+  wireRuntimeEgress,
+} from './serve.ts'
+import { ensureSessionToken, sessionCookie, validSession } from './session.ts'
 
 /**
  * The instance socket — `<home>/instance.sock`, the attach lane.
@@ -75,11 +84,17 @@ export const createSocketHost = async ({
   runtime,
   home = behavioralHome(),
   dev = false,
+  inferenceProviders = {},
+  keychain,
 }: {
   runtime: HostRuntime
   home?: string
   /** Rebuild the controller bundle per request instead of caching it. */
   dev?: boolean
+  /** The configured proxied providers (R5) — id → allow-listed forward base. */
+  inferenceProviders?: Record<string, string>
+  /** The custody floor; defaults to the OS keychain. */
+  keychain?: Keychain
 }): Promise<SocketHost> => {
   const path = instanceSocketPath(home)
   // A socket file left by a dead instance cannot be bound again — remove it
@@ -90,6 +105,16 @@ export const createSocketHost = async ({
 
   const clients = new Set<ServerWebSocket<unknown>>()
   const frame = (method: string, params: unknown): string => JSON.stringify({ jsonrpc: '2.0', method, params })
+
+  // The session (R3): minted per instance, revocable at `<home>/session.token`.
+  // The browser gets the httpOnly cookie (set with the page); CLI attachers
+  // present the bearer. The inference proxy is the session's first consumer.
+  const sessionToken = await ensureSessionToken(home)
+  const inferenceProxy = createInferenceProxy({
+    providers: inferenceProviders,
+    session: (req) => validSession(req, sessionToken),
+    keychain: keychain ?? BunKeychain(),
+  })
 
   const server = Bun.serve({
     unix: path,
@@ -157,10 +182,15 @@ export const createSocketHost = async ({
     },
     fetch: async (req, server) => {
       const url = new URL(req.url)
+      if (url.pathname.startsWith(INFERENCE_PROXY_PREFIX)) return inferenceProxy(req)
       if (url.pathname === CONNECT_BEHAVIORAL_ROUTE) {
         // Prod: one AOT bundle, cached. Dev: rebundle per request.
         const routes = await bundleController({ dev })
-        return routes[CONNECT_BEHAVIORAL_ROUTE] ?? new Response(null, { status: 404 })
+        const response = routes[CONNECT_BEHAVIORAL_ROUTE] ?? new Response(null, { status: 404 })
+        // The browser session presentation rides the page (R3 — the cookie is
+        // httpOnly and never enters a frame).
+        response.headers.set('set-cookie', sessionCookie(sessionToken))
+        return response
       }
       if (url.pathname === B_PROGRAM_WORKER_PATH) {
         // The composition worker at the controller's conventional spawn path —

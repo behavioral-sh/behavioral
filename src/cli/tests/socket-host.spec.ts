@@ -2,11 +2,15 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { InMemoryKeychain } from '../../actuators/keychain-oauth-provider.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import { CONNECT_BEHAVIORAL_ROUTE } from '../../controller/bundle-controller.ts'
 import type { ClientMessage } from '../../controller/controller.types.ts'
 import { B_PROGRAM_WORKER_PATH } from '../../controller/worker-transport.ts'
+import { SESSION_COOKIE_NAME, sessionTokenPath } from '../session.ts'
 import { createSocketHost, instanceSocketPath } from '../socket-host.ts'
+import { PROVIDER_TOKEN, startInferenceProvider } from './fixtures/inference-provider.ts'
 
 /** The identity the engine stamps on every trace — the hello's payload. */
 const identity = { instanceId: 'bp_instance_test', sessionId: 'sess_test' }
@@ -304,6 +308,56 @@ describe('createSocketHost', () => {
       ])
     } finally {
       await host.close()
+    }
+  })
+
+  test('the inference proxy rides the carrier: the page mints the session cookie, the cookie authenticates the proxied call', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const provider = await startInferenceProvider({ token: PROVIDER_TOKEN })
+    const keychain = InMemoryKeychain()
+    await keychain.set('provider:typesafe:token', PROVIDER_TOKEN)
+    const host = await createSocketHost({
+      runtime: fake.runtime,
+      home,
+      inferenceProviders: { typesafe: provider.url },
+      keychain,
+    })
+    try {
+      // The page response mints the browser presentation: the httpOnly cookie.
+      const page = await fetch(`http://localhost${CONNECT_BEHAVIORAL_ROUTE}`, { unix: host.path })
+      expect(page.status).toBe(200)
+      const setCookie = page.headers.get('set-cookie') ?? ''
+      expect(setCookie).toContain(`${SESSION_COOKIE_NAME}=`)
+      expect(setCookie).toContain('HttpOnly')
+      const token = (setCookie.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`)) ?? [])[1]
+      expect(typeof token).toBe('string')
+      // The minted token is the durable, revocable session.
+      expect((await Bun.file(sessionTokenPath(home)).text()).trim()).toBe(token as string)
+
+      // Sessionless → 401, and the provider is never reached.
+      const denied = await fetch('http://localhost/v1/inference/typesafe/responses', {
+        unix: host.path,
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'm', input: [] }),
+      })
+      expect(denied.status).toBe(401)
+      expect(provider.requests).toHaveLength(0)
+
+      // The cookie authenticates the worker→daemon hop (R3).
+      const ok = await fetch('http://localhost/v1/inference/typesafe/responses', {
+        unix: host.path,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: `${SESSION_COOKIE_NAME}=${token}` },
+        body: JSON.stringify({ model: 'm', input: [{ type: 'message', role: 'user', content: 'hi' }] }),
+      })
+      expect(ok.status).toBe(200)
+      expect(provider.requests).toHaveLength(1)
+      expect(provider.requests[0]!.auth).toBe(`Bearer ${PROVIDER_TOKEN}`)
+    } finally {
+      await host.close()
+      await provider.close()
     }
   })
 

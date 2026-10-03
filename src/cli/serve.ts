@@ -8,6 +8,8 @@ import {
   validateStoreRequestEvent,
 } from '../actuators/actuators.schemas.ts'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
+import type { Keychain } from '../actuators/keychain-oauth-provider.ts'
+import { providerTokenKey } from '../actuators/provider-keys.ts'
 import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
@@ -124,6 +126,115 @@ export const createHost = ({
   runtime.start()
   rpc.notify('ready')
   return { rpc }
+}
+
+// ---------------------------------------------------------------------------
+// The inference proxy — the daemon's provider-shaped routes
+// ---------------------------------------------------------------------------
+
+/** The proxy route prefix: `POST /v1/inference/<provider>/<path>` — the serving contract's paths. */
+export const INFERENCE_PROXY_PREFIX = '/v1/inference/'
+
+/** A structured JSON error body at the proxy boundary. */
+const proxyError = (status: number, code: string, message: string): Response =>
+  Response.json({ error: { code, message } }, { status })
+
+/** The headers that survive the round-trip — status codes surface verbatim beside these. */
+const RESPONSE_PASSTHROUGH_HEADERS = ['content-type', 'retry-after'] as const
+
+/**
+ * The daemon's inference proxy (R1): static-key vendors are reached ONLY
+ * here — a provider-shaped passthrough, never a generic fetch relay. Per
+ * request: session auth (R3) → resolve the provider's keychain credential
+ * (R2 — the route name IS the keychain entry) → attach `Authorization` →
+ * forward the body UNMODIFIED to the provider's configured origin (R5 — the
+ * allow-list, fail-closed) → pipe the response back verbatim: status codes
+ * surface un-normalized (a 429's `retry-after` reaches the worker's retry
+ * logic) and streaming bodies (`text/event-stream`) flow through untouched.
+ *
+ * The proxy is mounted by every HTTP carrier (the socket host); the browser
+ * worker's system-two/system-one configs point at `${prefix}<provider>` and
+ * the credential never crosses into a browser context.
+ *
+ * @public
+ */
+export const createInferenceProxy = ({
+  providers,
+  session,
+  keychain,
+}: {
+  /** Provider id → allow-listed forward base (R5 — the egress allow-list). */
+  providers: Record<string, string>
+  /** The session gate (R3) — an unauthenticated request never reaches custody. */
+  session: (req: Request) => boolean
+  /** The custody floor — the keychain the provider credentials resolve from. */
+  keychain: Keychain
+}): ((req: Request) => Promise<Response>) => {
+  return async (req) => {
+    const url = new URL(req.url)
+    if (!url.pathname.startsWith(INFERENCE_PROXY_PREFIX)) return proxyError(404, 'not_found', 'not found')
+    if (req.method !== 'POST') return proxyError(405, 'method_not_allowed', 'POST only')
+    // R3 first: the session gates everything — on the failure path the
+    // credential is never resolved and the provider is never reached.
+    if (!session(req)) return proxyError(401, 'invalid_session', 'session authentication required')
+
+    const rest = url.pathname.slice(INFERENCE_PROXY_PREFIX.length)
+    const slash = rest.indexOf('/')
+    const provider = slash === -1 ? rest : rest.slice(0, slash)
+    const path = slash === -1 ? '' : rest.slice(slash + 1)
+    const base = providers[provider]
+    if (base === undefined) return proxyError(404, 'unknown_provider', `no provider route "${provider}"`)
+
+    // R5: the configured value is the allow-list entry — fail closed on a
+    // malformed or non-http(s) base so a misconfiguration can never become an
+    // SSRF surface.
+    let originUrl: URL
+    try {
+      originUrl = new URL(base)
+    } catch {
+      return proxyError(403, 'origin_not_allowed', `provider "${provider}" has no allow-listed origin`)
+    }
+    if (originUrl.protocol !== 'https:' && originUrl.protocol !== 'http:') {
+      return proxyError(403, 'origin_not_allowed', `provider "${provider}" has no allow-listed origin`)
+    }
+
+    // R2 custody: resolve by the provider id — the same identifier the route
+    // is named with. Absent custody fails closed (the body is never sent).
+    let credential: string | undefined
+    try {
+      const raw = await keychain.get(providerTokenKey(provider))
+      credential = raw === null || raw === '' ? undefined : raw
+    } catch {
+      credential = undefined
+    }
+    if (credential === undefined) {
+      return proxyError(502, 'no_credential', `no credential available for provider "${provider}"`)
+    }
+
+    // Path-preserving join against the configured base (a base may carry a
+    // path prefix, e.g. a self-hosted server under /v1) — URL resolution
+    // would strip it.
+    const forwardUrl = `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+    const contentType = req.headers.get('content-type')
+    // Only the proxy's credential rides upstream — client-supplied headers
+    // (including any leaked key) never forward.
+    const upstream = await fetch(forwardUrl, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${credential}`,
+        ...(contentType === null ? {} : { 'content-type': contentType }),
+      },
+      body: await req.arrayBuffer(),
+    })
+    const headers = new Headers()
+    for (const name of RESPONSE_PASSTHROUGH_HEADERS) {
+      const value = upstream.headers.get(name)
+      if (value !== null) headers.set(name, value)
+    }
+    // The body pipes through untouched — `text/event-stream` streams
+    // chunk-by-chunk, never buffered.
+    return new Response(upstream.body, { status: upstream.status, headers })
+  }
 }
 
 /**
