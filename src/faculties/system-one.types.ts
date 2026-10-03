@@ -17,16 +17,23 @@ export type { SystemOneInput, SystemOneOutput }
 
 /**
  * One provisioned System One endpoint, riding the init frame (the
- * construction message). For static-key vendors (Typesafe, OpenRouter) the
- * `url` is the DAEMON's provider-shaped proxy route and `apiKey` stays
- * unset — the key attaches daemon-side from the keychain and never enters a
- * browser context.
+ * construction message). Two transports:
+ *
+ * - `rest` (default) — `url` is the FULL request URL (the TypeSafe native
+ *   `/v1/systemone` and OpenRouter `/api/alpha/decisions` paths differ, so
+ *   no base-plus-path assumption is safe). For static-key vendors the `url`
+ *   is the DAEMON's provider-shaped proxy route and `apiKey` stays unset —
+ *   the key attaches daemon-side from the keychain, never a browser context.
+ * - `webgpu` — local in-worker inference; `model` names the local model id.
+ *   No network, no credential. Re-init overwrites (R4's channel — built).
  */
 export type SystemOneEndpointConfig = {
-  /** The FULL request URL (e.g. `https://api.typesafe.ai/v1/systemone`). */
-  url: string
+  transport?: 'rest' | 'webgpu'
+  /** Rest transport only — the FULL request URL (e.g. `https://api.typesafe.ai/v1/systemone`). */
+  url?: string
+  /** Rest transport only — daemon-vended short-lived tokens, never a static vendor key. */
   apiKey?: string
   headers?: Record<string, string>
-  /** Default model slug; a request `model` overrides it. */
+  /** Rest: the default model slug (a request `model` overrides it). Webgpu: the local model id. */
   model?: string
 }

@@ -62,9 +62,20 @@ const validateModels = (config: Record<string, unknown>, configPath: string): vo
       // Property values are captured into locals before their typeof checks —
       // noUncheckedIndexedAccess makes property narrowing on the record itself
       // collapse the object to `{}`.
-      const { url, apiKey, headers } = systemOne
-      if (typeof url !== 'string') {
-        invalid(configPath, '"systemOne" must be an endpoint object with a "url" string (or null to omit)')
+      const { url, apiKey, headers, transport, model } = systemOne
+      if (transport !== undefined && (typeof transport !== 'string' || !KNOWN_TRANSPORTS.includes(transport))) {
+        invalid(configPath, `"systemOne"."transport" must be one of: ${KNOWN_TRANSPORTS.join(', ')}`)
+      }
+      // The faculty's rule, mirrored from systemTwo: rest (the default) needs
+      // the full request url; webgpu needs the local model id instead.
+      if ((transport ?? 'rest') === 'rest' && typeof url !== 'string') {
+        invalid(
+          configPath,
+          '"systemOne" must be an endpoint object with a "url" string (rest) or a "model" string (webgpu via "transport": "webgpu")',
+        )
+      }
+      if ((transport ?? 'rest') === 'webgpu' && typeof model !== 'string') {
+        invalid(configPath, '"systemOne" with "transport": "webgpu" needs a "model" string (the local model id)')
       }
       if (apiKey !== undefined && typeof apiKey !== 'string') {
         invalid(configPath, '"systemOne"."apiKey" must be a string (an env-resolved value, never a literal key file)')
@@ -73,7 +84,10 @@ const validateModels = (config: Record<string, unknown>, configPath: string): vo
         invalid(configPath, '"systemOne"."headers" must be a record of strings')
       }
     } else {
-      invalid(configPath, '"systemOne" must be an endpoint object with a "url" string (or null to omit)')
+      invalid(
+        configPath,
+        '"systemOne" must be an endpoint object with a "url" string (rest) or a "model" string (webgpu via "transport": "webgpu")',
+      )
     }
   }
   if (systemTwo !== undefined && systemTwo !== null) {

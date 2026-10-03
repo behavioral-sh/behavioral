@@ -35,6 +35,8 @@ import { makeCli } from './cli.ts'
 export type SystemOneEndpointInit = {
   url?: string
   model?: string
+  /** The transport toggle: `rest` (the default, needs url) or `webgpu` (needs model). */
+  transport?: string
   apiKeyEnv?: string
   headers?: Record<string, string>
 }
@@ -65,7 +67,7 @@ export type InitOutput = {
 // Defaults
 // ---------------------------------------------------------------------------
 
-const SYSTEM_ONE_DEFAULTS: Required<Omit<SystemOneEndpointInit, 'headers'>> = {
+const SYSTEM_ONE_DEFAULTS: Required<Omit<SystemOneEndpointInit, 'headers' | 'transport'>> = {
   url: 'https://api.typesafe.ai/v1/systemone',
   model: 'jev-latest',
   apiKeyEnv: 'TYPESAFE_API_KEY',
@@ -89,6 +91,7 @@ const systemOneEndpointSchema = {
   properties: {
     url: { type: 'string' },
     model: { type: 'string' },
+    transport: { type: 'string', enum: ['rest', 'webgpu'] },
     apiKeyEnv: { type: 'string' },
     headers: { type: 'object', additionalProperties: { type: 'string' } },
   },
@@ -182,7 +185,9 @@ const renderConfig = ({
   systemOne,
   systemTwo,
 }: {
-  systemOne?: Required<Omit<SystemOneEndpointInit, 'headers'>> & { headers?: Record<string, string> }
+  // The webgpu leg omits url + apiKeyEnv (local compute carries no credential) —
+  // only model is guaranteed.
+  systemOne?: SystemOneEndpointInit & { model: string }
   systemTwo?: { endpoints: Record<string, SystemTwoEndpointInit> }
 }): string => {
   const usesEnv =
@@ -202,7 +207,8 @@ const renderConfig = ({
 
   if (systemOne !== undefined) {
     lines.push('  systemOne: {')
-    lines.push(`    url: ${ts(systemOne.url)},`)
+    if (systemOne.transport !== undefined) lines.push(`    transport: ${ts(systemOne.transport)},`)
+    if (systemOne.url !== undefined) lines.push(`    url: ${ts(systemOne.url)},`)
     lines.push(`    model: ${ts(systemOne.model)},`)
     if (systemOne.apiKeyEnv !== undefined) lines.push(`    apiKey: env(${ts(systemOne.apiKeyEnv)}),`)
     if (systemOne.headers !== undefined) lines.push(`    headers: ${tsObject(systemOne.headers)},`)
@@ -238,7 +244,15 @@ export const runInit = async (input: InitInput): Promise<InitOutput> => {
     throw new Error(`config already exists at ${configPath} — rerun with {"force": true} to overwrite`)
   }
 
-  const systemOne = input.systemOne === null ? undefined : { ...SYSTEM_ONE_DEFAULTS, ...(input.systemOne ?? {}) }
+  const systemOneSpec = input.systemOne === null ? undefined : { ...SYSTEM_ONE_DEFAULTS, ...(input.systemOne ?? {}) }
+  // The webgpu transport is local compute: the vendor defaults (url + the
+  // env-name secret leg) must NOT ride a local-model config — drop them.
+  const systemOne =
+    systemOneSpec === undefined
+      ? undefined
+      : systemOneSpec.transport === 'webgpu'
+        ? { ...systemOneSpec, url: undefined, apiKeyEnv: undefined }
+        : systemOneSpec
   const systemTwo =
     input.systemTwo === null
       ? undefined
@@ -324,8 +338,9 @@ const INIT_HELP = `Generate <BEHAVIORAL_HOME>/config.ts — the actuator allow-l
 
 Run with no input at a terminal for the interactive tour; piped stdin or a JSON
 positional is the agent path. Input fields (all optional):
-  systemOne  {"url", "model", "apiKeyEnv", "headers"} | null   null omits the faculty
-  systemTwo  {"endpoints": {"<label>": {"url", "apiKeyEnv", "headers"}}} | null
+  systemOne  {"url", "model", "transport", "apiKeyEnv", "headers"} | null   null omits the faculty
+             transport is 'rest' (default; needs url) or 'webgpu' (needs model) —
+             webgpu carries NO apiKey: the local model id rides 'model'  systemTwo  {"endpoints": {"<label>": {"url", "apiKeyEnv", "headers"}}} | null
   force      Overwrite an existing config
 
 Absent faculties default on (TypeSafe + OpenAI urls, env-var-name api keys);

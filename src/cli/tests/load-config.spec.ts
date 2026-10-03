@@ -111,6 +111,36 @@ describe('loadConfig', () => {
     })
   })
 
+  describe('systemOne transport (the rest ↔ webgpu toggle)', () => {
+    test('a webgpu systemOne config loads — model, no url', async () => {
+      await withConfig(
+        `export default { systemOne: { transport: 'webgpu', model: 'clef-flash-ternary' } }`,
+        async (file) => {
+          const config = await loadConfig(file)
+          expect(config.systemOne).toEqual({ transport: 'webgpu', model: 'clef-flash-ternary' })
+        },
+      )
+    })
+
+    test('an unknown transport value fails fast', async () => {
+      await withConfig(`export default { systemOne: { transport: 'smoke', url: 'https://x' } }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"transport"/s)
+      })
+    })
+
+    test('a webgpu systemOne without a model is rejected — model required-for-webgpu', async () => {
+      await withConfig(`export default { systemOne: { transport: 'webgpu' } }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"model"/s)
+      })
+    })
+
+    test('a rest systemOne without a url is still rejected (the default stays rest)', async () => {
+      await withConfig(`export default { systemOne: { model: 'jev-latest' } }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"url"/s)
+      })
+    })
+  })
+
   test('a systemTwo endpoint transport must be rest or webgpu', async () => {
     await withConfig(
       `export default { systemTwo: { openai: { url: 'https://api.openai.com/v1', transport: 'smoke' } } }`,

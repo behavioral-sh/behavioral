@@ -67,8 +67,16 @@ const typesafeRespond: FacultyRespond<SystemOneRequestDetail, SystemOneEndpointC
   { input },
   { data: endpoint, signal },
 ) => {
+  // The transport toggle: local (WebGPU) inference vs rest fetch — config
+  // only, the wire contract is identical. The runtime lazy-imports so the
+  // default bundle never pays for it.
+  if (endpoint.transport === 'webgpu') {
+    const { runLocalModel } = await import('./system-one.webgpu.ts')
+    return runLocalModel(input, { model: endpoint.model, signal })
+  }
   const model = input.model ?? endpoint.model
   if (model === undefined) return { isError: true, message: 'no model configured for the system one endpoint' }
+  if (!endpoint.url) return { isError: true, message: '[Error: rest endpoint has no url]' }
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     ...(endpoint.apiKey !== undefined && { authorization: `Bearer ${endpoint.apiKey}` }),
@@ -77,7 +85,7 @@ const typesafeRespond: FacultyRespond<SystemOneRequestDetail, SystemOneEndpointC
   const body = JSON.stringify({ state: input.state, model, questions: input.questions })
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const res = await fetch(endpoint.url, { method: 'POST', headers, body, signal })
+    const res = await fetch(endpoint.url as string, { method: 'POST', headers, body, signal })
     if (RETRY_STATUSES.has(res.status) && attempt < MAX_ATTEMPTS - 1) {
       await sleep(retryDelayMs(res, attempt))
       continue

@@ -132,3 +132,33 @@ describe('system one faculty — the Decisions round-trip', () => {
     }
   })
 })
+
+describe('system one faculty — the transport toggle (rest ↔ webgpu)', () => {
+  test('a webgpu endpoint dispatches to the local runtime as a normal result — no network', async () => {
+    const faculty = spawnSystemOne({ transport: 'webgpu', model: 'stub-1' } as never)
+    try {
+      faculty.call({ id: 'w1', input: { state: 'x', questions } } as JsonObject)
+      const { detail } = await faculty.resultFor('w1')
+      expect(detail.ok).toBe(true)
+      const result = detail.result as { model?: string; answers?: Record<string, unknown> }
+      expect(result.model).toBe('stub-1')
+      expect(Object.keys(result.answers ?? {}).length).toBeGreaterThan(0)
+    } finally {
+      faculty.terminate()
+    }
+  })
+
+  test('a webgpu endpoint without a model answers the typed error', async () => {
+    const faculty = spawnSystemOne({ transport: 'webgpu' } as never)
+    try {
+      faculty.call({ id: 'w2', input: { state: 'x', questions } } as JsonObject)
+      const { detail } = await faculty.resultFor('w2')
+      expect(detail.ok).toBe(false)
+      expect(String((detail.error as { message?: string } | undefined)?.message)).toBe(
+        'no local model configured for the webgpu endpoint',
+      )
+    } finally {
+      faculty.terminate()
+    }
+  })
+})

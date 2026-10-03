@@ -124,6 +124,16 @@ describe('behavioral init — the runner', () => {
     expect(content).not.toContain('TYPESAFE_API_KEY')
   })
 
+  test('a webgpu systemOne spec renders the transport toggle and NO apiKey leg', async () => {
+    await runInit(JSON.stringify({ systemOne: { transport: 'webgpu', model: 'clef-flash-ternary' }, systemTwo: null }))
+    const content = readConfig()
+    expect(content).toContain("transport: 'webgpu'")
+    expect(content).toContain("model: 'clef-flash-ternary'")
+    // The local model carries no credential — no env reference, no url.
+    expect(content).not.toContain('apiKey')
+    expect(content).not.toContain('url:')
+  })
+
   test('an existing config fails fast with the path; force overwrites', async () => {
     await runInit('{}')
     await expect(init(['{}'])).rejects.toThrow(/already exists.*config\.ts.*force/s)
