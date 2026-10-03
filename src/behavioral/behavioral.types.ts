@@ -471,6 +471,8 @@ export type TransformFailureReason =
   | 'jq_error'
   /** the matched event carried no detail to query */
   | 'no_detail'
+  /** the host realm has no SharedArrayBuffer (not crossOriginIsolated) — the bridge stays down */
+  | 'jq_unavailable'
   /** the query produced no output (`first()` returns `undefined`) */
   | 'empty_output'
   /** the query output was not an object (scalar, array, or null) */

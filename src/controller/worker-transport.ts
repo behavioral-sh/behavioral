@@ -1,53 +1,16 @@
+import {
+  COMPOSITION_PORT_KINDS,
+  type CompositionPortAttachFrame,
+  type CompositionPortHelloFrame,
+  type CompositionPortMessageFrame,
+  type CompositionPortModels,
+  type CompositionPortTraceFrame,
+  type CompositionPortTraceSubscribeFrame,
+} from '../b-program/composition-port.ts'
 import type { Disconnect, Trace } from '../behavioral/behavioral.types.ts'
-import { keyMirror } from '../utils.ts'
 import type { ClientMessage, ServerMessage, Transport, TransportEvent } from './controller.types.ts'
 
-/**
- * The composition port protocol — the frame vocabulary shared by the
- * bProgram worker entry (which validates inbound frames at its trust edge)
- * and this page-side transport (a dumb relay, no AJV in the page bundle).
- *
- * Frames are discriminated: control frames carry `kind`; the controller's
- * ingress/egress messages ride their own unions (a `ClientMessage` is sent
- * raw; a `ServerMessage` arrives wrapped in a `message` frame). Egress is ONE
- * redacted trace stream per worker, filterable by kind, space-isolated per
- * attached page (root-space traces broadcast; stamped traces deliver to the
- * owning page only) — the egress-as-selection ruling.
- *
- * MINIMAL: the vocabulary lives beside the transport until Slice 4 ports the
- * worker entry (`b-program.worker.ts`) — if the worker side wants its own
- * protocol home, the constants move there and this file imports them back.
- *
- * @public
- */
-
-/** The port frame discriminants (control frames only; messages ride raw). */
-export const COMPOSITION_PORT_KINDS = keyMirror('attach', 'hello', 'trace', 'message', 'trace_subscribe')
-
-/** Page → worker: claim the page's space. Omitted = the worker mints one. */
-export type CompositionPortAttachFrame = { kind: typeof COMPOSITION_PORT_KINDS.attach; space?: string }
-
-/** Page → worker: scope the trace stream. Omitted kinds = all (full fidelity). */
-export type CompositionPortTraceSubscribeFrame = {
-  kind: typeof COMPOSITION_PORT_KINDS.trace_subscribe
-  kinds?: string[]
-}
-
-/** Worker → page: the attach's answer — the engine identity + the page's space. */
-export type CompositionPortHelloFrame = {
-  kind: typeof COMPOSITION_PORT_KINDS.hello
-  space: string
-  identity: unknown
-}
-
-/** Worker → page: one redacted trace of the page's subscribed stream. */
-export type CompositionPortTraceFrame = { kind: typeof COMPOSITION_PORT_KINDS.trace; trace: Trace }
-
-/** Worker → page: a `ui_*` selection as a controller ServerMessage. */
-export type CompositionPortMessageFrame = {
-  kind: typeof COMPOSITION_PORT_KINDS.message
-  message: ServerMessage
-}
+export { COMPOSITION_PORT_KINDS, type CompositionPortHelloFrame } from '../b-program/composition-port.ts'
 
 /**
  * The conventional serving path of the bProgram worker script — the URL the
@@ -72,6 +35,8 @@ export type WorkerTransportOptions = {
   worker: Worker | MessagePort
   /** Claim the page's space at attach; omitted = the worker mints one. */
   space?: string
+  /** The page's provider map + model identifiers — the faculties' init-frame payloads. */
+  models?: CompositionPortModels
   /** Trace kinds to subscribe to; omitted = all (full fidelity). */
   traceKinds?: string[]
   /** Tap for the redacted traces arriving on the port. */
@@ -103,7 +68,7 @@ export class WorkerTransport implements Transport {
   #onHello: ((frame: CompositionPortHelloFrame) => void) | undefined
   #space: string | undefined
 
-  constructor({ worker, space, traceKinds, onTrace, onHello }: WorkerTransportOptions) {
+  constructor({ worker, space, models, traceKinds, onTrace, onHello }: WorkerTransportOptions) {
     this.#worker = worker
     this.#onTrace = onTrace
     this.#onHello = onHello
@@ -115,6 +80,7 @@ export class WorkerTransport implements Transport {
     worker.postMessage({
       kind: COMPOSITION_PORT_KINDS.attach,
       ...(space === undefined ? {} : { space }),
+      ...(models === undefined ? {} : { models }),
     } satisfies CompositionPortAttachFrame)
     worker.postMessage({
       kind: COMPOSITION_PORT_KINDS.trace_subscribe,

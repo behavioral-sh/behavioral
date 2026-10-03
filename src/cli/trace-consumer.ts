@@ -25,83 +25,27 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import * as path from 'node:path'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { ROOT_SPACE } from '../actuators/store.types.ts'
+import { CREDENTIAL_RULES, type CredentialRule } from '../b-program/credential-patterns.ts'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { Trace, TraceListener } from '../behavioral/behavioral.types.ts'
-import { CREDENTIAL_RULES, type CredentialRule } from './credential-patterns.ts'
 
-/** Marker substituted for every redacted value. */
-export const REDACTED = '[REDACTED]'
+// The host-neutral redaction core lives in `src/b-program/trace-redact.ts`
+// (the composition worker redacts in-worker); the daemon side re-exports it
+// and adds the `process.env` default.
+export { REDACTED, redactTrace } from '../b-program/trace-redact.ts'
 
-/** Minimum length for an env value to count as a secret — avoids redacting "1", "true". */
-const MIN_SECRET_LENGTH = 8
-
-/** Env-var names that look sensitive — the declared-secret fallback. */
-const SENSITIVE_KEY = /(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_?KEY|PRIVATE_KEY)(_|$)|_KEY$/i
-
-/** Object field names whose string values are always redacted. */
-const SENSITIVE_FIELD =
-  /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|auth_?token|secret|password|credential|token)s?$/i
+import {
+  collectSecretValues as collectSecretValuesCore,
+  redactTrace as redactTraceCore,
+} from '../b-program/trace-redact.ts'
 
 /**
- * The redaction registry — secret VALUES. A key is in scope when it matches
- * {@link SENSITIVE_KEY} (or is named in `keys`) and its value clears
- * {@link MIN_SECRET_LENGTH}. The host may also pass explicit values instead;
- * this convenience only scans the provided env-shaped record.
+ * The redaction registry — secret VALUES from the process environment. A key
+ * is in scope when it matches the sensitive-name fallback (or is named in
+ * `keys`) and its value clears the minimum length.
  */
-export const collectSecretValues = (
-  env: Record<string, string | undefined> = process.env,
-  keys?: string[],
-): string[] => {
-  const values = new Set<string>()
-  for (const [key, value] of Object.entries(env)) {
-    const wanted = keys === undefined ? SENSITIVE_KEY.test(key) : keys.includes(key)
-    if (!wanted || value === undefined || value.length < MIN_SECRET_LENGTH) continue
-    values.add(value)
-  }
-  return [...values]
-}
-
-/** The keyword prefilter — run a rule's regex only when a keyword is present (betterleaks' own optimization). */
-const keywordHit = (lower: string, rule: CredentialRule): boolean =>
-  rule.keywords.length === 0 || rule.keywords.some((keyword) => lower.includes(keyword.toLowerCase()))
-
-const scrubString = (value: string, secrets: string[], rules: CredentialRule[]): string => {
-  let out = value
-  for (const secret of secrets) {
-    if (out.includes(secret)) out = out.split(secret).join(REDACTED)
-  }
-  const lower = out.toLowerCase()
-  for (const rule of rules) {
-    if (!keywordHit(lower, rule)) continue
-    out = out.replace(rule.pattern, REDACTED)
-  }
-  return out
-}
-
-const scrubInPlace = (value: unknown, secrets: string[], rules: CredentialRule[]): unknown => {
-  if (typeof value === 'string') return scrubString(value, secrets, rules)
-  if (Array.isArray(value)) {
-    for (let i = 0; i < value.length; i++) value[i] = scrubInPlace(value[i], secrets, rules)
-    return value
-  }
-  if (value !== null && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    for (const key of Object.keys(record)) {
-      const current = record[key]
-      if (typeof current === 'string' && SENSITIVE_FIELD.test(key)) {
-        record[key] = REDACTED
-        continue
-      }
-      record[key] = scrubInPlace(current, secrets, rules)
-    }
-    return record
-  }
-  return value
-}
-
-/** Deep-clone a trace and scrub it (registry values, sensitive fields, credential shapes). */
-export const redactTrace = (trace: Trace, secrets: string[] = [], rules: CredentialRule[] = CREDENTIAL_RULES): Trace =>
-  scrubInPlace(structuredClone(trace), secrets, rules) as Trace
+export const collectSecretValues = (env: Record<string, string | undefined> = process.env, keys?: string[]): string[] =>
+  collectSecretValuesCore(env, keys)
 
 /** A sink receives one redacted trace. Keep it synchronous (ordering is the log's contract). */
 export type TraceSink = (trace: Trace) => void
@@ -118,7 +62,7 @@ export const createTraceConsumer =
     rules?: CredentialRule[]
   }): TraceListener =>
   (trace) => {
-    const redacted = redactTrace(trace, secrets, rules)
+    const redacted = redactTraceCore(trace, secrets, rules)
     for (const sink of sinks) {
       try {
         sink(redacted)

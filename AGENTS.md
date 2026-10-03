@@ -207,16 +207,37 @@ every correlation id per-trigger); mounted with shell + store + systemTwo,
 composition territory — no process, not a faculty), and `ui-capture.ts`
 (the autoresearch loop's capture side — the in-process lineage-keyed raw
 run consumer + the remoteSystemTwo replay builder; the socket host wires
-its file sink under `<home>/captures`). `tests/` holds the lane's
-ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over a real Bun web Worker)
-and every moved pack's specs.
+its file sink under `<home>/captures`). `b-program.worker.ts` — the bProgram
+WORKER ENTRY (the per-tab dedicated module worker; the composition boots on
+the first `attach`, whose frame carries the page's space + the provider map
+that becomes the faculties' init-frame payloads): the port protocol
+(`composition-port.ts` — attach→hello with the validated engine identity,
+kind-filtered space-isolated REDACTED trace stream via `trace-redact.ts` +
+`credential-patterns.ts`, egress-as-selection `message` frames), the
+actuator leg taking pre-built lane builders over an injected Transport (the
+socket-lane default lands with the rewire's socket slice; no default yet),
+and `runtime-identity.ts` (the hello's one schema home). `tests/` holds the
+lane's ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over a real Bun web
+Worker), the composition's bundle gate + WebView spec, and every moved
+pack's specs.
 **`src/behavioral/`** — the pure language layer: types, constants, utils, the interpreter core
 (`behavioral.ts`), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
-nothing outside behavioral/ speaks its wire). Zero process entries that speak the faculty wire —
-dependency arrow is one-way: `src/faculties/` → `src/behavioral/`.
+nothing outside behavioral/ speaks its wire). The jq SAB bridge is
+browser-shaped: the pool stays down where `SharedArrayBuffer` is absent
+(`jq_unavailable` errors-as-data), `unref` is the optional structural call,
+and the timeout respawn rides a task turn (the nested-boot-window finding).
+Zero process entries that speak the faculty wire —
+dependency arrow is one-way: `src/faculties/` → `src/behavioral/`. The
+pure-runtime gate greps BOTH `'bun'` imports and bare `Bun.` global
+references (the engine's `eventMatchesCandidate` shipped a `Bun.deepEquals`
+that died at eval in the WebView — the shared `deepEqual` replaced it).
 **`src/controller/`** — the browser Controller: a validation-free dumb relay over an injectable
 Transport, plus `controller.utils.ts` (DelegatedListener, swapBoundary, the deterministic floors
-`isInvalidTrigger`/`detectXssVectors`) and render-time scale error-back. `controller.schemas.ts`
+`isInvalidTrigger`/`detectXssVectors`) and render-time scale error-back; the
+default carrier is `worker-transport.ts` (the composition-port protocol over
+the per-tab dedicated Worker — the vocabulary single-homed in
+`src/b-program/composition-port.ts`, the transport imports it back).
+`controller.schemas.ts`
 holds the AJV detail schemas for the `ui_*` wire shapes — imported by the host/threads, never
 the browser bundle (types in `controller.types.ts`, schemas in the separate file). The
 controller owns no AJV at runtime; its floors are hardcoded invariants (on*, malformed

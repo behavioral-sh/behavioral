@@ -20,7 +20,7 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  * Scope discrimination (Bun 1.4 facts, probed):
  * - browser main threads have `window`; workers never do;
  * - Bun's main thread ALSO lacks `window`, but exposes
- *   `Bun.isMainThread === true` — web workers expose `false`;
+ *   a Bun host's `isMainThread === true` — web workers expose `false`;
  * - a browser classic bundle has no `Bun` global at all (and the entries
  *   never run on a browser main thread).
  *

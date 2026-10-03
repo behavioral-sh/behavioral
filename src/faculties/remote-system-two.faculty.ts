@@ -50,6 +50,7 @@ import {
   resumePendingThreadsForSelectedEvent,
   useThread,
 } from '../behavioral/behavioral.utils.ts'
+import { deepEqual } from '../utils/deep-equal.ts'
 import { uuid } from '../utils/uuid.ts'
 import { createWorker, type FacultyRespond } from './create-worker.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
@@ -131,9 +132,7 @@ const createDeadlockTrace = ({
 })
 
 const matchesSelectedEvent = ({ candidate, selected }: { candidate: CandidateBid; selected: CandidateBid }) =>
-  candidate.type === selected.type &&
-  candidate.space === selected.space &&
-  Bun.deepEquals(candidate.detail, selected.detail)
+  candidate.type === selected.type && candidate.space === selected.space && deepEqual(candidate.detail, selected.detail)
 
 /**
  * @internal
@@ -346,7 +345,7 @@ const triggerChannelMatch = ({ pendingBid, trigger }: { pendingBid: PendingBid; 
     pendingBid.request !== undefined &&
     pendingBid.request.type === trigger.type &&
     pendingBid.request.space === trigger.space &&
-    Bun.deepEquals(pendingBid.request.detail, trigger.detail)
+    deepEqual(pendingBid.request.detail, trigger.detail)
 
   return {
     external: requestMatches || matches(externalCandidate),

@@ -1,3 +1,4 @@
+import { deepEqual } from '../utils.ts'
 import { FRONTIER_STATUS, IDIOMS, TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 import type {
   BPEvent,
@@ -116,7 +117,7 @@ export const advanceRunningToPending = (running: Set<RunningBid>, pending: Set<P
 const eventMatchesCandidate = (request: BPEvent, selectedEvent: CandidateBid) => {
   if (selectedEvent.type !== request.type) return false
   if (selectedEvent.space && selectedEvent.space !== request.space) return false
-  return Bun.deepEquals(request.detail, selectedEvent.detail)
+  return deepEqual(request.detail, selectedEvent.detail)
 }
 
 export const resumePendingThreadsForSelectedEvent = ({
@@ -269,17 +270,31 @@ const jqResultDecoder = new TextDecoder()
 // host process open (the runtime is `bun run`, which blocks on a live
 // worker). A timeout terminates the worker and the pool respawns lazily on
 // the next evaluation.
-let jqWorker: Bun.Worker | undefined
+/** The jq pool's worker — the DOM `Worker` plus Bun's optional `unref`. */
+type PoolWorker = Worker & { unref?: () => void }
+let jqWorker: PoolWorker | undefined
 let jqBuffer: SharedArrayBuffer | undefined
 let jqHeader: Int32Array | undefined
+
+/**
+ * Whether the SAB bridge can exist in this host: a realm without
+ * `SharedArrayBuffer` (not crossOriginIsolated — a non-COI browser worker or
+ * an Android WebView) can neither construct the shared buffer nor park in
+ * `Atomics.wait` against it. The pool stays down there and
+ * `evaluateTransform` degrades to `jq_unavailable` errors-as-data — a
+ * visible transform_error, never a crashed worker.
+ */
+const jqBridgeAvailable = (): boolean => typeof SharedArrayBuffer !== 'undefined'
 
 const spawnJqWorker = () => {
   jqBuffer = new SharedArrayBuffer(8 + JQ_RESULT_CAP)
   jqHeader = new Int32Array(jqBuffer, 0, 2)
-  // `lib` loads DOM, so the global `Worker` type is the DOM one — cast to
-  // `Bun.Worker` for `unref`/`ref`.
-  const worker = new Worker(new URL('./jq.worker.ts', import.meta.url)) as Bun.Worker
-  worker.unref()
+  // The jq worker is CLASSIC-safe (no top-level await — a nested module
+  // worker fails silently in the WebView's Chromium); only `unref` is
+  // Bun-shaped (a browser worker holds nothing open), hence the optional
+  // call on the structural `PoolWorker` type.
+  const worker = new Worker(new URL('./jq.worker.ts', import.meta.url)) as PoolWorker
+  worker.unref?.()
   jqWorker = worker
 }
 
@@ -288,6 +303,14 @@ const timeoutJqWorker = (): TransformEvaluation => {
   jqWorker = undefined
   jqBuffer = undefined
   jqHeader = undefined
+  // Respawn deferred to a task turn: a fresh nested worker's boot window
+  // (~10-50ms in the WebView's Chromium) must pass while THIS worker's event
+  // loop is alive, or the first postMessage never reaches the nested worker
+  // (the nested-boot deadlock finding). MINIMAL: two evaluateTransform calls
+  // inside ONE task after a timeout still spawn-park inside the boot window —
+  // the startup budget degrades that to a 30s timeout, not a hang; the
+  // upgrade is a ready-handshake + async bridge.
+  setTimeout(spawnJqWorker, 0)
   return { ok: false, reason: 'jq_timeout' }
 }
 
@@ -305,6 +328,7 @@ const timeoutJqWorker = (): TransformEvaluation => {
  */
 export const evaluateTransform = (query: string, detail: JsonObject | undefined): TransformEvaluation => {
   if (detail === undefined || detail === null) return { ok: false, reason: 'no_detail' }
+  if (!jqBridgeAvailable()) return { ok: false, reason: 'jq_unavailable' }
   if (!jqWorker) spawnJqWorker()
   const worker = jqWorker!
   const sab = jqBuffer!
