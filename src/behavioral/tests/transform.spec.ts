@@ -29,7 +29,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
 
@@ -47,7 +48,7 @@ describe('transform idiom — in-engine jq execution', () => {
     expect(ship!.selected.ingress).toBeUndefined()
 
     const pendingBids = traces.filter((t): t is PendingBidsTrace => t.kind === TRACE_MESSAGE_KINDS.pending_bids)
-    const labels = pendingBids.flatMap((t) => t.threads.map((th) => th.label))
+    const labels = pendingBids.flatMap((t) => t.threads.map((th) => th.name))
     expect(labels).toContain('Transform(shaper => ship)')
   })
 
@@ -56,7 +57,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const { addThread } = program
     addThread({
       space: 's1',
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
 
@@ -80,7 +82,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'multi-shaper',
+      name: 'multi-shaper',
+      description: 'Test thread.',
       rules: [
         {
           transform: [
@@ -113,7 +116,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [
         {
           transform: [
@@ -148,7 +152,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order.', target: 'ship' }] }],
     })
 
@@ -173,7 +178,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.missing? // empty', target: 'ship' }] }],
     })
 
@@ -196,7 +202,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
 
@@ -221,7 +228,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: 'while(true; .)', target: 'ship' }] }],
     })
 
@@ -245,11 +253,13 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'spinner',
+      name: 'spinner',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'spin', query: 'while(true; .)', target: 'never' }] }],
     })
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
 
@@ -295,7 +305,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'shaper',
+      name: 'shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '{ big: [range(50000)] }', target: 'ship' }] }],
     })
 
@@ -317,9 +328,14 @@ describe('transform idiom — in-engine jq execution', () => {
   test('daemon semantics: an ingressMatch:false waiter matches the re-entered target', () => {
     const program = behavioral()
     const { addThread } = program
-    addThread({ label: 'shaper', rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }] })
     addThread({
-      label: 'ship-waiter',
+      name: 'shaper',
+      description: 'Test thread.',
+      rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
+    })
+    addThread({
+      name: 'ship-waiter',
+      description: 'Test thread.',
       once: true,
       rules: [{ waitFor: [{ type: 'ship', ingressMatch: false }] }, { request: { type: 'shipped' } }],
     })
@@ -342,7 +358,8 @@ describe('transform idiom — in-engine jq execution', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      label: 'observer-test',
+      name: 'observer-test',
+      description: 'Test thread.',
       rules: [
         {
           transform: [
@@ -381,7 +398,7 @@ describe('transform idiom — in-engine jq execution', () => {
   test('no transform trace when no transform listeners match', () => {
     const program = behavioral()
     const { addThread } = program
-    addThread({ label: 'waiter', rules: [{ waitFor: [{ type: 'other' }] }] })
+    addThread({ name: 'waiter', description: 'Test thread.', rules: [{ waitFor: [{ type: 'other' }] }] })
 
     const traces: Trace[] = []
     program.useTrace((msg) => {

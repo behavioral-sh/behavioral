@@ -24,9 +24,10 @@ export type GuardEntry = {
 }
 
 /** Build one guard thread that blocks every message whose detail fails its entry's schema. */
-export const guardThreads = (label: string, entries: GuardEntry[]): Thread[] => [
+export const guardThreads = (name: string, description: string, entries: GuardEntry[]): Thread[] => [
   {
-    label,
+    name,
+    description,
     rules: [
       {
         block: entries.map((entry) => ({

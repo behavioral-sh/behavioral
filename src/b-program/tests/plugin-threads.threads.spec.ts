@@ -37,7 +37,12 @@ const runProgram = (events: BPEvent[]): Selected[] => {
   })
   for (const thread of pluginThreadsThreads) program.addThread(thread)
   for (const event of events)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: `Producer once-thread re-emitting ${event.type}.`,
+      once: true,
+      rules: [{ request: event }],
+    })
   // addThread is inert — trigger admits one ingress event and runs one
   // super-step; the second pump cascades transform re-entries.
   program.trigger({ type: 'plugin_threads_pump', detail: {} })
@@ -89,8 +94,18 @@ describe('plugin threads — import issue', () => {
 })
 
 describe('plugin threads — the join and the candidates', () => {
-  const threadA: Thread = { label: 'greeter', once: true, rules: [{ request: { type: 'hello' } }] }
-  const threadB: Thread = { label: 'farewell', once: true, rules: [{ request: { type: 'bye' } }] }
+  const threadA: Thread = {
+    name: 'greeter',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'hello' } }],
+  }
+  const threadB: Thread = {
+    name: 'farewell',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'bye' } }],
+  }
 
   const importResult = (threads: Thread[], echo: Record<string, unknown>, id = 'p1'): BPEvent =>
     ({
@@ -127,8 +142,8 @@ describe('plugin threads — the join and the candidates', () => {
     expect(adds.map((s) => s.detail?.id)).toEqual(['p1-add-0', 'p1-add-1'])
     for (const add of adds) {
       expect(add.detail?.op).toBe('add_thread')
-      const input = add.detail?.input as { thread?: { label?: string } }
-      const label = input.thread?.label ?? ''
+      const input = add.detail?.input as { thread?: { name?: string } }
+      const label = input.thread?.name ?? ''
       expect(['greeter', 'farewell']).toContain(label)
     }
   })
@@ -139,9 +154,9 @@ describe('plugin threads — the join and the candidates', () => {
       importResult([threadA], { source: 'p2', plugin: '/p', file: 'f', space: 's1' }),
     ])
     const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
-    const input = add?.detail?.input as { thread?: { space?: string; label?: string } }
+    const input = add?.detail?.input as { thread?: { space?: string; name?: string } }
     expect(input.thread?.space).toBe('s1')
-    expect(input.thread?.label).toBe('greeter')
+    expect(input.thread?.name).toBe('greeter')
   })
 
   test('a space-stamped proposal event reaches the root dispatcher — the declared space still stamps the target', () => {
@@ -156,9 +171,9 @@ describe('plugin threads — the join and the candidates', () => {
     // The flow-through: the proposal's declared space reaches the add_thread
     // target stamp (the registry keys per space; admission owns the scope).
     const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
-    const input = add?.detail?.input as { thread?: { space?: string; label?: string } }
+    const input = add?.detail?.input as { thread?: { space?: string; name?: string } }
     expect(input.thread?.space).toBe('s1')
-    expect(input.thread?.label).toBe('greeter')
+    expect(input.thread?.name).toBe('greeter')
   })
 
   test('a root target (no space) mounts with no space stamp — root-only, never omni', () => {
@@ -247,14 +262,14 @@ describe('plugin threads — the import script (real run)', () => {
       const dir = join(plugin, 'sh.behavioral/threads')
       mkdirSync(dir, { recursive: true })
       const source =
-        "export const greeter = { label: 'greeter', once: true, rules: [{ request: { type: 'hello' } }] }\n" +
+        "export const greeter = { name: 'greeter',        description: 'Test thread.', once: true, rules: [{ request: { type: 'hello' } }] }\n" +
         'export const notAThread = { nope: true }\n'
       writeFileSync(join(dir, 't.ts'), source)
 
       const out = await runScript({ PLUGIN_THREADS_ROOT: plugin, PLUGIN_THREADS_FILE: 't.ts' })
-      const threads = out.threads as { label?: string }[]
+      const threads = out.threads as { name?: string }[]
       expect(threads).toHaveLength(1)
-      expect(threads[0]?.label).toBe('greeter')
+      expect(threads[0]?.name).toBe('greeter')
       const warnings = out.warnings as string[]
       expect(warnings).toHaveLength(1)
       expect(warnings[0]).toContain('notAThread')

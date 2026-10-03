@@ -31,9 +31,10 @@ export type GuardEntry = {
 }
 
 /** Build one guard thread that blocks every message whose detail fails its entry's schema. */
-export const guardThreads = (label: string, entries: GuardEntry[]): Thread[] => [
+export const guardThreads = (name: string, description: string, entries: GuardEntry[]): Thread[] => [
   {
-    label,
+    name,
+    description,
     rules: [
       {
         block: entries.map((entry) => ({
@@ -80,7 +81,8 @@ const invalidTuiMessages: GuardEntry[] = Object.entries(TUI_DETAIL_SCHEMAS).map(
 }))
 
 /** The root threads: default threads mounted by every composition. */
-export const facultiesThreads: Thread[] = guardThreads('guard:ingress-schema', [
-  ...invalidControllerMessages,
-  ...invalidTuiMessages,
-])
+export const facultiesThreads: Thread[] = guardThreads(
+  'guard:ingress-schema',
+  'Blocks every ui_* or faculty wire message whose detail fails its event schema — the root ingress guard.',
+  [...invalidControllerMessages, ...invalidTuiMessages],
+)

@@ -12,9 +12,10 @@ describe('addThread', () => {
     const program = behavioral()
     const { addThread, trigger } = program
 
-    addThread({ label: 'addHotOnce', rules: [{ request: { type: 'hot_1' } }], once: true })
+    addThread({ name: 'addHotOnce', description: 'Test thread.', rules: [{ request: { type: 'hot_1' } }], once: true })
     addThread({
-      label: 'mixHotCold',
+      name: 'mixHotCold',
+      description: 'Test thread.',
       rules: [
         {
           waitFor: [onType('hot_1'), onType('hot')],
@@ -32,12 +33,14 @@ describe('addThread', () => {
         actual.push('hot')
         trigger({ type: 'cold' })
         addThread({
-          label: 'addMoreHot',
+          name: 'addMoreHot',
+          description: 'Test thread.',
           rules: [{ request: { type: 'hot' } }, { request: { type: 'hot' } }],
           once: true,
         })
         addThread({
-          label: 'addMoreCold',
+          name: 'addMoreCold',
+          description: 'Test thread.',
           rules: [{ request: { type: 'cold' } }, { request: { type: 'cold' } }],
           once: true,
         })
@@ -71,12 +74,14 @@ describe('addThread', () => {
     })
 
     addThread({
-      label: 'workerA',
+      name: 'workerA',
+      description: 'Test thread.',
       rules: [{ waitFor: [onType('start')] }, { request: { type: 'done_a' } }],
       once: true,
     })
     addThread({
-      label: 'workerB',
+      name: 'workerB',
+      description: 'Test thread.',
       rules: [{ waitFor: [onType('start')] }, { request: { type: 'done_b' } }],
       once: true,
     })
@@ -108,9 +113,14 @@ describe('addThread', () => {
       traces.push(trace)
     })
 
-    addThread({ label: 'guard', rules: [{ block: [onType('dangerous')] }] })
-    addThread({ label: 'watchdog', rules: [{ interrupt: [onType('dangerous')] }] })
-    addThread({ label: 'requester', rules: [{ request: { type: 'dangerous' } }], once: true })
+    addThread({ name: 'guard', description: 'Test thread.', rules: [{ block: [onType('dangerous')] }] })
+    addThread({ name: 'watchdog', description: 'Test thread.', rules: [{ interrupt: [onType('dangerous')] }] })
+    addThread({
+      name: 'requester',
+      description: 'Test thread.',
+      rules: [{ request: { type: 'dangerous' } }],
+      once: true,
+    })
 
     trigger({ type: 'start' })
 
@@ -136,7 +146,7 @@ describe('addThread quiescence', () => {
       traces.push(trace)
     })
 
-    addThread({ label: 'requester', rules: [{ request: { type: 'x' } }], once: true })
+    addThread({ name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'x' } }], once: true })
 
     // `addThread` is inert beyond its provision trace: no super-step runs
     // until an event enters via `trigger` or `step`.
@@ -152,7 +162,8 @@ describe('addThread quiescence', () => {
     })
 
     const thread = {
-      label: 'provisioned',
+      name: 'provisioned',
+      description: 'Test thread.',
       space: 'demo',
       once: true as const,
       rules: [{ request: { type: 'go' } }],
@@ -167,7 +178,7 @@ describe('addThread quiescence', () => {
     expect(trace.instanceId).toBeTypeOf('string')
 
     // An invalid thread emits add_thread_error, never thread_added.
-    addThread({ label: 'no-rules' } as never)
+    addThread({ name: 'no-rules' } as never)
     expect(added).toHaveLength(1)
   })
 })

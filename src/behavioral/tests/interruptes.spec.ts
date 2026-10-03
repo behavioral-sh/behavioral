@@ -15,7 +15,7 @@ describe('interrupt', () => {
     const actual: string[] = []
     const program = behavioral()
     const { addThread, trigger } = program
-    addThread({ label: 'addHot', ...addHot })
+    addThread({ name: 'addHot', description: 'Test thread.', ...addHot })
     onSelection(program, (selected) => {
       if (selected.type === 'hot') actual.push('hot')
     })
@@ -33,7 +33,7 @@ describe('interrupt', () => {
     useTrace((trace: Trace) => {
       traces.push(trace)
     })
-    addThread({ label: 'addHot', ...addHot })
+    addThread({ name: 'addHot', description: 'Test thread.', ...addHot })
     onSelection(program, (selected) => {
       if (selected.type === 'hot') actual.push('hot')
     })

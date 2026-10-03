@@ -13,8 +13,13 @@ describe('useTrace', () => {
 
     const { disconnect } = traceCollector(program)
 
-    addThread({ label: 'producer', rules: [{ request: { type: 'task' } }], once: true })
-    addThread({ label: 'consumer', rules: [{ waitFor: [onType('task')] }, { request: { type: 'ack' } }], once: true })
+    addThread({ name: 'producer', description: 'Test thread.', rules: [{ request: { type: 'task' } }], once: true })
+    addThread({
+      name: 'consumer',
+      description: 'Test thread.',
+      rules: [{ waitFor: [onType('task')] }, { request: { type: 'ack' } }],
+      once: true,
+    })
 
     onSelection(program, (selected) => {
       if (selected.type === 'task' || selected.type === 'ack') events.push(selected.type)
@@ -38,7 +43,7 @@ describe('useTrace', () => {
       tracesB.push(msg)
     })
 
-    addThread({ label: 'req', rules: [{ request: { type: 'ping' } }], once: true })
+    addThread({ name: 'req', description: 'Test thread.', rules: [{ request: { type: 'ping' } }], once: true })
 
     trigger({ type: 'start' })
     expect(tracesA.length).toBeGreaterThan(0)
@@ -49,7 +54,7 @@ describe('useTrace', () => {
 
     disconnectA()
 
-    addThread({ label: 'req2', rules: [{ request: { type: 'pong' } }], once: true })
+    addThread({ name: 'req2', description: 'Test thread.', rules: [{ request: { type: 'pong' } }], once: true })
     trigger({ type: 'go' })
 
     expect(tracesA.length).toBe(countA)
@@ -68,7 +73,7 @@ describe('useTrace', () => {
       tracesB.push(msg)
     })
 
-    addThread({ label: 'req', rules: [{ request: { type: 'ping' } }], once: true })
+    addThread({ name: 'req', description: 'Test thread.', rules: [{ request: { type: 'ping' } }], once: true })
     trigger({ type: 'start' })
 
     expect(tracesA.length).toBeGreaterThan(0)
@@ -82,7 +87,7 @@ describe('useTrace', () => {
       tracesC.push(msg)
     })
 
-    addThread({ label: 'req2', rules: [{ request: { type: 'pong' } }], once: true })
+    addThread({ name: 'req2', description: 'Test thread.', rules: [{ request: { type: 'pong' } }], once: true })
     trigger({ type: 'go' })
 
     expect(tracesC.length).toBeGreaterThan(0)

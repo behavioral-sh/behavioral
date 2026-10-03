@@ -70,8 +70,13 @@ type VerifyResult = {
 }
 
 const threads: Thread[] = [
-  { label: 'ticker', rules: [{ request: { type: 'tick' } }], once: true },
-  { label: 'worker', once: true, rules: [{ request: { type: 'start', detail: { id: 'job-1' } } }] },
+  { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }], once: true },
+  {
+    name: 'worker',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'start', detail: { id: 'job-1' } } }],
+  },
 ]
 
 describe('frontier worker — event wire', () => {
@@ -162,7 +167,9 @@ describe('replay', () => {
   test('returns idle frontier when no threads request events', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const idleThreads: Thread[] = [{ label: 'quiet', rules: [{ waitFor: [{ type: 'never' }] }], once: true }]
+      const idleThreads: Thread[] = [
+        { name: 'quiet', description: 'Test thread.', rules: [{ waitFor: [{ type: 'never' }] }], once: true },
+      ]
       frontier.call('r1', 'replay', { threads: idleThreads })
       const { result } = await frontier.resultFor('r1')
       const replay = result as ReplayResult
@@ -178,8 +185,8 @@ describe('replay', () => {
     const frontier = spawnFrontierWorker()
     try {
       const blockedThreads: Thread[] = [
-        { label: 'requester', rules: [{ request: { type: 'a' } }] },
-        { label: 'blocker', rules: [{ block: [{ type: 'a' }] }] },
+        { name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'a' } }] },
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'a' }] }] },
       ]
       frontier.call('r1', 'replay', { threads: blockedThreads })
       const { result } = await frontier.resultFor('r1')
@@ -233,7 +240,11 @@ describe('explore', () => {
     const frontier = spawnFrontierWorker()
     try {
       const transformThreads: Thread[] = [
-        { label: 'shaper', rules: [{ transform: [{ type: 'raw', query: '.', target: 'shaped' }] }] },
+        {
+          name: 'shaper',
+          description: 'Test thread.',
+          rules: [{ transform: [{ type: 'raw', query: '.', target: 'shaped' }] }],
+        },
       ]
       frontier.call('e1', 'explore', { threads: transformThreads, triggers: [{ type: 'raw' }], maxDepth: 50 })
       const { result } = await frontier.resultFor('e1')
@@ -254,7 +265,11 @@ describe('explore', () => {
     const frontier = spawnFrontierWorker()
     try {
       const transformThreads: Thread[] = [
-        { label: 'shaper', rules: [{ transform: [{ type: 'raw', query: '.', target: 'shaped' }] }] },
+        {
+          name: 'shaper',
+          description: 'Test thread.',
+          rules: [{ transform: [{ type: 'raw', query: '.', target: 'shaped' }] }],
+        },
       ]
       frontier.call('e1', 'explore', {
         threads: transformThreads,
@@ -340,8 +355,8 @@ describe('explore', () => {
     const frontier = spawnFrontierWorker()
     try {
       const deadlockThreads: Thread[] = [
-        { label: 'requester', rules: [{ request: { type: 'a' } }] },
-        { label: 'blocker', rules: [{ block: [{ type: 'a' }] }] },
+        { name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'a' } }] },
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'a' }] }] },
       ]
       frontier.call('e1', 'explore', { threads: deadlockThreads, maxDepth: 50 })
       const { result } = await frontier.resultFor('e1')
@@ -399,7 +414,12 @@ describe('explore', () => {
     const frontier = spawnFrontierWorker()
     try {
       const waitingThreads: Thread[] = [
-        { label: 'waiter', rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'ack' } }], once: true },
+        {
+          name: 'waiter',
+          description: 'Test thread.',
+          rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'ack' } }],
+          once: true,
+        },
       ]
       frontier.call('e1', 'explore', {
         threads: waitingThreads,
@@ -423,7 +443,9 @@ describe('explore', () => {
   test('ingress trigger events produce successors', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const blockingThreads: Thread[] = [{ label: 'blocker', rules: [{ block: [{ type: 'signal' }] }], once: true }]
+      const blockingThreads: Thread[] = [
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'signal' }] }], once: true },
+      ]
       frontier.call('e1', 'explore', {
         threads: blockingThreads,
         triggers: [{ type: 'signal' }],
@@ -458,8 +480,8 @@ describe('verify', () => {
     const frontier = spawnFrontierWorker()
     try {
       const deadlockThreads: Thread[] = [
-        { label: 'requester', rules: [{ request: { type: 'a' } }] },
-        { label: 'blocker', rules: [{ block: [{ type: 'a' }] }] },
+        { name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'a' } }] },
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'a' }] }] },
       ]
       frontier.call('v1', 'verify', { threads: deadlockThreads, maxDepth: 50 })
       const { result } = await frontier.resultFor('v1')
@@ -488,7 +510,9 @@ describe('verify', () => {
     try {
       // A ticker requesting `tick` forever. progress=['succeeded'] — the cycle
       // never selects `succeeded` → livelock → failed.
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'tick' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] },
+      ]
       frontier.call('v1', 'verify', { threads: looping, progress: ['succeeded'], maxDepth: 50 })
       const { result } = await frontier.resultFor('v1')
       const verify = result as VerifyResult
@@ -506,7 +530,9 @@ describe('verify', () => {
     try {
       // A ticker requesting `done` forever. progress=['done'] → the cycle DOES
       // select a progress event → not a livelock → verified.
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'done' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'done' } }] },
+      ]
       frontier.call('v1', 'verify', { threads: looping, progress: ['done'], maxDepth: 50 })
       const { result } = await frontier.resultFor('v1')
       const verify = result as VerifyResult
@@ -522,7 +548,9 @@ describe('verify', () => {
     try {
       // Same looping ticker, no progress spec. No deadlock, not truncated →
       // verified, livelocks empty (not checked).
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'tick' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] },
+      ]
       frontier.call('v1', 'verify', { threads: looping, maxDepth: 50 })
       const { result } = await frontier.resultFor('v1')
       const verify = result as VerifyResult
@@ -537,7 +565,9 @@ describe('verify', () => {
     const frontier = spawnFrontierWorker()
     try {
       // progress=[] → nothing counts as progress → any cycle is a livelock.
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'done' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'done' } }] },
+      ]
       frontier.call('v1', 'verify', { threads: looping, progress: [], maxDepth: 50 })
       const { result } = await frontier.resultFor('v1')
       const verify = result as VerifyResult
@@ -564,7 +594,9 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
       // identical after every selection, so the state graph closes at one
       // state and exploration stops well before maxDepth — proving
       // termination via dedup, not a depth cutoff.
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'tick' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] },
+      ]
       frontier.call('l1', 'explore', { threads: looping, strategy: 'bfs', maxDepth: 100 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
       expect(result.report.truncated).toBe(false)
@@ -582,7 +614,13 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
     try {
       // Toggle: requests `on`, then `off`, then loops. Two distinct states
       // ({request on}, {request off}); the cycle closes back to the first.
-      const toggle: Thread[] = [{ label: 'toggle', rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }] }]
+      const toggle: Thread[] = [
+        {
+          name: 'toggle',
+          description: 'Test thread.',
+          rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }],
+        },
+      ]
       frontier.call('l1', 'explore', { threads: toggle, strategy: 'bfs', maxDepth: 100 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
       expect(result.report.truncated).toBe(false)
@@ -599,8 +637,8 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
       // A looping requester whose only candidate is permanently blocked —
       // the deadlock is a genuine finding, not masked by state-keyed dedup.
       const blocked: Thread[] = [
-        { label: 'requester', rules: [{ request: { type: 'a' } }] },
-        { label: 'blocker', rules: [{ block: [{ type: 'a' }] }] },
+        { name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'a' } }] },
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'a' }] }] },
       ]
       frontier.call('l1', 'explore', { threads: blocked, strategy: 'bfs', maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
@@ -616,8 +654,13 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
     try {
       // Regression guard: finite-thread semantics are unchanged.
       const finite: Thread[] = [
-        { label: 'ticker', rules: [{ request: { type: 'tick' } }], once: true },
-        { label: 'worker', once: true, rules: [{ request: { type: 'start', detail: { id: 'job-1' } } }] },
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }], once: true },
+        {
+          name: 'worker',
+          description: 'Test thread.',
+          once: true,
+          rules: [{ request: { type: 'start', detail: { id: 'job-1' } } }],
+        },
       ]
       frontier.call('l1', 'explore', { threads: finite, strategy: 'bfs', maxDepth: 3 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
@@ -641,12 +684,22 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
       // the public expression of frontierStateKey's order- and
       // generator-identity invariance — no fake PendingBid fixtures.
       const program: Thread[] = [
-        { label: 'toggle', rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }] },
+        {
+          name: 'toggle',
+          description: 'Test thread.',
+          rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }],
+        },
       ]
       frontier.call('l1', 'explore', { threads: program, strategy: 'bfs', maxDepth: 50 })
       const a = (await frontier.resultFor('l1')).result as ExploreResult
       frontier.call('l2', 'explore', {
-        threads: [{ label: 'other-label', rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }] }],
+        threads: [
+          {
+            name: 'other-label',
+            description: 'Test thread.',
+            rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }],
+          },
+        ],
         strategy: 'bfs',
         maxDepth: 50,
       })
@@ -670,7 +723,7 @@ describe('frontier-explore state-keyed dedup (real programs)', () => {
       // states close back to the first. The iterative SCC algorithm must
       // handle this; a recursive impl would blow the stack.
       const rules = Array.from({ length: 60 }, (_, i) => ({ request: { type: `n${i}` } }))
-      const ring: Thread[] = [{ label: 'ring', rules }]
+      const ring: Thread[] = [{ name: 'ring', description: 'Test thread.', rules }]
       frontier.call('l1', 'explore', { threads: ring, strategy: 'bfs', maxDepth: 500 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
       expect(result.report.truncated).toBe(false)
@@ -685,7 +738,9 @@ describe('frontier-verify livelock integration (real programs)', () => {
   test('a looping program with no progress is failed (livelock)', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'tick' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] },
+      ]
       frontier.call('l1', 'verify', { threads: looping, progress: ['succeeded'], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
       expect(result.status).toBe('failed')
@@ -702,7 +757,9 @@ describe('frontier-verify livelock integration (real programs)', () => {
   test('a looping program whose cycle selects a progress event is verified', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'done' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'done' } }] },
+      ]
       frontier.call('l1', 'verify', { threads: looping, progress: ['done'], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
       expect(result.status).toBe('verified')
@@ -715,7 +772,9 @@ describe('frontier-verify livelock integration (real programs)', () => {
   test('omitting progress skips livelock detection (deadlock-only)', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'tick' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] },
+      ]
       frontier.call('l1', 'verify', { threads: looping, maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
       expect(result.status).toBe('verified')
@@ -728,7 +787,9 @@ describe('frontier-verify livelock integration (real programs)', () => {
   test('an empty progress set flags every cycle as a livelock', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const looping: Thread[] = [{ label: 'ticker', rules: [{ request: { type: 'done' } }] }]
+      const looping: Thread[] = [
+        { name: 'ticker', description: 'Test thread.', rules: [{ request: { type: 'done' } }] },
+      ]
       frontier.call('l1', 'verify', { threads: looping, progress: [], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
       expect(result.status).toBe('failed')
@@ -742,8 +803,8 @@ describe('frontier-verify livelock integration (real programs)', () => {
     const frontier = spawnFrontierWorker()
     try {
       const blocked: Thread[] = [
-        { label: 'requester', rules: [{ request: { type: 'a' } }] },
-        { label: 'blocker', rules: [{ block: [{ type: 'a' }] }] },
+        { name: 'requester', description: 'Test thread.', rules: [{ request: { type: 'a' } }] },
+        { name: 'blocker', description: 'Test thread.', rules: [{ block: [{ type: 'a' }] }] },
       ]
       frontier.call('l1', 'verify', { threads: blocked, progress: ['x'], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
@@ -762,10 +823,11 @@ describe('frontier-verify livelock integration (real programs)', () => {
       // the cycle itself never selects `done`, so it is still a livelock.
       const threads: Thread[] = [
         {
-          label: 'cycler-with-exit',
+          name: 'cycler-with-exit',
+          description: 'Test thread.',
           rules: [{ request: { type: 'tick' } }, { request: { type: 'tick' } }, { request: { type: 'done' } }],
         },
-        { label: 'sink', once: true, rules: [{ waitFor: [{ type: 'done' }] }] },
+        { name: 'sink', description: 'Test thread.', once: true, rules: [{ waitFor: [{ type: 'done' }] }] },
       ]
       frontier.call('l1', 'verify', { threads, progress: ['done'], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
@@ -784,7 +846,11 @@ describe('frontier-verify livelock integration (real programs)', () => {
       // A two-state cycle where one of the in-cycle edges IS the progress
       // event: toggle requests `done` then `tick`, looping.
       const threads: Thread[] = [
-        { label: 'toggle', rules: [{ request: { type: 'done' } }, { request: { type: 'tick' } }] },
+        {
+          name: 'toggle',
+          description: 'Test thread.',
+          rules: [{ request: { type: 'done' } }, { request: { type: 'tick' } }],
+        },
       ]
       frontier.call('l1', 'verify', { threads, progress: ['done'], maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as VerifyResult
@@ -799,7 +865,11 @@ describe('frontier-verify livelock integration (real programs)', () => {
     const frontier = spawnFrontierWorker()
     try {
       const threads: Thread[] = [
-        { label: 'toggle', rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }] },
+        {
+          name: 'toggle',
+          description: 'Test thread.',
+          rules: [{ request: { type: 'on' } }, { request: { type: 'off' } }],
+        },
       ]
       frontier.call('l1', 'explore', { threads, strategy: 'bfs', maxDepth: 50 })
       const result = (await frontier.resultFor('l1')).result as ExploreResult
@@ -829,7 +899,7 @@ describe('add_thread', () => {
   test('a valid proposed thread verifies: ok true, the thread echoed, the analysis attached', async () => {
     const frontier = spawnFrontierWorker()
     try {
-      const thread: Thread = { label: 'greeter', rules: [{ request: { type: 'ping' } }] }
+      const thread: Thread = { name: 'greeter', description: 'Test thread.', rules: [{ request: { type: 'ping' } }] }
       frontier.call('a1', 'add_thread', { thread, maxDepth: 8 })
       const result = (await frontier.resultFor('a1')).result as AddThreadResult
       expect(result.ok).toBe(true)
@@ -846,7 +916,7 @@ describe('add_thread', () => {
     try {
       // `rules` is required by the engine's Thread schema home — the derived
       // input schema rejects the whole input at the boundary.
-      frontier.call('a1', 'add_thread', { thread: { label: 'broken' }, maxDepth: 8 })
+      frontier.call('a1', 'add_thread', { thread: { name: 'broken', description: 'Test thread.' }, maxDepth: 8 })
       const { ok, error } = await frontier.resultFor('a1')
       expect(ok).toBe(false)
       expect(String(error?.message)).toContain('invalid input')
@@ -860,9 +930,12 @@ describe('add_thread', () => {
     try {
       // The mounted set blocks `ping`; the proposed thread requests `ping` and
       // waits forever — the joined set deadlocks.
-      const threads: Thread[] = [{ label: 'blocker', once: true, rules: [{ block: [{ type: 'ping' }] }] }]
+      const threads: Thread[] = [
+        { name: 'blocker', description: 'Test thread.', once: true, rules: [{ block: [{ type: 'ping' }] }] },
+      ]
       const thread: Thread = {
-        label: 'greeter',
+        name: 'greeter',
+        description: 'Test thread.',
         rules: [{ request: { type: 'ping' } }, { waitFor: [{ type: 'never' }] }],
       }
       frontier.call('a1', 'add_thread', { thread, threads, maxDepth: 8 })
@@ -882,7 +955,7 @@ describe('add_thread', () => {
     try {
       // The proposed thread loops forever selecting only `tick` — with
       // progress = ['done'] that cycle never makes progress.
-      const thread: Thread = { label: 'spinner', rules: [{ request: { type: 'tick' } }] }
+      const thread: Thread = { name: 'spinner', description: 'Test thread.', rules: [{ request: { type: 'tick' } }] }
       frontier.call('a1', 'add_thread', { thread, progress: ['done'], maxDepth: 8 })
       const result = (await frontier.resultFor('a1')).result as AddThreadResult
       expect(result.ok).toBe(false)

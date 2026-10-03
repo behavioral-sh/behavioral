@@ -43,7 +43,12 @@ const runJudgment = (steps: Step[]): Selected[] => {
   for (const thread of admissionJudgmentThreads) program.addThread(thread)
   for (const step of steps) {
     if (step.event !== undefined)
-      program.addThread({ label: `producer/${step.event.type}`, once: true, rules: [{ request: step.event }] })
+      program.addThread({
+        name: `producer/${step.event.type}`,
+        description: `Producer once-thread re-emitting ${step.event.type}.`,
+        once: true,
+        rules: [{ request: step.event }],
+      })
     for (const thread of step.threads ?? []) program.addThread(thread)
     for (let i = 0; i < PUMPS_PER_STEP; i++) program.trigger({ type: PUMP, detail: {} })
     step.check?.(selected)
@@ -52,9 +57,9 @@ const runJudgment = (steps: Step[]): Selected[] => {
 }
 
 /** The candidate event: a validated proposal awaiting judgment (the composition's emission). */
-const candidate = (id: string, label: string): BPEvent => ({
+const candidate = (id: string, name: string): BPEvent => ({
   type: ADMISSION_EVENT_TYPES.candidate,
-  detail: { id, thread: { label, rules: [{ request: { type: 'ping' } }] } },
+  detail: { id, thread: { name, description: 'Test thread.', rules: [{ request: { type: 'ping' } }] } },
 })
 
 /** The correlated judge result — a choice answer on the `admission` question. */
@@ -80,9 +85,9 @@ describe('system-one admission judgment threads', () => {
           )
           expect(request).toBeDefined()
           const input = request?.detail?.input as
-            | { state?: { thread?: { label?: string } }; questions?: Record<string, { type?: string }> }
+            | { state?: { thread?: { name?: string } }; questions?: Record<string, { type?: string }> }
             | undefined
-          expect(input?.state?.thread?.label).toBe('greeter')
+          expect(input?.state?.thread?.name).toBe('greeter')
           expect(input?.questions?.admission?.type).toBe('choice')
         },
       },
@@ -110,7 +115,8 @@ describe('system-one admission judgment threads', () => {
         // Decision is in flight.
         threads: [
           {
-            label: 'probe',
+            name: 'probe',
+            description: 'Test thread.',
             once: true,
             rules: [{ request: { type: ADMISSION_EVENT_TYPES.admitted, detail: { id: 'probe-1', admit: true } } }],
           },
@@ -174,7 +180,8 @@ describe('system-one admission judgment threads', () => {
         // the next candidate) — but the rejected candidate stays dead.
         threads: [
           {
-            label: 'probe',
+            name: 'probe',
+            description: 'Test thread.',
             once: true,
             rules: [{ request: { type: ADMISSION_EVENT_TYPES.admitted, detail: { id: 'probe-2', admit: true } } }],
           },

@@ -40,7 +40,7 @@ describe('bundleBProgramWorker — the serving seam', () => {
   })
 
   test('compile-time thread packs ride the wrapper as data (dev names the call)', async () => {
-    const pack = [{ label: 'p', rules: [{ request: { type: 'x' } }] }]
+    const pack = [{ name: 'p', description: 'Test thread.', rules: [{ request: { type: 'x' } }] }]
     const routes = await bundleBProgramWorker({ dev: true, threads: pack })
     const body = new TextDecoder().decode(
       Bun.gunzipSync(new Uint8Array(await routes[B_PROGRAM_WORKER_PATH]!.arrayBuffer())),

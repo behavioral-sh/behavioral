@@ -36,7 +36,12 @@ const runProgram = (events: BPEvent[]): Selected[] => {
   })
   for (const thread of pluginThreads) program.addThread(thread)
   for (const event of events)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: 'Producer once-thread re-emitting the event.',
+      once: true,
+      rules: [{ request: event }],
+    })
   // addThread is inert — trigger admits one ingress event and runs one
   // super-step; the second pump cascades transform re-entries.
   program.trigger({ type: 'plugin_gate_pump', detail: {} })

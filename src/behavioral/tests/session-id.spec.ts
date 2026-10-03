@@ -9,7 +9,12 @@ const runProgram = (options?: Parameters<typeof behavioral>[0]): { traces: Trace
   program.useTrace((trace) => {
     traces.push(trace)
   })
-  program.addThread({ label: 'greeter', once: true, rules: [{ request: { type: 'hello' } }] })
+  program.addThread({
+    name: 'greeter',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'hello' } }],
+  })
   program.trigger({ type: 'wake' })
   const first = traces[0] as Trace | undefined
   return { traces, instanceId: first?.instanceId ?? '' }

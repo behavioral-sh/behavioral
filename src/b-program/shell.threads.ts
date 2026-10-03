@@ -164,7 +164,8 @@ console.log(JSON.stringify({ skills: sorted, warnings }))
 
 /** scan-boot — once: the scan recipe is requested at boot; the tools worker pipes it. */
 const skillScanBoot: Thread = {
-  label: 'skill/scan-boot',
+  name: 'skill/scan-boot',
+  description: 'At boot, requests the skill scan via the shell run op and pipes the result through the tools worker.',
   once: true,
   rules: [
     {
@@ -182,7 +183,8 @@ const skillScanBoot: Thread = {
 
 /** catalog — a scan result carrying a skills catalog is put into the store as one value. */
 const skillCatalog: Thread = {
-  label: 'skill/catalog',
+  name: 'skill/catalog',
+  description: 'Puts each scanned skill catalog into the store as one value.',
   rules: [
     {
       transform: [
@@ -588,7 +590,8 @@ console.log(JSON.stringify({ plugins: manifests, warnings }))
 
 /** scan-boot — once: the manifest-scan recipe is requested at boot; the shell worker runs it. */
 const pluginScanBoot: Thread = {
-  label: 'plugin/scan-boot',
+  name: 'plugin/scan-boot',
+  description: 'At boot, requests the plugin scan via the shell run op and pipes the result through the tools worker.',
   once: true,
   rules: [
     {
@@ -606,7 +609,8 @@ const pluginScanBoot: Thread = {
 
 /** manifests — a scan result carrying plugin manifests is put into the store as one value. */
 const pluginManifests: Thread = {
-  label: 'plugin/manifests',
+  name: 'plugin/manifests',
+  description: 'Puts each plugin scan result carrying manifests into the store as one value.',
   rules: [
     {
       transform: [
@@ -858,7 +862,8 @@ console.log(JSON.stringify({ present, missing }))
 
 /** seeder — boot (once): both recipes filed in the store; the recipe home exists. */
 const linksSeeder: Thread = {
-  label: 'skill-links/seeder',
+  name: 'skill-links/seeder',
+  description: 'Seeds the skill-links recipe keys at boot.',
   once: true,
   rules: [
     {
@@ -905,7 +910,8 @@ const LINKS_REQUEST_DETAIL_SCHEMA = {
 
 /** dispatcher-extract — links_request becomes the extract shell_request; recipe static, markdown via env. */
 const dispatcherExtract: Thread = {
-  label: 'skill-links/dispatch-extract',
+  name: 'skill-links/dispatch-extract',
+  description: 'Dispatches the skill-links extract recipe when its key is requested.',
   rules: [
     {
       transform: [
@@ -922,7 +928,8 @@ const dispatcherExtract: Thread = {
 
 /** dispatcher-validate — links_request becomes the validate shell_request; rootRelative rides env too. */
 const dispatcherValidate: Thread = {
-  label: 'skill-links/dispatch-validate',
+  name: 'skill-links/dispatch-validate',
+  description: 'Dispatches the skill-links validate recipe when its key is requested.',
   rules: [
     {
       transform: [

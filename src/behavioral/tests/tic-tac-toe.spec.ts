@@ -119,7 +119,7 @@ test('take turns', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   // Initialize the board.
   board = new Set(squares)
   // Add the turn-enforcing thread.
@@ -179,9 +179,9 @@ test('squares taken', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   // Initialize the board.
   board = new Set(squares)
@@ -258,15 +258,15 @@ test('detect winner', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('X'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('O'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   // Initialize the board.
   board = new Set(squares)
@@ -323,17 +323,17 @@ test('stop game', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('X'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('O'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
-  addThread({ label: 'stopGame', ...stopGame })
+  addThread({ name: 'stopGame', description: 'Test thread.', ...stopGame })
   // Initialize the board.
   board = new Set(squares)
   // Add all game rule threads, including the one to stop the game on win.
@@ -403,19 +403,19 @@ test('defaultMoves', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('X'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('O'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
-  addThread({ label: 'stopGame', ...stopGame })
+  addThread({ name: 'stopGame', description: 'Test thread.', ...stopGame })
   for (const [key, threadArgs] of Object.entries(defaultMoves)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   // Initialize the board.
   board = new Set(squares)
@@ -469,20 +469,20 @@ test('start at center', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('X'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('O'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
-  addThread({ label: 'stopGame', ...stopGame })
-  addThread({ label: 'startAtCenter', ...startAtCenter })
+  addThread({ name: 'stopGame', description: 'Test thread.', ...stopGame })
+  addThread({ name: 'startAtCenter', description: 'Test thread.', ...startAtCenter })
   for (const [key, threadArgs] of Object.entries(defaultMoves)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   // Initialize the board.
   board = new Set(squares)
@@ -560,20 +560,20 @@ test('prevent completion of line with two Xs', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'enforceTurns', ...enforceTurns })
+  addThread({ name: 'enforceTurns', description: 'Test thread.', ...enforceTurns })
   for (const [key, threadArgs] of Object.entries(squaresTaken)) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('X'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   for (const [key, threadArgs] of Object.entries(detectWins('O'))) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
-  addThread({ label: 'stopGame', ...stopGame })
-  addThread({ label: 'startAtCenter', ...startAtCenter })
+  addThread({ name: 'stopGame', description: 'Test thread.', ...stopGame })
+  addThread({ name: 'startAtCenter', description: 'Test thread.', ...startAtCenter })
   for (const [key, threadArgs] of Object.entries(preventCompletionOfLineWithTwoXs())) {
-    addThread({ label: key, ...threadArgs })
+    addThread({ name: key, description: 'Test thread.', ...threadArgs })
   }
   // Initialize the board.
   board = new Set(squares)

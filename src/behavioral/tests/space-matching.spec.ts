@@ -25,7 +25,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'root-watcher',
+      name: 'root-watcher',
+      description: 'Test thread.',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
     program.trigger({ type: 'ping', detail: {} })
@@ -39,7 +40,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'root-watcher',
+      name: 'root-watcher',
+      description: 'Test thread.',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
     program.trigger({ type: 'ping', space: 'named', detail: {} })
@@ -53,7 +55,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 's1-watcher',
+      name: 's1-watcher',
+      description: 'Test thread.',
       space: 's1',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
@@ -68,7 +71,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 's1-watcher',
+      name: 's1-watcher',
+      description: 'Test thread.',
       space: 's1',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
@@ -85,7 +89,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'root-blocker',
+      name: 'root-blocker',
+      description: 'Test thread.',
       rules: [{ block: [{ type: 'go' }] }],
     })
     program.trigger({ type: 'go', space: 's1', detail: {} })
@@ -99,7 +104,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'victim',
+      name: 'victim',
+      description: 'Test thread.',
       rules: [{ waitFor: [{ type: 'never' }], interrupt: [{ type: 'boom' }] }, { request: { type: 'after-boom' } }],
     })
     program.trigger({ type: 'boom', space: 's1', detail: {} })
@@ -119,7 +125,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'root-shaper',
+      name: 'root-shaper',
+      description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
     program.trigger({ type: 'order', space: 's1', detail: { order: { id: 'o-1' } } })
@@ -144,7 +151,8 @@ describe('space matching — root authority: the unstamped listener sees every s
       traces.push(t)
     })
     program.addThread({
-      label: 'bidder',
+      name: 'bidder',
+      description: 'Test thread.',
       once: true,
       rules: [{ request: { type: 'pong' } }, { request: { type: 'done-bidder' } }],
     })

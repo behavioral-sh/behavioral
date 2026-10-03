@@ -133,7 +133,8 @@ const ADD_THREAD_APPROVAL_SCHEMA = {
 
 /** admission-review-gate — the blocking reviewer: admission is blocked while the analysis is in flight. */
 const reviewGate: Thread = {
-  label: 'frontier/admission-review-gate',
+  name: 'frontier/admission-review-gate',
+  description: 'Blocking admission reviewer: add_thread admission is blocked while the frontier analysis is in flight.',
   rules: [
     { waitFor: [{ type: FACULTY_MESSAGE_KINDS.frontier_analysis_request, detailSchema: ADD_THREAD_REQUEST_SCHEMA }] },
     {
@@ -154,7 +155,8 @@ const reviewGate: Thread = {
  * pack). Fail-closed: the only road to admission is a conforming verdict.
  */
 const reviewVerdict: Thread = {
-  label: 'frontier/admission-review-verdict',
+  name: 'frontier/admission-review-verdict',
+  description: 'Maps the frontier review verdict to admit/reject; only a conforming approving verdict admits.',
   rules: [
     {
       transform: [

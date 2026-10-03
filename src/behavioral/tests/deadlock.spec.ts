@@ -16,8 +16,8 @@ describe(TRACE_MESSAGE_KINDS.deadlock, () => {
       traces.push(trace)
     })
 
-    addThread({ label: 'safety', rules: [{ block: [onType('dangerous')] }] })
-    addThread({ label: 'interruptor', rules: [{ interrupt: [onType('dangerous')] }] })
+    addThread({ name: 'safety', description: 'Test thread.', rules: [{ block: [onType('dangerous')] }] })
+    addThread({ name: 'interruptor', description: 'Test thread.', rules: [{ interrupt: [onType('dangerous')] }] })
 
     trigger({ type: 'dangerous' })
 
@@ -54,7 +54,7 @@ describe(TRACE_MESSAGE_KINDS.deadlock, () => {
       traces.push(trace)
     })
 
-    addThread({ label: 'watcher', rules: [{ waitFor: [onType('dangerous')] }] })
+    addThread({ name: 'watcher', description: 'Test thread.', rules: [{ waitFor: [onType('dangerous')] }] })
 
     // Provisioning traces (thread_added) do not step the program — no
     // pending_bids/frontier/deadlock until a trigger arrives.
@@ -71,8 +71,8 @@ describe(TRACE_MESSAGE_KINDS.deadlock, () => {
       if (trace.kind === 'selection') selected.push(trace.selected.type)
     })
 
-    addThread({ label: 'low', rules: [{ request: { type: 'low' } }], once: true })
-    addThread({ label: 'high', rules: [{ request: { type: 'high' } }], once: true })
+    addThread({ name: 'low', description: 'Test thread.', rules: [{ request: { type: 'low' } }], once: true })
+    addThread({ name: 'high', description: 'Test thread.', rules: [{ request: { type: 'high' } }], once: true })
 
     trigger({ type: 'tick' })
 
@@ -103,7 +103,8 @@ describe(TRACE_MESSAGE_KINDS.deadlock, () => {
     })
 
     addThread({
-      label: 'blockSecond',
+      name: 'blockSecond',
+      description: 'Test thread.',
       rules: [
         {
           block: [
@@ -120,8 +121,18 @@ describe(TRACE_MESSAGE_KINDS.deadlock, () => {
         },
       ],
     })
-    addThread({ label: 'first', rules: [{ request: { type: 'same_type', detail: { n: 1 } } }], once: true })
-    addThread({ label: 'second', rules: [{ request: { type: 'same_type', detail: { n: 2 } } }], once: true })
+    addThread({
+      name: 'first',
+      description: 'Test thread.',
+      rules: [{ request: { type: 'same_type', detail: { n: 1 } } }],
+      once: true,
+    })
+    addThread({
+      name: 'second',
+      description: 'Test thread.',
+      rules: [{ request: { type: 'same_type', detail: { n: 2 } } }],
+      once: true,
+    })
 
     trigger({ type: 'kickoff' })
 

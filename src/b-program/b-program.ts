@@ -184,6 +184,7 @@ export const bProgram = ({
   facultyAddThreads(
     guardThreads(
       'guard:systemOne-schema',
+      'Blocks every systemOne wire message whose detail fails its event schema.',
       eventGuardEntries({
         request: SystemOneRequestEventSchema,
         cancel: SystemOneCancelEventSchema,
@@ -194,6 +195,7 @@ export const bProgram = ({
   facultyAddThreads(
     guardThreads(
       'guard:systemTwo-schema',
+      'Blocks every systemTwo wire message whose detail fails its event schema.',
       eventGuardEntries({
         request: SystemTwoRequestEventSchema,
         cancel: SystemTwoCancelEventSchema,
@@ -289,7 +291,8 @@ export const bProgram = ({
           if (decided !== undefined) {
             addThreads([
               {
-                label: `plugin-threads-skip:${detail.id}`,
+                name: `plugin-threads-skip:${detail.id}`,
+                description: 'Signals the skipped verdict for an already-decided plugin-thread candidate.',
                 once: true,
                 rules: [
                   {
@@ -424,7 +427,8 @@ export const bProgram = ({
           // until the outcome.
           addThreads([
             {
-              label: `thread-candidate:${id}`,
+              name: `thread-candidate:${id}`,
+              description: 'Carries one imported plugin thread into the admission lane for judgment.',
               once: true,
               rules: [
                 {
@@ -461,7 +465,7 @@ export const bProgram = ({
     // is the host's ui pack itself: the mint fires iff a `ui/`-labeled pack
     // is among the mounted threads (the ui key dissolved into the array).
     if (
-      hostThreads.some((t) => t.label.startsWith('ui/')) &&
+      hostThreads.some((t) => t.name.startsWith('ui/')) &&
       candidate.type === UI_RENDER_TRIGGER_TYPE &&
       candidate.ingress === true
     ) {

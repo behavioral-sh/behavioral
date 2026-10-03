@@ -111,7 +111,7 @@ describe('the socket lane — the faculty wire over a WebSocket', () => {
         (t.rules[0]?.request as { type?: string } | undefined)?.type?.endsWith('_result'),
       )!
       expect(thread.once).toBe(true)
-      expect(thread.label).toContain('ws_1')
+      expect(thread.name).toContain('ws_1')
       const request = thread.rules[0]!.request as { type: string; detail: { id?: string; ok?: boolean } }
       expect(request.type).toBe(FACULTY_MESSAGE_KINDS.store_request_result)
       expect(request.detail.id).toBe('ws_1')
@@ -175,7 +175,7 @@ describe('the socket lane — the faculty wire over a WebSocket', () => {
         !reentered.some((t) => (t.rules[0]?.request as { detail?: { id?: string } } | undefined)?.detail?.id === 'r2')
       ) {
         if (Date.now() > deadline2)
-          throw new Error(`no re-entry after reconnect; saw: ${JSON.stringify(reentered.map((t) => t.label))}`)
+          throw new Error(`no re-entry after reconnect; saw: ${JSON.stringify(reentered.map((t) => t.name))}`)
         if (Date.now() - lastSend > 300) {
           lastSend = Date.now()
           lane.send({ type: FACULTY_MESSAGE_KINDS.store_request, detail: { id: 'r2', input: {} } })
@@ -213,7 +213,7 @@ describe('the socket lane — the faculty wire over a WebSocket', () => {
         )
       ) {
         if (Date.now() > deadline2)
-          throw new Error(`no faculty_error; saw: ${JSON.stringify(reentered.map((t) => t.label))}`)
+          throw new Error(`no faculty_error; saw: ${JSON.stringify(reentered.map((t) => t.name))}`)
         await Bun.sleep(10)
       }
       const errorThread = reentered.find(

@@ -15,9 +15,10 @@ describe('the super-step cascade (characterization)', () => {
     // request loop. The stopper waits through STEPS ticks, then blocks the
     // type forever, deterministically ending the cascade in a deadlock.
     const STEPS = 5
-    program.addThread({ label: 'looper', rules: [{ request: onType('tick') }] })
+    program.addThread({ name: 'looper', description: 'Test thread.', rules: [{ request: onType('tick') }] })
     program.addThread({
-      label: 'stopper',
+      name: 'stopper',
+      description: 'Test thread.',
       rules: [...Array(STEPS).fill({ waitFor: [onType('tick')] }), { block: [onType('tick')] }],
     })
     program.step()
@@ -54,11 +55,16 @@ describe('cascade re-entrancy — a nested step from a selection listener', () =
     // adds a thread and calls step() from inside the running cascade. The
     // nested super-step (pong) must run to completion — its own selection and
     // drain — before the outer cascade continues to its drain (idle).
-    program.addThread({ label: 'pinger', once: true, rules: [{ request: onType('ping') }] })
+    program.addThread({ name: 'pinger', description: 'Test thread.', once: true, rules: [{ request: onType('ping') }] })
     const disconnect = onSelection(program, (selected) => {
       if (selected.type !== 'ping') return
       disconnect()
-      program.addThread({ label: 'replier', once: true, rules: [{ request: onType('pong') }] })
+      program.addThread({
+        name: 'replier',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: onType('pong') }],
+      })
       program.step()
     })
     program.step()
@@ -89,7 +95,7 @@ describe('cascade re-entrancy — a nested step from a selection listener', () =
     // The trigger-shaped re-entry: a selection listener triggers an external
     // event mid-cascade. The nested step carries ingress: true on its step
     // trace and on the resulting candidate.
-    program.addThread({ label: 'pinger', once: true, rules: [{ request: onType('ping') }] })
+    program.addThread({ name: 'pinger', description: 'Test thread.', once: true, rules: [{ request: onType('ping') }] })
     const disconnect = onSelection(program, (selected) => {
       if (selected.type !== 'ping') return
       disconnect()

@@ -161,12 +161,12 @@ describe('ui capture — the pipeline-keyed raw run consumer', () => {
       // The run is keyed by the MINTED pipeline id — never a time window.
       expect(run.pipeline).toMatch(/^ui-[0-9a-f-]+$/)
       // The standing Thread set rides thread_added for free.
-      const labels = run.threads.map((t) => t.label)
+      const labels = run.threads.map((t) => t.name)
       expect(labels).toContain('ui/render-gate')
       // The minted once-thread set is IN the run (the pump's warp — the
       // mint traces arrive before the ingress selection trace — lands the
       // legs as reentries at 0).
-      const reentryLabels = run.reentries.map((r) => r.thread.label)
+      const reentryLabels = run.reentries.map((r) => r.thread.name)
       expect(reentryLabels.filter((l) => l.startsWith(`ui/pipeline:${run.pipeline}/`)).length).toBe(6)
       // Round-trips: pure data, JSON-serializable, structurally intact.
       expect(JSON.parse(JSON.stringify(run.threads)) as unknown[]).toEqual(run.threads)

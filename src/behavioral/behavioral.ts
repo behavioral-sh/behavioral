@@ -214,14 +214,15 @@ export const behavioral = (options?: { sessionId?: string }) => {
   const addThread: AddThread = (args) => {
     const attemptedSpace = args?.space
     if (validateThread(args)) {
-      const { label, rules, once, space } = args
+      const { name, description, rules, once, space } = args
       try {
         const syncPoints = generateRulesFunctions(rules, space)
         const thread = useThread(syncPoints, once)
         running.add({
           priority: running.size + 1,
           generator: thread(),
-          label,
+          name,
+          ...(description === undefined ? {} : { description }),
         })
         // The provision record — after registration, so thread_added means
         // registered. Makes the trace log self-contained (replay = these +
@@ -292,7 +293,8 @@ export const behavioral = (options?: { sessionId?: string }) => {
         if (result.ok) {
           addThread({
             space,
-            label: `Transform(${thread} => ${target})`,
+            name: `Transform(${thread} => ${target})`,
+            description: `Transform re-entry: applies the ${thread} transform and re-emits as ${target}.`,
             once: true,
             rules: [{ request: { type: target, detail: result.value } }],
           })
@@ -362,7 +364,8 @@ export const behavioral = (options?: { sessionId?: string }) => {
       priority: 0,
       generator: thread(),
       ingress: true,
-      label: event.type,
+      name: event.type,
+      description: `Ingress event thread — minted for the trigger-arrived ${event.type} event.`,
     })
 
     /**

@@ -215,13 +215,14 @@ export const validateAdmissionVerdict = ajv.compile(ADMISSION_VERDICT_SCHEMA)
 
 /** admission-issue — a candidate issues the correlated `system_one_request` with the thread as Decision input. */
 const admissionIssue: Thread = {
-  label: 'system-one/admission-issue',
+  name: 'system-one/admission-issue',
+  description: 'Issues the systemOne admission-judgment request for each proposed add_thread candidate.',
   rules: [
     {
       transform: [
         {
           type: ADMISSION_EVENT_TYPES.candidate,
-          query: `. as $d | select($d.thread.label != null and $d.thread.rules != null)
+          query: `. as $d | select($d.thread.name != null and $d.thread.rules != null)
 | { id: ($d.id + "${ADMISSION_JUDGE_SUFFIX}"), input: {
     state: { lane: "admission-judgment", thread: $d.thread },
     questions: { ${ADMISSION_QUESTION}: { type: "choice",
@@ -237,7 +238,8 @@ const admissionIssue: Thread = {
 
 /** admission-gate — the blocking judge: admission is blocked while the Decision is in flight. */
 const admissionGate: Thread = {
-  label: 'system-one/admission-gate',
+  name: 'system-one/admission-gate',
+  description: 'Blocking admission gate: add_thread admission is blocked while the admission Decision is in flight.',
   rules: [
     { waitFor: [{ type: ADMISSION_EVENT_TYPES.candidate, detailSchema: ADMISSION_CANDIDATE_SCHEMA }] },
     {
@@ -252,7 +254,8 @@ const admissionGate: Thread = {
 
 /** admission-verdict — the judge-correlated result maps to the outcome; everything but an explicit approve rejects. */
 const admissionVerdict: Thread = {
-  label: 'system-one/admission-verdict',
+  name: 'system-one/admission-verdict',
+  description: 'Maps the admission-judgment result to admit/reject; everything but an explicit approve rejects.',
   rules: [
     {
       transform: [
@@ -373,7 +376,8 @@ export const supervisionThreads = ({
   threshold?: number
 }): Thread[] =>
   watch.map((watchedType) => ({
-    label: `system-one/supervisor(${watchedType})`,
+    name: `system-one/supervisor(${watchedType})`,
+    description: `Runtime supervision counter for the ${watchedType} event type — trips the circuit breaker past the threshold.`,
     rules: [
       // The counter: `threshold` wait-steps — each selection of the watched
       // type advances one rule; the position is the count.
@@ -574,7 +578,8 @@ const supervisionRequestJq = (stateJq: string) =>
 
 /** supervision-issue — a surfaced trip issues the correlated `system_one_request` with the loop's identity as Decision input. */
 const supervisionIssue: Thread = {
-  label: 'system-one/supervision-issue',
+  name: 'system-one/supervision-issue',
+  description: 'Issues the supervision Decision request when a watched-type loop trips the circuit breaker.',
   rules: [
     {
       transform: [
@@ -591,7 +596,8 @@ const supervisionIssue: Thread = {
 
 /** supervision-verdict — the judge-correlated result maps to the outcome: an explicit lift releases; everything else halts, fail-visible. */
 const supervisionVerdict: Thread = {
-  label: 'system-one/supervision-verdict',
+  name: 'system-one/supervision-verdict',
+  description: 'Maps the supervision Decision result to lift/halt; only an explicit lift releases the halt.',
   rules: [
     {
       transform: [
@@ -680,7 +686,8 @@ export const supervisionRecoveryThreads = ({
   maxReissues?: number
 }): Thread[] => [
   {
-    label: 'system-one/supervision-judge-retry',
+    name: 'system-one/supervision-judge-retry',
+    description: 'Re-issues the supervision Decision request on unjudged halts, bounded by the reissue budget.',
     rules: [
       // The attempt count rides the rule position: each unjudged halt
       // consumes one re-issue; past the bound, the parking rule below holds
@@ -721,7 +728,9 @@ export const supervisionRecoveryThreads = ({
     ],
   },
   {
-    label: 'system-one/supervision-override',
+    name: 'system-one/supervision-override',
+    description:
+      'Fails visible on unrecoverable supervision: halts the watched type when the judge budget is exhausted.',
     rules: [
       {
         transform: [

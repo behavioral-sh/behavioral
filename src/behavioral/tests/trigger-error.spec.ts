@@ -11,7 +11,12 @@ describe('trigger', () => {
     const { addThread, trigger } = program
     const received: string[] = []
 
-    addThread({ label: 'listener', rules: [{ waitFor: [onType('allowed_event')] }], once: true })
+    addThread({
+      name: 'listener',
+      description: 'Test thread.',
+      rules: [{ waitFor: [onType('allowed_event')] }],
+      once: true,
+    })
     onSelection(program, (selected) => {
       if (selected.type === 'allowed_event') received.push('allowed_event')
     })
@@ -26,7 +31,12 @@ describe('trigger', () => {
     const { addThread, trigger } = program
     const received: Array<{ id: number }> = []
 
-    addThread({ label: 'listener', rules: [{ waitFor: [onType('payload_event')] }], once: true })
+    addThread({
+      name: 'listener',
+      description: 'Test thread.',
+      rules: [{ waitFor: [onType('payload_event')] }],
+      once: true,
+    })
     onSelection(program, (selected) => {
       if (selected.type === 'payload_event') received.push(selected.detail as { id: number })
     })
@@ -95,7 +105,12 @@ describe('trigger_error isolation — no error pooling across calls', () => {
       if (msg.kind === 'trigger_error') triggerErrors.push(msg.error ?? [])
     })
 
-    addThread({ label: 'listener', rules: [{ waitFor: [{ type: 'valid_event' }] }], once: true })
+    addThread({
+      name: 'listener',
+      description: 'Test thread.',
+      rules: [{ waitFor: [{ type: 'valid_event' }] }],
+      once: true,
+    })
 
     // Invalid → valid → invalid
     //@ts-expect-error: test
@@ -126,7 +141,7 @@ describe('trigger — event-carried space', () => {
       if (msg.kind === 'selection') selections.push(msg)
     })
 
-    addThread({ label: 'listener', rules: [{ waitFor: [onType('evt')] }], once: true })
+    addThread({ name: 'listener', description: 'Test thread.', rules: [{ waitFor: [onType('evt')] }], once: true })
     trigger({ type: 'evt', space: 'space-1' })
 
     const selected = selections.find((trace) => trace.selected.type === 'evt')
@@ -142,7 +157,7 @@ describe('trigger — event-carried space', () => {
       if (msg.kind === 'selection') selections.push(msg)
     })
 
-    addThread({ label: 'listener', rules: [{ waitFor: [onType('evt')] }], once: true })
+    addThread({ name: 'listener', description: 'Test thread.', rules: [{ waitFor: [onType('evt')] }], once: true })
     trigger({ type: 'evt' })
 
     const selected = selections.find((trace) => trace.selected.type === 'evt')

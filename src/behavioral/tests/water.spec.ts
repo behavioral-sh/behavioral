@@ -32,7 +32,7 @@ test('Add hot water 3 times', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'addHot', rules: addHotRules, once: true })
+  addThread({ name: 'addHot', description: 'Test thread.', rules: addHotRules, once: true })
   onSelection(program, (selected) => {
     if (selected.type === 'hot') actual.push('hot')
   })
@@ -59,8 +59,8 @@ test('Add hot/cold water 3 times', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'addHot', rules: addHotRules, once: true })
-  addThread({ label: 'addCold', rules: addColdRules, once: true })
+  addThread({ name: 'addHot', description: 'Test thread.', rules: addHotRules, once: true })
+  addThread({ name: 'addCold', description: 'Test thread.', rules: addColdRules, once: true })
   onSelection(program, (selected) => {
     if (selected.type === 'hot') actual.push('hot')
   })
@@ -82,9 +82,9 @@ test('interleave', () => {
   const program = behavioral()
   const { addThread, trigger } = program
 
-  addThread({ label: 'addHot', rules: addHotRules, once: true })
-  addThread({ label: 'addCold', rules: addColdRules, once: true })
-  addThread({ label: 'mixHotCold', rules: mixHotColdRules })
+  addThread({ name: 'addHot', description: 'Test thread.', rules: addHotRules, once: true })
+  addThread({ name: 'addCold', description: 'Test thread.', rules: addColdRules, once: true })
+  addThread({ name: 'mixHotCold', description: 'Test thread.', rules: mixHotColdRules })
   onSelection(program, (selected) => {
     if (selected.type === 'hot') actual.push('hot')
   })
@@ -109,9 +109,9 @@ test('logging', () => {
   useTrace((trace) => {
     traces.push(trace)
   })
-  addThread({ label: 'addHot', rules: addHotRules, once: true })
-  addThread({ label: 'addCold', rules: addColdRules, once: true })
-  addThread({ label: 'mixHotCold', rules: mixHotColdRules })
+  addThread({ name: 'addHot', description: 'Test thread.', rules: addHotRules, once: true })
+  addThread({ name: 'addCold', description: 'Test thread.', rules: addColdRules, once: true })
+  addThread({ name: 'mixHotCold', description: 'Test thread.', rules: mixHotColdRules })
   trigger({ type: 'start' })
   const frontierTraces = traces.filter((trace) => trace.kind === TRACE_MESSAGE_KINDS.frontier)
   expect(frontierTraces.length).toBeGreaterThan(0)

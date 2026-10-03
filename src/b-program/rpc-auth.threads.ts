@@ -89,7 +89,8 @@ const RPC_AUTH_RESULT_DETAIL = {
  * challenge on an unauthenticated call maps to the same typed result).
  */
 const credRequestor: Thread = {
-  label: 'rpc-auth/requestor',
+  name: 'rpc-auth/requestor',
+  description: 'Vends a credential_request for an rpc op requiring auth and waits for the credential_result replay.',
   rules: [
     {
       transform: [
@@ -112,7 +113,8 @@ const credRequestor: Thread = {
  * the token; the op itself never knew OAuth.
  */
 const credReplayer: Thread = {
-  label: 'rpc-auth/replayer',
+  name: 'rpc-auth/replayer',
+  description: 'Replays the original rpc op with the vended credential attached.',
   rules: [
     {
       transform: [

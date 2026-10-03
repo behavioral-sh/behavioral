@@ -81,7 +81,8 @@ export const useWorker = ({
       addThreads([
         {
           ...(message.space === undefined ? {} : { space: message.space }),
-          label: `on_${message.type}_${message.detail.id}`,
+          name: `on_${message.type}_${message.detail.id}`,
+          description: `Faculty re-entry — once-thread re-emitting the ${message.type} wire event.`,
           once: true,
           rules: [{ request: { type: message.type, detail: message.detail } }],
         },

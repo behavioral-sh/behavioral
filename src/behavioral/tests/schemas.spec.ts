@@ -64,11 +64,27 @@ describe('behavioral schemas', () => {
     }
   })
 
-  test('Thread validator requires non-empty label and rules', () => {
-    expect(validateThread({ label: 'a', rules: [] })).toBe(true)
-    expect(validateThread({ label: 'a', once: true, rules: [] })).toBe(true)
-    expect(validateThread({ label: '', rules: [] })).toBe(false)
-    expect(validateThread({ rules: [] })).toBe(false)
+  test('ThreadSchema uses name + description — no label on the thread surface', () => {
+    expect(Object.keys(ThreadSchema.properties)).toContain('name')
+    expect(Object.keys(ThreadSchema.properties)).toContain('description')
+    expect(Object.keys(ThreadSchema.properties)).not.toContain('label')
+    expect(ThreadSchema.required).toContain('name')
+    expect(ThreadSchema.required).toContain('description')
+  })
+
+  test('Thread validator enforces the description cap and requires name', () => {
+    expect(validateThread({ name: 'a', description: 'd', rules: [] })).toBe(true)
+    expect(validateThread({ name: 'a', description: 'x'.repeat(513), rules: [] })).toBe(false)
+    expect(validateThread({ name: 'a', rules: [] })).toBe(false)
+    expect(validateThread({ description: 'd', rules: [] })).toBe(false)
+  })
+
+  test('Thread validator requires non-empty name and rules', () => {
+    expect(validateThread({ name: 'a', description: 'd', rules: [] })).toBe(true)
+    expect(validateThread({ name: 'a', description: 'd', once: true, rules: [] })).toBe(true)
+    expect(validateThread({ name: '', description: 'd', rules: [] })).toBe(false)
+    expect(validateThread({ description: 'd', rules: [] })).toBe(false)
+    expect(validateThread({ name: 'a', rules: [] })).toBe(false)
   })
 
   test('Selection trace validator accepts a selected event payload', () => {

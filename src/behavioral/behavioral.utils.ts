@@ -99,13 +99,13 @@ export const computeFrontier = (pending: Set<PendingBid>): Frontier => {
 
 export const advanceRunningToPending = (running: Set<RunningBid>, pending: Set<PendingBid>) => {
   for (const bid of running) {
-    const { generator, priority, label, ingress, space } = bid
+    const { generator, priority, name, ingress, space } = bid
     const { value, done } = generator.next()
     !done &&
       pending.add({
         priority,
         ingress,
-        label,
+        name,
         generator,
         space,
         ...value,
@@ -139,7 +139,7 @@ export const resumePendingThreadsForSelectedEvent = ({
 }) => {
   const transformers: Transformer[] = []
   for (const bid of pending) {
-    const { waitFor, request, generator, interrupt, transform, label } = bid
+    const { waitFor, request, generator, interrupt, transform, name } = bid
     const isInterrupted = interrupt?.some(isListeningFor(selectedEvent))
     const isWaitedFor = waitFor?.some(isListeningFor(selectedEvent))
     const isTransform = transform?.flatMap((listener) =>
@@ -151,7 +151,7 @@ export const resumePendingThreadsForSelectedEvent = ({
           {
             target: listener.target,
             query: listener.query,
-            thread: label,
+            thread: name,
             space: listener.space ?? selectedEvent.space,
           }
         : [],
@@ -167,7 +167,7 @@ export const resumePendingThreadsForSelectedEvent = ({
         instanceId,
         sessionId,
         selected: selectedEvent,
-        threadLabel: label,
+        threadLabel: name,
       })
       continue
     }

@@ -165,7 +165,10 @@ const addSyntheticRequestThread = ({
       priority: 0,
       generator,
       ...(ingress === true ? { ingress: true as const } : {}),
-      label: selected.type,
+      name: selected.type,
+      ...(ingress === true
+        ? { description: `Ingress event thread — minted for the trigger-arrived ${selected.type} event.` }
+        : {}),
       ...yielded.value,
     })
   }
@@ -190,16 +193,17 @@ const getSelectedEvents = ({ messages }: { messages: Trace[] }) =>
  * Compiles an array of {@link Thread} tuples into the generator representations
  * needed by the frontier engine.
  *
- * @param threads - Thread tuples authored as `['label', { rules, once? }]`.
+ * @param threads - Thread tuples ({ name, description, rules, once? }).
  * @param space - Optional space stamp to pass into {@link generateRulesFunctions}.
- * @returns Compiled entries each with the authored `label` and a started generator.
+ * @returns Compiled entries each with the authored `name` and a started generator.
  */
 const compileThreads = (
   threads: Thread[],
   space?: string,
-): Array<{ label: string; generator: IterableIterator<RegisteredIdioms> }> =>
-  threads.map(({ label, rules, once }) => ({
-    label,
+): Array<{ name: string; description?: string; generator: IterableIterator<RegisteredIdioms> }> =>
+  threads.map(({ name, description, rules, once }) => ({
+    name,
+    ...(description === undefined ? {} : { description }),
     generator: useThread(generateRulesFunctions(rules, space), once)(),
   }))
 
@@ -263,7 +267,8 @@ const replayToFrontierRaw = ({
     running.add({
       priority: i + 1,
       generator: entry.generator,
-      label: entry.label,
+      name: entry.name,
+      ...(entry.description === undefined ? {} : { description: entry.description }),
     })
   }
 
@@ -959,7 +964,7 @@ const verifyFrontiersRaw = ({ progress, ...args }: VerifyFrontiersArgs): VerifyF
 // Input boundary — the three operations' input schemas (moved from the
 // fleet wrapper; the worker compiles them and validates `detail.input` here)
 // ---------------------------------------------------------------------------
-// threads — structural (label + rules); idiom internals permissive so a
+// threads — structural (name + description + rules); idiom internals permissive so a
 // caller's detailSchema (JSON Schema) reaches the runtime validator verbatim
 // (generateRulesFunctions compiles it). The permissive idiom items can't be
 // statically verified for JSONSchemaType<Idioms>, so the sub-schema is cast
@@ -970,11 +975,12 @@ const threadsJsonSchema = {
   items: {
     type: 'object',
     properties: {
-      label: { type: 'string', minLength: 1 },
+      name: { type: 'string', minLength: 1, description: 'Human-readable thread name.' },
+      description: { type: 'string', maxLength: 512 },
       once: { type: 'boolean', enum: [true], nullable: true },
       rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
     },
-    required: ['label', 'rules'],
+    required: ['name', 'description', 'rules'],
     additionalProperties: false,
   },
 } as const

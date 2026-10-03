@@ -163,7 +163,8 @@ export const PLUGIN_THREADS_PROPOSAL_SCHEMA = {
 
 /** import-issue — a proposal issues the worker import through the run op; the target rides env, the join lane rides ctx.echo. */
 const importIssue: Thread = {
-  label: 'plugin-threads/import-issue',
+  name: 'plugin-threads/import-issue',
+  description: 'Requests the worker import of a proposed plugin thread file via the shell run op.',
   rules: [
     {
       transform: [
@@ -327,7 +328,8 @@ const CANDIDATE_SCHEMA = {
 
 /** import-join — the correlated result maps to the imported batch or the typed failure (both listeners act only on their own shape). */
 const importJoin: Thread = {
-  label: 'plugin-threads/import-join',
+  name: 'plugin-threads/import-join',
+  description: 'Joins the import result and carries the engine-validated Thread candidate forward.',
   rules: [
     {
       transform: [
@@ -352,7 +354,8 @@ const importJoin: Thread = {
 
 /** candidate-issue — the imported batch peels its first candidate and carries the rest. */
 const candidateIssue: Thread = {
-  label: 'plugin-threads/candidate-issue',
+  name: 'plugin-threads/candidate-issue',
+  description: 'Issues the one add_thread candidate per validated plugin-thread export.',
   rules: [
     {
       transform: [
@@ -377,7 +380,8 @@ const candidateIssue: Thread = {
 
 /** pending-issue — the carry peels the next candidate until the queue empties. */
 const pendingIssue: Thread = {
-  label: 'plugin-threads/pending-issue',
+  name: 'plugin-threads/pending-issue',
+  description: 'Requests the pending add_thread proposal when a worker-validated candidate arrives.',
   rules: [
     {
       transform: [
@@ -402,7 +406,8 @@ const pendingIssue: Thread = {
 
 /** candidate-dispatch — one add_thread frontier proposal per candidate; the admission's space stamp governs the mount, never the author's. */
 const candidateDispatch: Thread = {
-  label: 'plugin-threads/candidate-dispatch',
+  name: 'plugin-threads/candidate-dispatch',
+  description: 'Dispatches the validated plugin-thread candidate onto the admission lane.',
   rules: [
     {
       transform: [

@@ -7,7 +7,7 @@
  * in-process = raw; the per-consumer catch means it coexists with the
  * redacted trace lane untouched) writing ui-pipeline runs to a capture sink
  * the eval harness reads. A run is LINEAGE-KEYED, never time-windowed: the
- * per-trigger pipeline's minted id (parsed from the mint thread labels,
+ * per-trigger pipeline's minted id (parsed from the mint thread names,
  * the correlation ids, and the ctx lineage) opens, routes, and closes the
  * run — so interleaved pipelines attribute correctly and unrelated faculty
  * traffic (boot scans, other spaces' requests) stays out of the runs.
@@ -75,7 +75,7 @@ export type UiRun = {
 }
 
 /**
- * The pipeline id of a mint/re-entry thread, parsed from its label — the
+ * The pipeline id of a mint/re-entry thread, parsed from its name — the
  * three label shapes the composition produces: the minted leg
  * (`ui/pipeline:<pid>/<leg>`), the engine's transform re-entry
  * (`Transform(ui/pipeline:<pid>/<leg> => target)`), and the faculty result
@@ -83,11 +83,11 @@ export type UiRun = {
  * legs the pipeline composes (uuid is hex + hyphens — no underscores in a pid).
  */
 const pipelineOfThread = (thread: Thread): string | undefined => {
-  const mint = /^ui\/pipeline:([^/]+)\//.exec(thread.label)
+  const mint = /^ui\/pipeline:([^/]+)\//.exec(thread.name)
   if (mint !== null) return mint[1]
-  const transform = /Transform\(ui\/pipeline:([^/]+)\//.exec(thread.label)
+  const transform = /Transform\(ui\/pipeline:([^/]+)\//.exec(thread.name)
   if (transform !== null) return transform[1]
-  const reentry = /_(ui-[0-9a-f-]+-(?:scale|tenant|gen|render|style))$/.exec(thread.label)
+  const reentry = /_(ui-[0-9a-f-]+-(?:scale|tenant|gen|render|style))$/.exec(thread.name)
   if (reentry !== null) return reentry[1]!.slice(0, -(reentry[1]!.length - reentry[1]!.lastIndexOf('-')))
   return undefined
 }
@@ -114,7 +114,7 @@ const pipelineOfSelection = (selected: { type: string; detail?: BPEvent['detail'
 
 /**
  * The pipeline id of a once-thread's REQUESTED event — the fallback when the
- * label carries no lineage (a STANDING thread's transform re-entry, e.g. the
+ * name carries no lineage (a STANDING thread's transform re-entry, e.g. the
  * render gate's `Transform(ui/render-gate => ui_render)`: the requester's
  * request detail still carries the per-trigger id, so the re-entry routes to
  * its run and the replay can reconstruct the gate's request).
@@ -168,7 +168,7 @@ export const createUiCapture = ({ sink }: { sink: (run: UiRun) => void }): ((tra
       const thread = trace.thread
       if (thread.once === true) {
         // A once-thread re-entry: the minted pipeline legs, the transform
-        // target requesters, the faculty result re-entries. Route by label
+        // target requesters, the faculty result re-entries. Route by name
         // lineage, then by the REQUESTED event's id (a standing thread's
         // transform re-entry still names its pipeline in the request
         // detail). Unattributable onces (boot scans, replays) belong to no

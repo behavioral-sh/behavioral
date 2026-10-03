@@ -257,7 +257,8 @@ const rpcSurfaceGate = (legs: string[]) =>
 
 /** discover-issue — `remote_mcp_discover` issues the stamped `server/discover` op. */
 const discoverIssue: Thread = {
-  label: 'remote-mcp/discover-issue',
+  name: 'remote-mcp/discover-issue',
+  description: 'Issues the MCP server/discover call for the requested remote MCP server.',
   rules: [
     {
       transform: [
@@ -281,7 +282,8 @@ const discoverIssue: Thread = {
 
 /** tools-issue — the discover result (trusted shape) chains the stamped `tools/list` op. */
 const toolsIssue: Thread = {
-  label: 'remote-mcp/tools-issue',
+  name: 'remote-mcp/tools-issue',
+  description: 'Issues the MCP tools/list call after a successful discovery.',
   rules: [
     {
       transform: [
@@ -310,7 +312,8 @@ const toolsIssue: Thread = {
 
 /** register — the tools result (trusted shape) registers the tenant and surfaces the outcome. */
 const register: Thread = {
-  label: 'remote-mcp/register',
+  name: 'remote-mcp/register',
+  description: 'Registers discovered MCP tools as named resources in the store.',
   rules: [
     {
       transform: [
@@ -357,7 +360,8 @@ const register: Thread = {
 
 /** call-issue — `remote_mcp_call` issues the stamped `tools/call` op. */
 const callIssue: Thread = {
-  label: 'remote-mcp/call-issue',
+  name: 'remote-mcp/call-issue',
+  description: 'Issues the MCP tools/call for the requested tool and arguments.',
   rules: [
     {
       transform: [
@@ -385,7 +389,8 @@ const callIssue: Thread = {
 
 /** elicitation — an `input_required` result (trusted shape) surfaces the embedded requests to the host. */
 const elicitation: Thread = {
-  label: 'remote-mcp/elicitation',
+  name: 'remote-mcp/elicitation',
+  description: 'Surfaces MCP elicitation requests to the host for user input.',
   rules: [
     {
       transform: [
@@ -414,7 +419,8 @@ const elicitation: Thread = {
 
 /** call-result — a complete `tools/call` result (trusted shape) surfaces to the caller. */
 const callResult: Thread = {
-  label: 'remote-mcp/call-result',
+  name: 'remote-mcp/call-result',
+  description: 'Completes the rpc call with the MCP tool result.',
   rules: [
     {
       transform: [
@@ -439,7 +445,8 @@ const callResult: Thread = {
 
 /** retry-issue — the host's answers retry `tools/call`: fresh request id, answers + the byte-exact `requestState` echo. */
 const retryIssue: Thread = {
-  label: 'remote-mcp/retry-issue',
+  name: 'remote-mcp/retry-issue',
+  description: 'Re-issues the MCP tools/call for the next retry round within the round cap.',
   rules: [
     {
       transform: [
@@ -467,7 +474,8 @@ const retryIssue: Thread = {
 
 /** round-cap — the MRTR loop exhausted: the caller gets the typed cap error. */
 const roundCap: Thread = {
-  label: 'remote-mcp/round-cap',
+  name: 'remote-mcp/round-cap',
+  description: 'Fails the rpc op fail-visible when the MCP retry round cap is exhausted.',
   rules: [
     {
       transform: [
@@ -495,7 +503,8 @@ const roundCap: Thread = {
  * the jq only rebuilds.
  */
 const retry: Thread = {
-  label: 'remote-mcp/retry',
+  name: 'remote-mcp/retry',
+  description: 'Re-enters the call leg with the refreshed round state.',
   rules: [
     {
       transform: [
@@ -512,7 +521,8 @@ const retry: Thread = {
 
 /** call-failure — a non-retryable (or exhausted) call failure surfaces to the caller. */
 const callFailure: Thread = {
-  label: 'remote-mcp/call-failure',
+  name: 'remote-mcp/call-failure',
+  description: 'Fails the rpc op when the MCP tools/call reports an error.',
   rules: [
     {
       transform: [
@@ -529,7 +539,8 @@ const callFailure: Thread = {
 
 /** discover-failure — a non-retryable (or exhausted) discovery failure surfaces to the caller. */
 const discoverFailure: Thread = {
-  label: 'remote-mcp/discover-failure',
+  name: 'remote-mcp/discover-failure',
+  description: 'Fails the rpc op when MCP discovery fails.',
   rules: [
     {
       transform: [
@@ -551,7 +562,8 @@ const discoverFailure: Thread = {
  * no remote-mcp ctx — their vend failures never surface a remote-mcp result.
  */
 const vendFailure: Thread = {
-  label: 'remote-mcp/vend-failure',
+  name: 'remote-mcp/vend-failure',
+  description: 'Fails the rpc op when credential vending for the MCP connection fails.',
   rules: [
     {
       transform: [

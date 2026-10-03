@@ -44,7 +44,12 @@ describe('plugin-thread registry — the key', () => {
 })
 
 describe('plugin-thread registry — read/write (host-local, `<home>`)', () => {
-  const greeter: Thread = { label: 'greeter', once: true, rules: [{ request: { type: 'hello' } }] }
+  const greeter: Thread = {
+    name: 'greeter',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'hello' } }],
+  }
 
   test('the registry file lives under behavioralHome — the config.ts/traces pattern', () => {
     expect(pluginThreadRegistryPath('/home/x').endsWith(PLUGIN_THREAD_REGISTRY_FILE)).toBe(true)
@@ -93,7 +98,7 @@ describe('plugin-thread registry — read/write (host-local, `<home>`)', () => {
     try {
       writeFileSync(
         pluginThreadRegistryPath(home),
-        JSON.stringify({ k: { status: 'admitted', thread: { label: 'no-rules' } } }),
+        JSON.stringify({ k: { status: 'admitted', thread: { name: 'no-rules', description: 'Test thread.' } } }),
       )
       expect(() => readPluginThreadRegistry(home)).toThrow(PLUGIN_THREAD_REGISTRY_FILE)
     } finally {
@@ -106,7 +111,7 @@ describe('plugin-thread registry — read/write (host-local, `<home>`)', () => {
     try {
       expect(() =>
         writePluginThreadRegistry(home, {
-          k: { status: 'admitted', thread: { label: 'no-rules' } as unknown as Thread },
+          k: { status: 'admitted', thread: { name: 'no-rules', description: 'Test thread.' } as unknown as Thread },
         }),
       ).toThrow()
       expect(readPluginThreadRegistry(home)).toEqual({})

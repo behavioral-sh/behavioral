@@ -132,7 +132,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
     const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
-        label: 'caller',
+        name: 'caller',
+        description: 'Test thread.',
         once: true,
         rules: [{ request: request('r1', 'echo') }],
       })
@@ -153,7 +154,12 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
   test('env is merged over the inherited environment for the spawned process', async () => {
     const { program, traces, actuator } = spawnProbe({ PROBE_ENV: 'from-env-option' })
     try {
-      program.addThread({ label: 'env-caller', once: true, rules: [{ request: request('e1', 'env') }] })
+      program.addThread({
+        name: 'env-caller',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: request('e1', 'env') }],
+      })
       program.trigger({ type: 'probe_pump', detail: {} })
       const result = await awaitSelection(
         traces,
@@ -173,7 +179,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
     const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
-        label: 'malformed-caller',
+        name: 'malformed-caller',
+        description: 'Test thread.',
         once: true,
         rules: [{ request: request('m1', 'emit_malformed') }],
       })
@@ -217,6 +224,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
     addThreadsWithStep(program)(
       guardThreads(
         'guard:probe-schema',
+        'Blocks every shell wire message whose detail fails its event schema.',
         eventGuardEntries({
           request: ShellRequestEventSchema,
           cancel: ShellCancelEventSchema,
@@ -235,7 +243,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
         }
       })
       program.addThread({
-        label: 'malformed-caller',
+        name: 'malformed-caller',
+        description: 'Test thread.',
         once: true,
         rules: [{ request: request('m1', 'emit_malformed') }],
       })
@@ -270,7 +279,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
     const { program, traces, actuator } = spawnProbe()
     try {
       program.addThread({
-        label: 'crash-watch',
+        name: 'crash-watch',
+        description: 'Test thread.',
         rules: [
           {
             waitFor: [
@@ -284,7 +294,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
       })
       // 1. The die op exits the process mid-request → crash synthesis.
       program.addThread({
-        label: 'killer',
+        name: 'killer',
+        description: 'Test thread.',
         once: true,
         rules: [{ request: request('d1', 'die') }],
       })
@@ -303,7 +314,8 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
 
       // 2. Respawn on demand: the next request completes on a fresh process.
       program.addThread({
-        label: 'after-crash',
+        name: 'after-crash',
+        description: 'Test thread.',
         once: true,
         rules: [{ request: request('r2', 'echo') }],
       })

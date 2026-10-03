@@ -86,10 +86,11 @@ describe('useWorker ↔ createWorker — the round-trip pin over a real Bun Work
   test('request out, result in as a once-thread, space preserved', async () => {
     const { wiring, threads } = wiredFixture()
     wiring.send(fixtureRequestEvent({ id: 'r1', input: { op: 'echo', message: 'hi' }, space: 'space-a' }) as BPEvent)
-    const thread = await threadWhere(threads, (t) => t.label === 'on_fixture_request_result_r1')
+    const thread = await threadWhere(threads, (t) => t.name === 'on_fixture_request_result_r1')
     expect(thread).toEqual({
       space: 'space-a',
-      label: 'on_fixture_request_result_r1',
+      name: 'on_fixture_request_result_r1',
+      description: 'Faculty re-entry — once-thread re-emitting the fixture_request_result wire event.',
       once: true,
       rules: [
         {
@@ -106,9 +107,9 @@ describe('useWorker ↔ createWorker — the round-trip pin over a real Bun Work
   test('crash → exactly ONE faculty_error; the in-flight request never answers', async () => {
     const { wiring, threads } = wiredFixture()
     wiring.send(fixtureRequestEvent({ id: 'in-flight', input: { op: 'crash' } }) as BPEvent)
-    const error = await threadWhere(threads, (t) => t.label.startsWith('on_faculty_error_crash_'))
+    const error = await threadWhere(threads, (t) => t.name.startsWith('on_faculty_error_crash_'))
     // Exactly one synthesis — and no result thread for the in-flight request.
-    const errorThreads = threads.filter((t) => t.label.startsWith('on_faculty_error_crash_'))
+    const errorThreads = threads.filter((t) => t.name.startsWith('on_faculty_error_crash_'))
     expect(errorThreads).toHaveLength(1)
     // The message text is runtime-specific (Bun embeds the stack dump); the
     // faculty attribution and the crash prefix are the pin's contract.
@@ -118,19 +119,19 @@ describe('useWorker ↔ createWorker — the round-trip pin over a real Bun Work
     expect(detail?.faculty).toBe('fixture')
     expect(typeof detail?.message).toBe('string')
     expect(String(detail?.message)).toStartWith('worker crashed:')
-    expect(detail?.id).toEqual(error.label.replace('on_faculty_error_', ''))
+    expect(detail?.id).toEqual(error.name.replace('on_faculty_error_', ''))
     // The in-flight request's id never re-entered as a result.
-    expect(threads.some((t) => t.label.includes('in-flight'))).toBe(false)
+    expect(threads.some((t) => t.name.includes('in-flight'))).toBe(false)
     wiring.terminate()
   })
 
   test('the next send respawns through the factory', async () => {
     const { wiring, threads, factoryCalls } = wiredFixture()
     wiring.send(fixtureRequestEvent({ id: 'crash-1', input: { op: 'crash' } }) as BPEvent)
-    await threadWhere(threads, (t) => t.label.startsWith('on_faculty_error_crash_'))
+    await threadWhere(threads, (t) => t.name.startsWith('on_faculty_error_crash_'))
     expect(factoryCalls).toHaveLength(1)
     wiring.send(fixtureRequestEvent({ id: 'after', input: { op: 'echo' } }) as BPEvent)
-    await threadWhere(threads, (t) => t.label === 'on_fixture_request_result_after')
+    await threadWhere(threads, (t) => t.name === 'on_fixture_request_result_after')
     expect(factoryCalls).toHaveLength(2)
     wiring.terminate()
   })

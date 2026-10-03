@@ -16,7 +16,7 @@ describe(TRACE_MESSAGE_KINDS.idle, () => {
 
     // A one-shot request: the super-step selects it, the thread completes, and
     // the next frontier has no candidates at all — quiescent, not deadlocked.
-    addThread({ label: 'once', once: true, rules: [{ request: onType('work') }] })
+    addThread({ name: 'once', description: 'Test thread.', once: true, rules: [{ request: onType('work') }] })
     step()
 
     const idles = traces.filter((trace): trace is IdleTrace => trace.kind === TRACE_MESSAGE_KINDS.idle)
@@ -42,7 +42,7 @@ describe(TRACE_MESSAGE_KINDS.idle, () => {
       traces.push(trace)
     })
 
-    addThread({ label: 'safety', rules: [{ block: [onType('dangerous')] }] })
+    addThread({ name: 'safety', description: 'Test thread.', rules: [{ block: [onType('dangerous')] }] })
     trigger({ type: 'dangerous' })
 
     expect(traces.filter((trace) => trace.kind === TRACE_MESSAGE_KINDS.deadlock)).toHaveLength(1)

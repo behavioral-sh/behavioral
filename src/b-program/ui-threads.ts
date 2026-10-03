@@ -210,7 +210,8 @@ console.log(JSON.stringify(out))
 
 /** design-scan-boot — once: the scan recipe is requested at boot; the shell worker pipes it. */
 const designScanBoot: Thread = {
-  label: 'ui/design-scan-boot',
+  name: 'ui/design-scan-boot',
+  description: 'At boot, requests the standing design.md scan via the shell run op; the shell worker pipes it.',
   once: true,
   rules: [
     {
@@ -236,7 +237,9 @@ const designScanBoot: Thread = {
  * a malformed result fails the detailSchema gate, never partial admission.
  */
 const designTenant: Thread = {
-  label: 'ui/design-tenant',
+  name: 'ui/design-tenant',
+  description:
+    'Puts the design scan result into the store as the tenant and compiles the custom-properties stylesheet artifact.',
   rules: [
     {
       transform: [
@@ -464,7 +467,8 @@ export const uiPipelineThreads = ({
   } as const
 
   const scaleIssue: Thread = {
-    label: `ui/pipeline:${id}/scale-issue`,
+    name: `ui/pipeline:${id}/scale-issue`,
+    description: 'Pipeline preflight leg: verifies the render-time scale context for the render trigger.',
     once: true,
     rules: [
       {
@@ -477,7 +481,8 @@ export const uiPipelineThreads = ({
   }
 
   const scaleJoin: Thread = {
-    label: `ui/pipeline:${id}/scale-join`,
+    name: `ui/pipeline:${id}/scale-join`,
+    description: 'Joins the scale preflight and proceeds when the scale context is confirmed.',
     once: true,
     rules: [
       {
@@ -499,7 +504,8 @@ export const uiPipelineThreads = ({
   }
 
   const contextIssue: Thread = {
-    label: `ui/pipeline:${id}/context-issue`,
+    name: `ui/pipeline:${id}/context-issue`,
+    description: 'Gathers the store tenant and artifact context for the ui_* generation.',
     once: true,
     rules: [
       {
@@ -516,7 +522,8 @@ export const uiPipelineThreads = ({
   }
 
   const styleIssue: Thread = {
-    label: `ui/pipeline:${id}/style-issue`,
+    name: `ui/pipeline:${id}/style-issue`,
+    description: 'Serves the scoped ui_style seam for the per-trigger pipeline.',
     once: true,
     rules: [
       {
@@ -570,7 +577,8 @@ export const uiPipelineThreads = ({
   }
 
   const generationCompose: Thread = {
-    label: `ui/pipeline:${id}/generation-compose`,
+    name: `ui/pipeline:${id}/generation-compose`,
+    description: 'Composes the ui_render draft generation request for the pipeline trigger.',
     once: true,
     rules: [
       {
@@ -625,7 +633,8 @@ export const uiPipelineThreads = ({
   }
 
   const renderCompose: Thread = {
-    label: `ui/pipeline:${id}/render-compose`,
+    name: `ui/pipeline:${id}/render-compose`,
+    description: 'Composes the final ui_render emission from the generated draft and its context.',
     once: true,
     rules: [
       {
@@ -666,7 +675,9 @@ export const uiPipelineThreads = ({
  * draft is held as data (selected, visible in traces, never emitted).
  */
 const renderGate: Thread = {
-  label: 'ui/render-gate',
+  name: 'ui/render-gate',
+  description:
+    'Validates the ui_render draft against the controller detail schema before the render is requested; a non-conforming draft is held as data.',
   rules: [
     {
       transform: [

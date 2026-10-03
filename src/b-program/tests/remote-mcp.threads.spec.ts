@@ -33,7 +33,12 @@ const runProgram = (events: BPEvent[]): Selected[] => {
   })
   for (const thread of remoteMcpThreads) program.addThread(thread)
   for (const event of events) {
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: 'Producer once-thread re-emitting the event.',
+      once: true,
+      rules: [{ request: event }],
+    })
     // addThread is inert — trigger admits one ingress event and runs one
     // super-step; the second pump cascades transform re-entries.
     program.trigger({ type: 'rmcp_pump', detail: {} })
@@ -373,7 +378,12 @@ describe('remote-mcp threads — trace cleanliness', () => {
       if (trace.kind === TRACE_MESSAGE_KINDS.transform_error) transformErrors.push(trace)
     })
     for (const thread of remoteMcpThreads) program.addThread(thread)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: `Producer once-thread re-emitting ${event.type}.`,
+      once: true,
+      rules: [{ request: event }],
+    })
     program.trigger({ type: 'rmcp_pump', detail: {} })
     program.trigger({ type: 'rmcp_pump', detail: {} })
     program.trigger({ type: 'rmcp_pump', detail: {} })

@@ -63,7 +63,12 @@ const runProgram = (events: BPEvent[]): { selected: Selected[]; traces: Trace[] 
   })
   for (const thread of uiThreads) program.addThread(thread)
   for (const event of events)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: 'Producer once-thread re-emitting the event.',
+      once: true,
+      rules: [{ request: event }],
+    })
   // addThread is inert — trigger admits one ingress event and runs one
   // super-step; the second pump cascades transform re-entries.
   program.trigger({ type: 'ui_threads_pump', detail: {} })
@@ -355,7 +360,12 @@ const pipelineRun = (id: string, detail: JsonObject, events: BPEvent[]) => {
   for (const thread of uiThreads) program.addThread(thread)
   mountPipeline(program, id, detail)
   for (const event of events)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: 'Producer once-thread re-emitting the event.',
+      once: true,
+      rules: [{ request: event }],
+    })
   program.trigger({ type: 'ui_pipeline_pump', detail: {} })
   program.trigger({ type: 'ui_pipeline_pump', detail: {} })
   return { selected, traces }
@@ -381,7 +391,7 @@ describe('ui threads — the per-trigger pipeline', () => {
       holds.some((t) =>
         t.threads.some(
           (bid) =>
-            bid.label === 'ui/pipeline:ui-x1/scale-join' &&
+            bid.name === 'ui/pipeline:ui-x1/scale-join' &&
             bid.transform?.some((l) => l.type === 'ui_scale_check_result'),
         ),
       ),
@@ -430,7 +440,12 @@ describe('ui threads — the per-trigger pipeline', () => {
     for (const thread of uiThreads) program.addThread(thread)
     mountPipeline(program, 'ui-a', { message: 'view A' })
     mountPipeline(program, 'ui-b', { message: 'view B' })
-    program.addThread({ label: 'producer/a-reply', once: true, rules: [{ request: scaleReply('ui-a') }] })
+    program.addThread({
+      name: 'producer/a-reply',
+      description: 'Test thread.',
+      once: true,
+      rules: [{ request: scaleReply('ui-a') }],
+    })
     program.trigger({ type: 'ui_pipeline_pump', detail: {} })
     program.trigger({ type: 'ui_pipeline_pump', detail: {} })
     const generates = selected.filter((s) => s.type === 'generate')
@@ -561,9 +576,15 @@ describe('ui threads — the per-trigger generation lane', () => {
       modelId: 'named-model',
     }))
       program.addThread(thread)
-    program.addThread({ label: 'producer/reply', once: true, rules: [{ request: scaleReply('ui-x9') }] })
     program.addThread({
-      label: 'producer/tenant',
+      name: 'producer/reply',
+      description: 'Test thread.',
+      once: true,
+      rules: [{ request: scaleReply('ui-x9') }],
+    })
+    program.addThread({
+      name: 'producer/tenant',
+      description: 'Test thread.',
       once: true,
       rules: [{ request: tenantStoreResult('ui-x9', null) }],
     })

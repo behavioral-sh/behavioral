@@ -282,14 +282,16 @@ export type UseThread = (rules: RulesFunction[], once?: true) => RulesFunction
  * or `request` declarations.
  */
 export type RunningBid = {
-  /** Optional human-readable label for spawned thread instances. */
-  label: string
+  /** The thread's `name` — carried from the definition (or minted for ingress/transform threads). */
+  name: string
   /** The priority level of the thread, used for resolving conflicts when multiple threads request events. Lower numbers = higher priority. */
   priority: number
   /** Internal iterator representing the thread's execution state. Holds the current position in the rule sequence. */
   generator: IterableIterator<RegisteredIdioms>
   ingress?: true
   space?: string
+  /** Where present, the thread's `description` (minted threads carry a default). */
+  description?: string
 }
 
 /**
@@ -323,7 +325,8 @@ export type CandidateBid = {
 /**
  * A b-thread registration tuple.
  *
- * @property label - Unique-ish human label; appears in trace messages.
+ * @property name - Unique-ish human name; appears in trace messages.
+ * @property description - One short paragraph (≤512 chars) describing what the thread does — model-readable.
  * @property rules - The thread's synchronization statements, executed in order.
  * @property once - When `true`, the thread runs its rules once and completes.
  *
@@ -331,7 +334,8 @@ export type CandidateBid = {
  */
 export type Thread = {
   space?: string
-  label: string
+  name: string
+  description: string
   once?: true
   rules: Idioms[]
 }
@@ -351,7 +355,12 @@ export const ThreadSchema: JSONSchemaType<Thread> = {
       nullable: true,
       description: 'Scope stamp; the thread matches only events in the same space.',
     },
-    label: { type: 'string', minLength: 1, description: 'Human-readable thread name; appears in trace messages.' },
+    name: { type: 'string', minLength: 1, description: 'Human-readable thread name; appears in trace messages.' },
+    description: {
+      type: 'string',
+      maxLength: 512,
+      description: 'One short paragraph describing the thread — the model-facing self-description.',
+    },
     once: {
       type: 'boolean',
       enum: [true],
@@ -360,7 +369,7 @@ export const ThreadSchema: JSONSchemaType<Thread> = {
     },
     rules: { type: 'array', items: IdiomSchema, description: 'The synchronization statements executed in order.' },
   },
-  required: ['label', 'rules'],
+  required: ['name', 'description', 'rules'],
   additionalProperties: false,
 }
 
@@ -477,7 +486,8 @@ export type ThreadAddedTrace = TraceBase & {
 }
 
 export type SerializedThread = {
-  label: string
+  name: string
+  description?: string
   priority: number
   ingress?: true
   space?: string

@@ -391,7 +391,12 @@ describe('bProgram — the runtime composition', () => {
         // rejected proposal (its cycle never selects a progress event), so the
         // minimal valid-proposal fixture is the terminating shape.
         runtime.trigger(
-          addThreadRequest('at1', { label: 'greeter', once: true, rules: [{ request: { type: 'ping' } }] }),
+          addThreadRequest('at1', {
+            name: 'greeter',
+            description: 'Test thread.',
+            once: true,
+            rules: [{ request: { type: 'ping' } }],
+          }),
         )
         await waitForTraces(traces, (s) =>
           s.some(
@@ -407,7 +412,7 @@ describe('bProgram — the runtime composition', () => {
         const added = traces.find(
           (t) =>
             t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-            (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+            (t as { thread?: { name?: string } }).thread?.name === 'greeter',
         )
         expect(added).toBeDefined()
       } finally {
@@ -419,7 +424,7 @@ describe('bProgram — the runtime composition', () => {
       const { runtime, traces } = startRuntime()
       try {
         // `rules` missing: the derived Thread-schema gate rejects the whole input.
-        runtime.trigger(addThreadRequest('at2', { label: 'broken' }))
+        runtime.trigger(addThreadRequest('at2', { name: 'broken', description: 'Test thread.' }))
         await waitForTraces(traces, (s) =>
           s.some(
             (t) =>
@@ -433,7 +438,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'broken',
+              (t as { thread?: { name?: string } }).thread?.name === 'broken',
           ),
         ).toBe(false)
       } finally {
@@ -450,7 +455,8 @@ describe('bProgram — the runtime composition', () => {
         // admits; each external release then advances it one round trip.
         runtime.trigger(
           addThreadRequest('at3', {
-            label: 'worker',
+            name: 'worker',
+            description: 'Test thread.',
             rules: [{ waitFor: [{ type: 'work' }] }, { request: { type: 'done' } }],
           }),
         )
@@ -486,7 +492,13 @@ describe('bProgram — the runtime composition', () => {
         // cycle never selects a progress event — is rejected at admission,
         // fail-closed. This is the exact shape that overflowed the recursive
         // cascade (~8.6k selections): the guard keeps it out before it runs.
-        runtime.trigger(addThreadRequest('lk1', { label: 'looper', rules: [{ request: { type: 'spin' } }] }))
+        runtime.trigger(
+          addThreadRequest('lk1', {
+            name: 'looper',
+            description: 'Test thread.',
+            rules: [{ request: { type: 'spin' } }],
+          }),
+        )
         await waitForTraces(traces, (s) =>
           s.some(
             (t) =>
@@ -509,7 +521,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'looper',
+              (t as { thread?: { name?: string } }).thread?.name === 'looper',
           ),
         ).toBe(false)
         expect(selectionsOf(traces).some((t) => t.selected.type === 'spin')).toBe(false)
@@ -532,7 +544,8 @@ describe('bProgram — the runtime composition', () => {
         // event inside its cycle — without the runtime spin.
         runtime.trigger(
           addThreadRequest('lk2', {
-            label: 'progress-looper',
+            name: 'progress-looper',
+            description: 'Test thread.',
             once: true,
             rules: [{ request: { type: FACULTY_MESSAGE_KINDS.store_request_result } }],
           }),
@@ -549,7 +562,7 @@ describe('bProgram — the runtime composition', () => {
         const added = traces.find(
           (t) =>
             t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-            (t as { thread?: { label?: string } }).thread?.label === 'progress-looper',
+            (t as { thread?: { name?: string } }).thread?.name === 'progress-looper',
         )
         expect(added).toBeDefined()
       } finally {
@@ -569,7 +582,14 @@ describe('bProgram — the runtime composition', () => {
           detail: {
             id: 'md1',
             op: 'add_thread',
-            input: { thread: { label: 'deferred-budget', once: true, rules: [{ request: { type: 'ping' } }] } },
+            input: {
+              thread: {
+                name: 'deferred-budget',
+                description: 'Test thread.',
+                once: true,
+                rules: [{ request: { type: 'ping' } }],
+              },
+            },
           },
         })
         await waitForTraces(traces, (s) =>
@@ -585,7 +605,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'deferred-budget',
+              (t as { thread?: { name?: string } }).thread?.name === 'deferred-budget',
           ),
         ).toBe(true)
       } finally {
@@ -604,7 +624,8 @@ describe('bProgram — the runtime composition', () => {
           addThreadRequest(
             'md2',
             {
-              label: 'two-step',
+              name: 'two-step',
+              description: 'Test thread.',
               once: true,
               rules: [{ request: { type: 'step_one' } }, { request: { type: 'step_two' } }],
             },
@@ -625,7 +646,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'two-step',
+              (t as { thread?: { name?: string } }).thread?.name === 'two-step',
           ),
         ).toBe(false)
       } finally {
@@ -641,7 +662,12 @@ describe('bProgram — the runtime composition', () => {
         // the pump's admitted leg writes on that SELECTION, not on the raw
         // verdict. Admission is observable in the engine's own traces.
         runtime.trigger(
-          addThreadRequest('rv1', { label: 'native-greeter', once: true, rules: [{ request: { type: 'ping' } }] }),
+          addThreadRequest('rv1', {
+            name: 'native-greeter',
+            description: 'Test thread.',
+            once: true,
+            rules: [{ request: { type: 'ping' } }],
+          }),
         )
         await waitForTraces(traces, (s) =>
           s.some(
@@ -668,7 +694,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'native-greeter',
+              (t as { thread?: { name?: string } }).thread?.name === 'native-greeter',
           ),
         ).toBe(true)
       } finally {
@@ -679,7 +705,13 @@ describe('bProgram — the runtime composition', () => {
     test('the structural rejection is BP-native: a livelocked proposal maps to a thread_admission_rejected selection', async () => {
       const { runtime, traces } = startRuntime()
       try {
-        runtime.trigger(addThreadRequest('rv2', { label: 'native-looper', rules: [{ request: { type: 'spin' } }] }))
+        runtime.trigger(
+          addThreadRequest('rv2', {
+            name: 'native-looper',
+            description: 'Test thread.',
+            rules: [{ request: { type: 'spin' } }],
+          }),
+        )
         // The rejection is a selection stamped with the candidate id — visible
         // in the traces, the requester reads the why from the verdict.
         await waitForTraces(traces, (s) =>
@@ -710,7 +742,12 @@ describe('bProgram — the runtime composition', () => {
           // (A looping thread here would recurse the engine's super-step cascade
           // unboundedly — a known engine frontier this test does not exercise.)
           runtime.trigger(
-            addThreadRequest('aj1', { label: 'greeter', once: true, rules: [{ request: { type: 'ping' } }] }),
+            addThreadRequest('aj1', {
+              name: 'greeter',
+              description: 'Test thread.',
+              once: true,
+              rules: [{ request: { type: 'ping' } }],
+            }),
           )
           // The judgment's outcome: the admission fires with the candidate id…
           await waitForTraces(traces, (s) =>
@@ -723,7 +760,7 @@ describe('bProgram — the runtime composition', () => {
           // …the Decision saw the proposed thread (the faculty's recorded request —
           // the semantic layer judged the actual thread, not a schema echo).
           const judged = server.requests.find(
-            (r) => (r.body.state as { thread?: { label?: string } } | undefined)?.thread?.label === 'greeter',
+            (r) => (r.body.state as { thread?: { name?: string } } | undefined)?.thread?.name === 'greeter',
           )
           expect(judged).toBeDefined()
           expect(Object.keys(judged?.body.questions ?? {})).toContain('admission')
@@ -744,7 +781,7 @@ describe('bProgram — the runtime composition', () => {
             traces.some(
               (t) =>
                 t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+                (t as { thread?: { name?: string } }).thread?.name === 'greeter',
             ),
           ).toBe(true)
           // …and the admitted thread goes live — its request selects like any other thread's.
@@ -766,7 +803,12 @@ describe('bProgram — the runtime composition', () => {
           // judgment-rejection test needs a structurally-verifiable candidate:
           // the semantic layer is what must hold the line here.
           runtime.trigger(
-            addThreadRequest('aj2', { label: 'suspicious', once: true, rules: [{ request: { type: 'evil' } }] }),
+            addThreadRequest('aj2', {
+              name: 'suspicious',
+              description: 'Test thread.',
+              once: true,
+              rules: [{ request: { type: 'evil' } }],
+            }),
           )
           // The rejection is visible, stamped with the candidate id…
           await waitForTraces(traces, (s) =>
@@ -789,7 +831,7 @@ describe('bProgram — the runtime composition', () => {
             traces.some(
               (t) =>
                 t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                (t as { thread?: { label?: string } }).thread?.label === 'suspicious',
+                (t as { thread?: { name?: string } }).thread?.name === 'suspicious',
             ),
           ).toBe(false)
           expect(selectionsOf(traces).some((t) => t.selected.type === 'evil')).toBe(false)
@@ -1226,7 +1268,7 @@ describe('bProgram — the runtime composition', () => {
       mkdirSync(dir, { recursive: true })
       writeFileSync(
         join(dir, 't.ts'),
-        "export const greeter = { label: 'greeter', once: true, rules: [{ request: { type: 'hello' } }] }\n" +
+        "export const greeter = { name: 'greeter',        description: 'Test thread.', once: true, rules: [{ request: { type: 'hello' } }] }\n" +
           'export const notAThread = { nope: true }\n',
       )
       const { runtime, traces } = startRuntime()
@@ -1249,9 +1291,9 @@ describe('bProgram — the runtime composition', () => {
             (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
         )
         expect(adds.map((t) => (t.selected.detail as { id?: string }).id)).toEqual(['pt1-add-0'])
-        const thread = (adds[0]?.selected.detail as { input?: { thread?: { label?: string } } } | undefined)?.input
+        const thread = (adds[0]?.selected.detail as { input?: { thread?: { name?: string } } } | undefined)?.input
           ?.thread
-        expect(thread?.label).toBe('greeter')
+        expect(thread?.name).toBe('greeter')
         // the invalid export skipped with a warning — the imported batch surface carries it
         const imported = selectionsOf(traces).find((t) => t.selected.type === PLUGIN_THREADS_EVENT_TYPES.imported)
         const importedInput = (imported?.selected.detail as { input?: { warnings?: string[] } } | undefined)?.input
@@ -1261,7 +1303,7 @@ describe('bProgram — the runtime composition', () => {
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+              (t as { thread?: { name?: string } }).thread?.name === 'greeter',
           ),
         )
       } finally {
@@ -1298,7 +1340,7 @@ describe('bProgram — the runtime composition', () => {
       mkdirSync(dir, { recursive: true })
       writeFileSync(
         join(dir, 't.ts'),
-        `export const greeter = { label: 'greeter', once: true, rules: [{ request: { type: '${request}' } }] }\n`,
+        `export const greeter = { name: 'greeter',        description: 'Test thread.', once: true, rules: [{ request: { type: '${request}' } }] }\n`,
       )
     }
 
@@ -1317,7 +1359,7 @@ describe('bProgram — the runtime composition', () => {
               traces.some(
                 (t) =>
                   t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+                  (t as { thread?: { name?: string } }).thread?.name === 'greeter',
               ),
             )
           } finally {
@@ -1336,7 +1378,7 @@ describe('bProgram — the runtime composition', () => {
               traces.some(
                 (t) =>
                   t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+                  (t as { thread?: { name?: string } }).thread?.name === 'greeter',
               ),
             )
             await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'hello'))
@@ -1369,7 +1411,7 @@ describe('bProgram — the runtime composition', () => {
         // a self-sustaining request loop — the livelock guard rejects it
         writeFileSync(
           join(dir, 't.ts'),
-          "export const looper = { label: 'looper', rules: [{ request: { type: 'spin' } }] }\n",
+          "export const looper = { name: 'looper',          description: 'Test thread.', rules: [{ request: { type: 'spin' } }] }\n",
         )
         // run 1: the proposal is rejected — the outcome is visible, the registry records why
         {
@@ -1401,7 +1443,7 @@ describe('bProgram — the runtime composition', () => {
               traces.some(
                 (t) =>
                   t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { label?: string } }).thread?.label === 'looper',
+                  (t as { thread?: { name?: string } }).thread?.name === 'looper',
               ),
             ).toBe(false)
           } finally {
@@ -1450,7 +1492,7 @@ describe('bProgram — the runtime composition', () => {
               traces.some(
                 (t) =>
                   t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-                  (t as { thread?: { label?: string } }).thread?.label === 'greeter',
+                  (t as { thread?: { name?: string } }).thread?.name === 'greeter',
               ),
             )
           } finally {

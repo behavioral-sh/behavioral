@@ -17,7 +17,7 @@ describe('pending_bids trace', () => {
       seen.push(msg)
     })
 
-    addThread({ label: 'worker', rules: [{ request: { type: 'task' } }], once: true })
+    addThread({ name: 'worker', description: 'Test thread.', rules: [{ request: { type: 'task' } }], once: true })
     trigger({ type: 'start' })
 
     const pending = seen.find((s) => s.kind === 'pending_bids')
@@ -32,7 +32,7 @@ describe('pending_bids trace', () => {
       seen.push(msg)
     })
 
-    addThread({ label: 'req', rules: [{ request: { type: 'ping' } }], once: true })
+    addThread({ name: 'req', description: 'Test thread.', rules: [{ request: { type: 'ping' } }], once: true })
 
     trigger({ type: 'start' })
 
@@ -52,7 +52,8 @@ describe('pending_bids trace', () => {
     })
 
     addThread({
-      label: 'blocker',
+      name: 'blocker',
+      description: 'Test thread.',
       rules: [
         {
           block: [
@@ -64,7 +65,12 @@ describe('pending_bids trace', () => {
         },
       ],
     })
-    addThread({ label: 'worker', rules: [{ request: { type: 'task', detail: { id: 'job-1' } } }], once: true })
+    addThread({
+      name: 'worker',
+      description: 'Test thread.',
+      rules: [{ request: { type: 'task', detail: { id: 'job-1' } } }],
+      once: true,
+    })
 
     trigger({ type: 'start' })
 
@@ -72,7 +78,7 @@ describe('pending_bids trace', () => {
     expect(pending).toBeDefined()
     expect(pending!.threads.length).toBeGreaterThanOrEqual(2)
 
-    const blocker = pending!.threads.find((t) => t.label === 'blocker')
+    const blocker = pending!.threads.find((t) => t.name === 'blocker')
     expect(blocker).toBeDefined()
     const block = blocker!.block
     expect(block).toBeDefined()

@@ -84,7 +84,8 @@ export const socketLane =
       addThreads([
         {
           ...(message.space === undefined ? {} : { space: message.space }),
-          label: `on_${message.type}_${typeof message.detail?.id === 'string' ? message.detail.id : name}`,
+          name: `on_${message.type}_${typeof message.detail?.id === 'string' ? message.detail.id : name}`,
+          description: `Socket re-entry — once-thread re-emitting the ${message.type} wire event.`,
           once: true,
           rules: [{ request: { type: message.type, detail } }],
         },

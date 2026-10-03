@@ -30,7 +30,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       received.push(msg.kind)
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
 
     // The throwing listener was isolated; the second listener still received traces
@@ -46,7 +46,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       throw new Error('listener 1 threw')
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
 
     const threw = consoleErrors.find((args) => String(args[0]).includes('trace listener threw'))
@@ -64,7 +64,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       throw new Error('async listener rejection')
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
     // The rejection is captured by the subject's Promise.catch — no unhandled rejection.
   })
@@ -82,10 +82,10 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       if (msg.kind === TRACE_MESSAGE_KINDS.selection) selections.push(msg.selected.type)
     })
 
-    addThread({ label: 'a', rules: [{ request: { type: 'x' } }], once: true })
+    addThread({ name: 'a', description: 'Test thread.', rules: [{ request: { type: 'x' } }], once: true })
     trigger({ type: 'start' })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'y' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'y' } }], once: true })
     trigger({ type: 'advance' })
 
     // Both selections arrived despite the poison listener
@@ -104,7 +104,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       order.push('second')
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
 
     // For each trace published, first listener fires before second
@@ -123,13 +123,13 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       calls += 1
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
     expect(calls).toBeGreaterThan(0)
 
     const before = calls
     disconnect()
-    addThread({ label: 'c', rules: [{ request: { type: 'b' } }], once: true })
+    addThread({ name: 'c', description: 'Test thread.', rules: [{ request: { type: 'b' } }], once: true })
     trigger({ type: 'advance' })
     expect(calls).toBe(before)
   })
@@ -147,7 +147,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
       seen.push(2)
     })
 
-    addThread({ label: 'b', rules: [{ request: { type: 'a' } }], once: true })
+    addThread({ name: 'b', description: 'Test thread.', rules: [{ request: { type: 'a' } }], once: true })
     trigger({ type: 'start' })
 
     // First super-step: both listeners fired (in-order), then listener 1 self-removed
@@ -156,7 +156,7 @@ describe('useTrace — listener isolation and subscription semantics', () => {
 
     const snapshotAfterFirst = seen.length
 
-    addThread({ label: 'c', rules: [{ request: { type: 'b' } }], once: true })
+    addThread({ name: 'c', description: 'Test thread.', rules: [{ request: { type: 'b' } }], once: true })
     trigger({ type: 'advance' })
 
     // Second super-step: only listener 2 fires
@@ -176,13 +176,18 @@ describe('useTrace — listener isolation and subscription semantics', () => {
         // Re-enter: inject new work from inside the listener
         if (!injected) {
           injected = true
-          addThread({ label: 'injected', rules: [{ request: { type: 'injected_event' } }], once: true })
+          addThread({
+            name: 'injected',
+            description: 'Test thread.',
+            rules: [{ request: { type: 'injected_event' } }],
+            once: true,
+          })
           trigger({ type: 'advance' })
         }
       }
     })
 
-    addThread({ label: 'a', rules: [{ request: { type: 'x' } }], once: true })
+    addThread({ name: 'a', description: 'Test thread.', rules: [{ request: { type: 'x' } }], once: true })
     trigger({ type: 'start' })
 
     // Both the original event and the injected event were selected

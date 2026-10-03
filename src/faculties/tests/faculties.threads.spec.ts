@@ -14,7 +14,7 @@ const runType = (type: string, detail: JsonObject) => {
     traces.push(trace)
   })
   for (const thread of facultiesThreads) addThread(thread)
-  addThread({ label: 'sender', once: true, rules: [{ request: { type, detail } }] })
+  addThread({ name: 'sender', description: 'Test thread.', once: true, rules: [{ request: { type, detail } }] })
   step()
   const selections = traces.filter((trace): trace is SelectionTrace => trace.kind === TRACE_MESSAGE_KINDS.selection)
   const frontiers = traces.filter((trace): trace is FrontierTrace => trace.kind === TRACE_MESSAGE_KINDS.frontier)

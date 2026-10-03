@@ -38,7 +38,12 @@ const runProgram = (events: BPEvent[]): Selected[] => {
   })
   for (const thread of skillLinksThreads) program.addThread(thread)
   for (const event of events)
-    program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event }] })
+    program.addThread({
+      name: `producer/${event.type}`,
+      description: 'Producer once-thread re-emitting the event.',
+      once: true,
+      rules: [{ request: event }],
+    })
   program.trigger({ type: 'links_gate_pump', detail: {} })
   program.trigger({ type: 'links_gate_pump', detail: {} })
   return selected

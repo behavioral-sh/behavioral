@@ -49,7 +49,11 @@ const mountAll = (program: ReturnType<typeof behavioral>, threads: Thread[]): vo
 const count = (selected: Selected[], type: string): number => selected.filter((s) => s.type === type).length
 
 /** The self-sustaining loop: one request rule, no `once` — the unguarded cascade shape. */
-const loopThread = (type: string): Thread => ({ label: `loop(${type})`, rules: [{ request: { type, detail: {} } }] })
+const loopThread = (type: string): Thread => ({
+  name: `loop(${type})`,
+  description: 'The self-sustaining loop cascade under test.',
+  rules: [{ request: { type, detail: {} } }],
+})
 
 /** Feed one ingress event through a once-producer and pump the cascade. */
 const feed = (
@@ -57,7 +61,12 @@ const feed = (
   event: { type: string; detail?: unknown },
   pump: string,
 ): void => {
-  program.addThread({ label: `producer/${event.type}`, once: true, rules: [{ request: event as never }] })
+  program.addThread({
+    name: `producer/${event.type}`,
+    description: `Producer once-thread re-emitting ${event.type}.`,
+    once: true,
+    rules: [{ request: event as never }],
+  })
   program.trigger({ type: pump, detail: {} })
 }
 
@@ -83,7 +92,9 @@ describe('supervision threads — the counting breaker', () => {
     mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
     // The self-sustaining loop: one request rule, no `once` — every selection
     // re-requests the same event, the unguarded cascade shape.
-    mountAll(program, [{ label: 'loop', rules: [{ request: { type: 'leaky', detail: {} } }] }])
+    mountAll(program, [
+      { name: 'loop', description: 'Test thread.', rules: [{ request: { type: 'leaky', detail: {} } }] },
+    ])
     program.trigger({ type: 'pump', detail: {} })
 
     // The breaker fired mid-cascade: exactly the threshold selections ran,
@@ -96,7 +107,9 @@ describe('supervision threads — the counting breaker', () => {
 
     // Surgical halt: the REST of the program keeps running — a fresh
     // non-watched event selects while the watched type stays blocked.
-    mountAll(program, [{ label: 'after', once: true, rules: [{ request: { type: 'tick', detail: {} } }] }])
+    mountAll(program, [
+      { name: 'after', description: 'Test thread.', once: true, rules: [{ request: { type: 'tick', detail: {} } }] },
+    ])
     program.trigger({ type: 'pump2', detail: {} })
     expect(count(selected, 'tick')).toBe(1)
     expect(count(selected, 'leaky')).toBe(8)
@@ -109,7 +122,8 @@ describe('supervision threads — the counting breaker', () => {
     mountAll(program, supervisionThreads({ watch: ['bounded'] }))
     mountAll(program, [
       {
-        label: 'legit',
+        name: 'legit',
+        description: 'Test thread.',
         once: true,
         rules: Array.from({ length: 20 }, () => ({ request: { type: 'bounded', detail: {} } })),
       },
@@ -119,7 +133,9 @@ describe('supervision threads — the counting breaker', () => {
     expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.tripped)).toBe(false)
 
     // The watched type was never blocked — later legitimate work still selects.
-    mountAll(program, [{ label: 'more', once: true, rules: [{ request: { type: 'bounded', detail: {} } }] }])
+    mountAll(program, [
+      { name: 'more', description: 'Test thread.', once: true, rules: [{ request: { type: 'bounded', detail: {} } }] },
+    ])
     program.trigger({ type: 'pump2', detail: {} })
     expect(count(selected, 'bounded')).toBe(21)
   })
@@ -133,7 +149,14 @@ describe('supervision threads — the counting breaker', () => {
     mountAll(program, supervisionThreads({ watch: ['leaky-s1'], threshold: 4 }))
     // The runaway loop lives in s1; the supervisor is root-mounted — its
     // unstamped listeners watch every space (Direction/R).
-    mountAll(program, [{ label: 'loop', space: 's1', rules: [{ request: { type: 'leaky-s1', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'loop',
+        description: 'Test thread.',
+        space: 's1',
+        rules: [{ request: { type: 'leaky-s1', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump', detail: {} })
 
     expect(count(selected, 'leaky-s1')).toBe(4)
@@ -145,11 +168,20 @@ describe('supervision threads — the counting breaker', () => {
     // The block is GLOBAL: the same type in ROOT is blocked too — one
     // space's runaway loop halts the kind everywhere (v1 bluntness; a
     // space-stamped supervisor set confines — expressible, not built).
-    mountAll(program, [{ label: 'root-loop', once: true, rules: [{ request: { type: 'leaky-s1', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'root-loop',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'leaky-s1', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump2', detail: {} })
     expect(count(selected, 'leaky-s1')).toBe(4)
     // ...while the REST of the program keeps running.
-    mountAll(program, [{ label: 'after', once: true, rules: [{ request: { type: 'tick', detail: {} } }] }])
+    mountAll(program, [
+      { name: 'after', description: 'Test thread.', once: true, rules: [{ request: { type: 'tick', detail: {} } }] },
+    ])
     program.trigger({ type: 'pump3', detail: {} })
     expect(count(selected, 'tick')).toBe(1)
   })
@@ -206,10 +238,24 @@ describe('supervision threads — block-then-judge', () => {
 
     // The block HOLDS: a later request for the watched type stays blocked,
     // while a non-watched event still selects — the halt is surgical.
-    mountAll(program, [{ label: 'probe-blocked', once: true, rules: [{ request: { type: 'leaky', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'probe-blocked',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'leaky', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump3', detail: {} })
     expect(count(selected, 'leaky')).toBe(8)
-    mountAll(program, [{ label: 'probe-free', once: true, rules: [{ request: { type: 'tick', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'probe-free',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'tick', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump4', detail: {} })
     expect(count(selected, 'tick')).toBe(1)
     expect(transformErrors).toHaveLength(0)
@@ -234,7 +280,14 @@ describe('supervision threads — block-then-judge', () => {
     expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
 
     // The block holds — the loop stays dead.
-    mountAll(program, [{ label: 'probe-blocked', once: true, rules: [{ request: { type: 'leaky', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'probe-blocked',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'leaky', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump3', detail: {} })
     expect(count(selected, 'leaky')).toBe(8)
     expect(transformErrors).toHaveLength(0)
@@ -262,7 +315,14 @@ describe('supervision threads — block-then-judge', () => {
     expect(halted).toBeDefined()
     expect(halted?.detail).toEqual({ type: 'leaky' })
     expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-    mountAll(program, [{ label: 'probe-blocked', once: true, rules: [{ request: { type: 'leaky', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'probe-blocked',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'leaky', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump3', detail: {} })
     expect(count(selected, 'leaky')).toBe(8)
     expect(transformErrors).toHaveLength(0)
@@ -333,7 +393,14 @@ describe('supervision threads — recovery', () => {
     expect(judgeRequestCount(selected, 'leaky')).toBe(1 + SUPERVISION_MAX_REISSUES)
     expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
     // The block holds — the loop stays dead.
-    mountAll(program, [{ label: 'probe-blocked', once: true, rules: [{ request: { type: 'leaky', detail: {} } }] }])
+    mountAll(program, [
+      {
+        name: 'probe-blocked',
+        description: 'Test thread.',
+        once: true,
+        rules: [{ request: { type: 'leaky', detail: {} } }],
+      },
+    ])
     program.trigger({ type: 'pump-final', detail: {} })
     expect(count(selected, 'leaky')).toBe(8)
   })
