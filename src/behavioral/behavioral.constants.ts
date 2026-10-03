@@ -20,6 +20,9 @@ import { keyMirror } from '../utils.ts'
  *   empty or non-object output); the target never fires
  * - `'trigger_error'` — event rejected at the `trigger` ingress boundary
  * - `'add_thread_error'` — invalid thread arguments passed to `useAddThread`
+ * - `'thread_removed'` — a host-authority removal terminated a b-thread
+ *   (`removeThread` — the interrupt teardown with host authority, staged to
+ *   the next super-step); mirrors `thread_added`'s payload
  *
  * @public
  */
@@ -32,6 +35,7 @@ export const TRACE_MESSAGE_KINDS = keyMirror(
   'trigger_error',
   'add_thread_error',
   'thread_added',
+  'thread_removed',
   'interrupt',
   'transform',
   'transform_error',

@@ -292,6 +292,14 @@ export type RunningBid = {
   space?: string
   /** Where present, the thread's `description` (minted threads carry a default). */
   description?: string
+  /**
+   * The thread's identity key — the Map key in the engine's running/pending
+   * sets: `i:<instanceHash>` when the thread carries an instance hash
+   * (removal-addressable), else an engine-minted `u:<uuid>` (ephemeral).
+   */
+  key: string
+  /** Where present, the validated definition record (set by `addThread`) — the `thread_removed` payload's thread leg. */
+  thread?: Thread
 }
 
 /**
@@ -330,6 +338,9 @@ export type CandidateBid = {
  * @property rules - The thread's synchronization statements, executed in order.
  * @property once - When `true`, the thread runs its rules once and completes.
  * @property sourceHash - Optional provenance: the djb2 hash of the plugin's local path or remote URI, stamped at the proposal path.
+ * @property instanceHash - Optional instance identity: djb2(canonical plugin path + space + thread NAME) — stamped by the
+ *   admission/mount path post-sourceHash-stamp, never by the plugin author. Threads carrying one are
+ *   removal-addressable (`removeThread`); all other threads are engine-minted ephemeral identity.
  *
  * @public
  */
@@ -340,6 +351,7 @@ export type Thread = {
   once?: true
   rules: Idioms[]
   sourceHash?: number
+  instanceHash?: number
 }
 
 /**
@@ -376,6 +388,13 @@ export const ThreadSchema: JSONSchemaType<Thread> = {
       nullable: true,
       description:
         "Provenance: djb2 of the plugin's canonical source (path or URI) — the association join key; minted at the proposal path.",
+    },
+    instanceHash: {
+      type: 'integer',
+      minimum: 0,
+      nullable: true,
+      description:
+        'Instance identity: djb2(canonical plugin path + space + thread NAME) — stamped by the admission/mount path, never the author; removal-addressable threads only.',
     },
   },
   required: ['name', 'description', 'rules'],
@@ -514,14 +533,29 @@ export type AddThreadError = TraceBase & {
 /**
  * Emitted when `addThread` successfully registers a thread — the provision
  * record. Carries the full validated {@link Thread} so the trace log is
- * self-contained: replay = `thread_added` payloads + ingress events in
- * order (see `StepTrace.ingress` for the replay filter).
+ * self-contained: replay = `thread_added` payloads minus `thread_removed`
+ * + ingress events in order (see `StepTrace.ingress` for the replay filter).
  *
  * @public
  */
 export type ThreadAddedTrace = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.thread_added
   thread: Thread
+}
+
+/**
+ * Emitted when `removeThread` tears down a thread at the next super-step —
+ * the host-authority removal record. Mirrors {@link ThreadAddedTrace}'s
+ * payload: the removed thread's definition record + the identity that
+ * addressed it. Replay = `thread_added` payloads MINUS `thread_removed` +
+ * ingress events in order (see `StepTrace.ingress` for the replay filter).
+ *
+ * @public
+ */
+export type ThreadRemovedTrace = TraceBase & {
+  kind: typeof TRACE_MESSAGE_KINDS.thread_removed
+  thread: Thread
+  instanceHash: number
 }
 
 export type SerializedThread = {
@@ -683,6 +717,7 @@ export type Trace =
   | SelectionTrace
   | AddThreadError
   | ThreadAddedTrace
+  | ThreadRemovedTrace
   | PendingBidsTrace
   | InterruptTrace
   | TransformTrace
@@ -709,7 +744,7 @@ export type Frontier = {
  * Reconstructed replay result for downstream explorer slices.
  */
 export type ReplayToFrontierResult = {
-  pending: Set<PendingBid>
+  pending: Map<string, PendingBid>
   frontier: Frontier
 }
 
@@ -773,6 +808,17 @@ export type EventDetails = Record<string, any>
 export type UseTrace = (listener: TraceListener) => Disconnect
 
 export type AddThread = (args: Thread) => void
+/**
+ * Removes a thread by its instance identity — the host-authority teardown
+ * (the interrupt mechanics with a host trigger). Staged: effective the NEXT
+ * super-step. Unknown, absent, or already-exhausted identities are clean
+ * no-ops. Only instance-hash-keyed threads are addressable — guard threads
+ * and host-minted packs are minted WITHOUT removal-addressable identity, so
+ * "structural, never removable" is enforced by construction.
+ *
+ * @public
+ */
+export type RemoveThread = (args: { instanceHash?: number }) => void
 /**
  * Injects external events into the behavioral program.
  * Primary interface for external systems to communicate with the program.

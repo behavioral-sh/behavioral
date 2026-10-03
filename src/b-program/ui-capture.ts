@@ -164,6 +164,16 @@ export const createUiCapture = ({ sink }: { sink: (run: UiRun) => void }): ((tra
     sink({ ...run, threads: [...threads], reentries: [...run.reentries] })
   }
   return (trace: Trace): void => {
+    if (trace.kind === TRACE_MESSAGE_KINDS.thread_removed) {
+      // The replay-contract subtraction: replay = thread_added minus
+      // thread_removed + ingress. The standing set drops the removed thread
+      // (matched on the instance identity — only instance-hash-keyed threads
+      // are removal-addressable), so a later flush/replay derives the set
+      // without it.
+      const at = threads.findIndex((t) => t.instanceHash === trace.instanceHash)
+      if (at !== -1) threads.splice(at, 1)
+      return
+    }
     if (trace.kind === TRACE_MESSAGE_KINDS.thread_added) {
       const thread = trace.thread
       if (thread.once === true) {

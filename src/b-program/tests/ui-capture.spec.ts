@@ -25,7 +25,7 @@ import {
 } from '../../actuators/actuators.schemas.ts'
 import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
 import { createHost, dispatchToRuntime } from '../../cli/serve.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
@@ -241,6 +241,43 @@ describe('ui capture — the pipeline-keyed raw run consumer', () => {
       await session.cleanup()
     }
   }, 15_000)
+})
+
+describe('ui capture — the standing set learns the removal', () => {
+  test('a thread_removed subtracts the standing thread — replay derives the set without it', () => {
+    const runs: UiRun[] = []
+    const capture = createUiCapture({ sink: (run) => runs.push(run) })
+    const base = { timestamp: Date.now(), instanceId: 'bp_test', sessionId: 'bp_test' } as const
+    const standing: Thread = {
+      name: 'plugin-threads/worker',
+      description: 'Test thread.',
+      rules: [{ waitFor: [{ type: 'go' }] }],
+      instanceHash: 5,
+    }
+    capture({ ...base, kind: TRACE_MESSAGE_KINDS.thread_added, thread: standing })
+    // Open a run (a minted-leg once-thread attributes to pipeline p1) and
+    // flush it with a lineage-bearing render selection.
+    capture({
+      ...base,
+      kind: TRACE_MESSAGE_KINDS.thread_added,
+      thread: {
+        name: 'ui/pipeline:p1/scale-issue',
+        description: 'Minted leg.',
+        once: true,
+        rules: [{ request: { type: 'ui_scale_check' } }],
+      },
+    })
+    capture({ ...base, kind: TRACE_MESSAGE_KINDS.thread_removed, thread: standing, instanceHash: 5 })
+    capture({
+      ...base,
+      kind: TRACE_MESSAGE_KINDS.selection,
+      step: 1,
+      selected: { type: 'ui_render', ingress: true, priority: 0, detail: { id: 'p1-render' } },
+    })
+    expect(runs).toHaveLength(1)
+    // Without the subtraction the standing thread would ride the snapshot.
+    expect(runs[0]!.threads.some((t) => t.instanceHash === 5)).toBe(false)
+  })
 })
 
 describe('ui capture — the frontier replay pass', () => {

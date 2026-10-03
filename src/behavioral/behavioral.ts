@@ -4,8 +4,10 @@ import {
   type AddThread,
   type CandidateBid,
   type PendingBid,
+  type RemoveThread,
   type RunningBid,
   type SendTrace,
+  type Thread,
   type Trace,
   type Trigger,
   type UseTrace,
@@ -110,21 +112,42 @@ export const behavioral = (options?: { sessionId?: string }) => {
   const sessionId = options?.sessionId ?? instanceId
   /**
    * @internal
-   * Set of threads that have yielded and are waiting for event selection.
+   * Map of threads that have yielded and are waiting for event selection,
+   * keyed by thread identity (the instance hash when the thread carries one —
+   * removal-addressable — else an engine-minted uuid; all other mints
+   * unchanged in behavior).
    *
    * Each entry is a PendingBid containing the thread's generator and yielded idioms.
    * These threads have reached a synchronization point and declared their behavioral intentions.
    */
-  const pending = new Set<PendingBid>()
+  const pending = new Map<string, PendingBid>()
 
   /**
    * @internal
-   * Set of threads whose generators are ready to run (or have just been triggered).
+   * Map of threads whose generators are ready to run (or have just been triggered),
+   * keyed by thread identity as {@link pending}.
    *
    * Each entry is a RunningBid containing the thread's generator.
    * These threads are about to execute until they yield at their next synchronization point.
    */
-  const running = new Set<RunningBid>()
+  const running = new Map<string, RunningBid>()
+
+  /**
+   * @internal
+   * Staged host-authority removals — `removeThread` requests, applied at the
+   * top of the next super-step (the addThread re-entry-law mirror). Each
+   * stage captures the removed thread's generator (stable identity across
+   * the running↔pending transitions) and its definition record (the
+   * `thread_removed` payload). A target displaced by a same-identity remount
+   * before the pump still traces — the old instance terminated.
+   */
+  const stagedRemovals = new Map<
+    string,
+    { instanceHash: number; generator: IterableIterator<unknown>; thread: Thread }
+  >()
+
+  const threadKey = (instanceHash?: number): string =>
+    instanceHash === undefined ? `u:${uuid()}` : `i:${instanceHash}`
 
   /**
    * @internal
@@ -134,7 +157,39 @@ export const behavioral = (options?: { sessionId?: string }) => {
   const sendTrace = createSubject()
   let stepId = 0
 
+  /**
+   * @internal
+   * Applies the staged removals — the interrupt teardown (generator.return +
+   * bid delete) with host authority. A removed thread's blocks DIE with its
+   * bid: the pending entry is gone before the frontier is computed, so the
+   * previously blocked type becomes selectable in the same super-step.
+   */
+  const applyStagedRemovals = (): void => {
+    for (const [key, staged] of stagedRemovals) {
+      stagedRemovals.delete(key)
+      for (const map of [running, pending]) {
+        const bid = map.get(key)
+        if (bid !== undefined && bid.generator === staged.generator) {
+          map.delete(key)
+          bid.generator.return?.()
+        }
+      }
+      // Traced even when the target was displaced before the pump (the
+      // identity was remounted): the old instance terminated either way, and
+      // replay = thread_added minus thread_removed must not resurrect it.
+      sendTrace({
+        kind: TRACE_MESSAGE_KINDS.thread_removed,
+        timestamp: Date.now(),
+        instanceId,
+        sessionId,
+        thread: staged.thread,
+        instanceHash: staged.instanceHash,
+      })
+    }
+  }
+
   const step = (ingress?: true) => {
+    applyStagedRemovals()
     if (running.size) {
       sendTrace?.({
         kind: TRACE_MESSAGE_KINDS.step,
@@ -170,7 +225,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
       step,
       instanceId,
       sessionId,
-      threads: [...pending].map(({ generator: _, ...rest }) => rest),
+      threads: [...pending.values()].map(({ generator: _gen, key: _key, thread: _thread, ...rest }) => rest),
     })
 
     const frontier = computeFrontier(pending)
@@ -214,19 +269,37 @@ export const behavioral = (options?: { sessionId?: string }) => {
   const addThread: AddThread = (args) => {
     const attemptedSpace = args?.space
     if (validateThread(args)) {
-      const { name, description, rules, once, space } = args
+      const { name, description, rules, once, space, instanceHash } = args
       try {
         const syncPoints = generateRulesFunctions(rules, space)
         const thread = useThread(syncPoints, once)
-        running.add({
+        const key = threadKey(instanceHash)
+        // Identity integrity: a live same-identity thread is never silently
+        // replaced. The one sanctioned overwrite is a staged removal — the
+        // composition's remove-then-remount wave (the removal's captured
+        // generator distinguishes the doomed instance from the remount).
+        if (instanceHash !== undefined && !stagedRemovals.has(key) && (running.has(key) || pending.has(key))) {
+          sendTrace({
+            kind: TRACE_MESSAGE_KINDS.add_thread_error,
+            timestamp: Date.now(),
+            instanceId,
+            sessionId,
+            error: [`duplicate thread identity: instance hash ${instanceHash} is already mounted`],
+            space,
+          })
+          return
+        }
+        running.set(key, {
           priority: running.size + 1,
           generator: thread(),
           name,
+          key,
+          thread: args,
           ...(description === undefined ? {} : { description }),
         })
         // The provision record — after registration, so thread_added means
-        // registered. Makes the trace log self-contained (replay = these +
-        // ingress events).
+        // registered. Makes the trace log self-contained (replay = these
+        // minus thread_removed + ingress events).
         sendTrace({
           kind: TRACE_MESSAGE_KINDS.thread_added,
           timestamp: Date.now(),
@@ -359,13 +432,15 @@ export const behavioral = (options?: { sessionId?: string }) => {
         request: event,
       }
     }
-    running.add({
+    const key = threadKey()
+    running.set(key, {
       space: event.space,
       priority: 0,
       generator: thread(),
       ingress: true,
       name: event.type,
       description: `Ingress event thread — minted for the trigger-arrived ${event.type} event.`,
+      key,
     })
 
     /**
@@ -391,6 +466,27 @@ export const behavioral = (options?: { sessionId?: string }) => {
 
   /**
    * @internal
+   * Implementation of the public `removeThread` hook — stages the teardown of
+   * the instance-hash-keyed thread. Resolved against the LIVE maps now: an
+   * unknown or already-exhausted identity is a clean no-op (nothing staged,
+   * nothing traced); a live thread stages its generator + record for the
+   * next super-step.
+   */
+  const removeThread: RemoveThread = (args) => {
+    const instanceHash = args?.instanceHash
+    if (typeof instanceHash !== 'number') return
+    const key = threadKey(instanceHash)
+    const bid = running.get(key) ?? pending.get(key)
+    if (bid === undefined) return
+    stagedRemovals.set(key, {
+      instanceHash,
+      generator: bid.generator,
+      thread: bid.thread ?? { name: bid.name, description: '', rules: [] },
+    })
+  }
+
+  /**
+   * @internal
    * Return the frozen public API object.
    *
    * Object.freeze ensures the API surface is immutable, preventing accidental
@@ -400,6 +496,8 @@ export const behavioral = (options?: { sessionId?: string }) => {
   return Object.freeze({
     /** Add thread to program. */
     addThread,
+    /** Remove an instance-hash-keyed thread (staged to the next super-step). */
+    removeThread,
     /** Function to inject external events into the program. */
     trigger,
     /** Hook to subscribe to internal state traces for monitoring/debugging. */

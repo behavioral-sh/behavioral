@@ -166,7 +166,7 @@ export const traceSpaceOf = (trace: Trace): string => {
   if (trace.kind === TRACE_MESSAGE_KINDS.selection || trace.kind === TRACE_MESSAGE_KINDS.interrupt) {
     return (trace as { selected?: { space?: string } }).selected?.space ?? ROOT_SPACE
   }
-  if (trace.kind === TRACE_MESSAGE_KINDS.thread_added)
+  if (trace.kind === TRACE_MESSAGE_KINDS.thread_added || trace.kind === TRACE_MESSAGE_KINDS.thread_removed)
     return (trace as { thread?: { space?: string } }).thread?.space ?? ROOT_SPACE
   return ROOT_SPACE
 }

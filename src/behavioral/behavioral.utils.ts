@@ -64,11 +64,11 @@ const compileListenerValidator = (listener: RegisteredBPListener | RegisteredTra
  * - the subset enabled after applying block listeners
  * - a scheduler-facing status classification
  */
-export const computeFrontier = (pending: Set<PendingBid>): Frontier => {
+export const computeFrontier = (pending: Map<string, PendingBid>): Frontier => {
   const blocked: RegisteredBPListener[] = []
   const candidates: CandidateBid[] = []
 
-  for (const { request, priority, block, ingress, space } of pending) {
+  for (const { request, priority, block, ingress, space } of pending.values()) {
     block && blocked.push(...block)
     request &&
       candidates.push({
@@ -97,20 +97,22 @@ export const computeFrontier = (pending: Set<PendingBid>): Frontier => {
   return { candidates, enabled, status: FRONTIER_STATUS.idle }
 }
 
-export const advanceRunningToPending = (running: Set<RunningBid>, pending: Set<PendingBid>) => {
-  for (const bid of running) {
-    const { generator, priority, name, ingress, space } = bid
+export const advanceRunningToPending = (running: Map<string, RunningBid>, pending: Map<string, PendingBid>) => {
+  for (const [key, bid] of running) {
+    const { generator, priority, name, ingress, space, thread } = bid
     const { value, done } = generator.next()
-    !done &&
-      pending.add({
+    if (!done)
+      pending.set(key, {
         priority,
         ingress,
         name,
         generator,
         space,
+        key,
+        ...(thread === undefined ? {} : { thread }),
         ...value,
       })
-    running.delete(bid)
+    running.delete(key)
   }
 }
 
@@ -129,8 +131,8 @@ export const resumePendingThreadsForSelectedEvent = ({
   sessionId,
   step,
 }: {
-  running: Set<RunningBid>
-  pending: Set<PendingBid>
+  running: Map<string, RunningBid>
+  pending: Map<string, PendingBid>
   selectedEvent: CandidateBid
   sendTrace?: SendTrace
   instanceId: string
@@ -138,8 +140,8 @@ export const resumePendingThreadsForSelectedEvent = ({
   step: number
 }) => {
   const transformers: Transformer[] = []
-  for (const bid of pending) {
-    const { waitFor, request, generator, interrupt, transform, name } = bid
+  for (const bid of pending.values()) {
+    const { waitFor, request, generator, interrupt, transform, name, key } = bid
     const isInterrupted = interrupt?.some(isListeningFor(selectedEvent))
     const isWaitedFor = waitFor?.some(isListeningFor(selectedEvent))
     const isTransform = transform?.flatMap((listener) =>
@@ -159,7 +161,7 @@ export const resumePendingThreadsForSelectedEvent = ({
     const hasPendingRequest = request && eventMatchesCandidate(request, selectedEvent)
     if (isInterrupted) {
       generator.return?.()
-      pending.delete(bid)
+      pending.delete(key)
       sendTrace?.({
         kind: TRACE_MESSAGE_KINDS.interrupt,
         timestamp: Date.now(),
@@ -172,8 +174,8 @@ export const resumePendingThreadsForSelectedEvent = ({
       continue
     }
     if (hasPendingRequest || isWaitedFor || isTransform?.length) {
-      running.add({ ...bid })
-      pending.delete(bid)
+      running.set(key, { ...bid })
+      pending.delete(key)
     }
     if (isTransform?.length) {
       transformers.push(...isTransform)

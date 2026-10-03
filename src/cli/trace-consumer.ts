@@ -81,7 +81,8 @@ const traceSpace = (trace: Trace): string => {
   if (trace.kind === TRACE_MESSAGE_KINDS.selection || trace.kind === TRACE_MESSAGE_KINDS.interrupt) {
     return trace.selected.space ?? ROOT_SPACE
   }
-  if (trace.kind === TRACE_MESSAGE_KINDS.thread_added) return trace.thread.space ?? ROOT_SPACE
+  if (trace.kind === TRACE_MESSAGE_KINDS.thread_added || trace.kind === TRACE_MESSAGE_KINDS.thread_removed)
+    return trace.thread.space ?? ROOT_SPACE
   return ROOT_SPACE
 }
 

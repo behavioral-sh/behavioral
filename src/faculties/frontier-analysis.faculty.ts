@@ -133,6 +133,13 @@ const matchesSelectedEvent = ({ candidate, selected }: { candidate: CandidateBid
   candidate.type === selected.type && candidate.space === selected.space && deepEqual(candidate.detail, selected.detail)
 
 /**
+ * Mints an ephemeral identity key for a replay-constructed bid — the engine's
+ * running/pending maps are identity-keyed; replay threads have no instance
+ * hash, so they mint uuid keys (never removal-addressable).
+ */
+const bidKey = (): string => uuid('u_')
+
+/**
  * @internal
  * Add a synthetic once-thread requesting the selected event so replay can
  * match it. With `ingress: true` this reconstructs an external trigger
@@ -144,7 +151,7 @@ const addSyntheticRequestThread = ({
   selected,
   ingress,
 }: {
-  pending: Set<PendingBid>
+  pending: Map<string, PendingBid>
   selected: CandidateBid
   ingress?: true
 }) => {
@@ -161,7 +168,8 @@ const addSyntheticRequestThread = ({
   const yielded = generator.next()
 
   if (!yielded.done) {
-    pending.add({
+    const key = bidKey()
+    pending.set(key, {
       priority: 0,
       generator,
       ...(ingress === true ? { ingress: true as const } : {}),
@@ -169,6 +177,7 @@ const addSyntheticRequestThread = ({
       ...(ingress === true
         ? { description: `Ingress event thread — minted for the trigger-arrived ${selected.type} event.` }
         : {}),
+      key,
       ...yielded.value,
     })
   }
@@ -258,16 +267,18 @@ const replayToFrontierRaw = ({
   sessionId?: string
 }): ReplayToFrontierResult => {
   const resolvedSessionId = sessionId ?? instanceId
-  const pending = new Set<PendingBid>()
-  const running = new Set<RunningBid>()
+  const pending = new Map<string, PendingBid>()
+  const running = new Map<string, RunningBid>()
 
   const entries = compileThreads(threads, space)
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
-    running.add({
+    const key = bidKey()
+    running.set(key, {
       priority: i + 1,
       generator: entry.generator,
       name: entry.name,
+      key,
       ...(entry.description === undefined ? {} : { description: entry.description }),
     })
   }
@@ -288,7 +299,7 @@ const replayToFrontierRaw = ({
     if (
       !matched &&
       selected.ingress !== true &&
-      [...pending].some((pendingBid) => pendingBidConsumes({ pendingBid, selected }))
+      [...pending.values()].some((pendingBid) => pendingBidConsumes({ pendingBid, selected }))
     ) {
       // Request-origin re-entry whose producer (bridge/transform daemon) is a
       // harness thread absent from the candidate set: reconstruct the
@@ -301,7 +312,7 @@ const replayToFrontierRaw = ({
       throw new Error(`Selected event "${selected.type}" was not enabled at replay step ${step}.`)
     }
 
-    const resumed = new Set<RunningBid>()
+    const resumed = new Map<string, RunningBid>()
     resumePendingThreadsForSelectedEvent({
       running: resumed,
       pending,
@@ -392,7 +403,7 @@ const getTriggerSuccessors = ({
   instanceId,
   sessionId,
 }: {
-  pending: Set<PendingBid>
+  pending: Map<string, PendingBid>
   messages: Trace[]
   threads: Thread[]
   step: number
@@ -407,7 +418,7 @@ const getTriggerSuccessors = ({
     let external = false
     let request = false
     let requestOnly = false
-    for (const pendingBid of pending) {
+    for (const pendingBid of pending.values()) {
       const match = triggerChannelMatch({ pendingBid, trigger })
       external ||= match.external
       request ||= match.request
@@ -501,10 +512,10 @@ const normalizeListeners = (listener: RegisteredBPListener[] | RegisteredTransfo
  *
  * @public
  */
-const frontierStateKey = ({ pending }: { pending: Set<PendingBid> }): string =>
+const frontierStateKey = ({ pending }: { pending: Map<string, PendingBid> }): string =>
   JSON.stringify(
-    [...pending]
-      .map(({ waitFor, block, interrupt, request, transform, generator: _gen, ...rest }) =>
+    [...pending.values()]
+      .map(({ waitFor, block, interrupt, request, transform, generator: _gen, key: _key, thread: _thread, ...rest }) =>
         JSON.stringify({
           ...rest,
           // request is field-picked to { type, detail, space } so non-trace
