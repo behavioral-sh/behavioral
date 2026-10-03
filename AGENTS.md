@@ -161,9 +161,6 @@ entry pins the lane pair).
 Dependency arrow: `src/b-program/` wires these entries via `useWorker`;
 `src/faculties/` → `src/behavioral/` one-way; the browser never calls an
 actuator.
-**`src/old-faculties/`** — the holding pattern: the pre-rebuild faculties
-tree, keeping only what the rewire has not absorbed yet until its deletion
-(slice 5).
 **`src/tools/`** — deleted (fleet 0): the ICL conversion retired the CLI tool
 fleet. Remote MCP is remote-mcp threads over the shell actuator's
 generic `rpc` op (`src/b-program/remote-mcp.threads.ts` — the retired

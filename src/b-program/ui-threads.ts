@@ -370,7 +370,7 @@ export const UI_GENERATE_SCHEMA = {
  * The DEFAULT generation endpoint's provider label — the composition config
  * seam's fallback (`bProgram({ ui: { provider, modelId } })` overrides both;
  * the host's endpoint map must carry whatever label is configured:
- * `useSystemTwo({ endpoints: { <provider>: … } })`).
+ * the systemTwo endpoints map (`{ <provider>: … }`) riding the init frame).
  */
 export const UI_GENERATION_PROVIDER = 'default'
 

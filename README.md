@@ -52,15 +52,15 @@ request/result kind, schema, and validator): requests in as one JSON line,
 results out as one JSON line, `space` preserved end to end. The engine itself is
 generic over events and never imports the wire.
 
-**Faculties are processes.** Spawned per wiring (per space) via `useFaculty`:
-isolated by OS construction, killable as a process tree, respawned on demand,
-crash-synthesized as exactly one `faculty_error` re-entry. The pump discards
-only what cannot be this lane's event; a parsed-but-invalid result never
-vanishes — it re-enters the engine and is observable in the traces. The
-system faculties' guards block such a result outright (visible in the
-frontier/deadlock traces); the default faculties (shell/store/mcp) surface it
-as a selected-but-unmatched event. Guarding the default lanes is a recorded
-follow-up.
+**Every faculty is a web worker.** Wired through `useWorker` (the worker lane)
+or `socketLane` (the WebSocket lane over the daemon bridge) — both yield the
+ruled four-key lane (`name`, `send`, `invalidEventGate`, `terminate`). The
+actuators (shell, store, security) are spawned processes per the daemon's
+allow-list; the fixed three (systemOne, systemTwo, remoteSystemTwo) are the
+composition's own workers, their config riding the init frame. Crash synthesis
+is exactly one `faculty_error` re-entry; the pump discards only what cannot be
+this lane's event, and a parsed-but-invalid result re-enters the engine —
+observable in the traces, guarded by the wire home's schemas.
 
 The life of a request over that lane:
 
@@ -68,9 +68,9 @@ The life of a request over that lane:
 sequenceDiagram
   autonumber
   participant P as The pump (composition)
-  participant F as Faculty process
+  participant F as Faculty worker / socket lane
   participant G as Guard thread (in-engine)
-  P->>F: request — one JSON line on stdin
+  P->>F: request — one postMessage / WS frame
   F-->>P: result — re-enters the engine, space preserved
   Note over P,G: a valid result selects, and the caller's waitFor fires
   F-->>G: a malformed result re-enters instead of being discarded
@@ -79,28 +79,34 @@ sequenceDiagram
   Note over F: unsolicited death: exactly one faculty_error re-entry, respawn on demand
 ```
 
-**System faculties are endpoint-carrying overrides.** `systemOne` and `systemTwo`
-have no defaults: without an endpoint they are simply absent — no process, no
-route. The config surface (`configSystemOne(respond)`/`configSystemTwo(respond)`
-for a custom provider entry, `useSystemOne({ endpoint })`/`useSystemTwo({ endpoints })`
-for the host) delivers endpoint config via environment data; secrets never cross
-the wire.
+**Model config is data, not wiring.** `systemOne` and `systemTwo` are always
+mounted (the composition's fixed workers); without endpoint config they answer
+the typed error — fail-visible, never absent. The config carries the model
+identifiers (the `systemOne` endpoint config, the `systemTwo` endpoints map,
+the `ui` generation target) as data riding the init frame; secrets ride as
+env-resolved values, never literals.
 
-**Validation is threads, not middleware.** Guard threads derive from the same
-schemas `useFaculty` compiles and returns; the controller and the JSON-RPC codec
-are dumb relays. A malformed event is never selected — it is blocked, and the
+**Validation is threads, not middleware.** Guard threads derive from the wire
+home's once-compiled schemas; the controller and the JSON-RPC codec are dumb
+relays. A malformed event is never selected — it is blocked, and the
 reject is observable in the frontier, the pending bids, and the deadlock traces.
 
 ## Repository Map
 
 - `src/behavioral/` — the pure language layer: types, constants, the
   interpreter core and its trace stream
-- `src/faculties/` — the process layer. Shared at the top (the wire,
-  `useFaculty`, the process lane, the home); one folder per faculty:
-  `shell/ store/ mcp/ frontier/ system-one/ system-two/` — faculty, threads,
-  types/schemas, and colocated tests
-- `src/cli/` — the composition (`b-program.ts`), `init` (config generation),
-  `serve` + the JSON-RPC codec, `load-config`, the trace consumer
+- `src/faculties/` — the browser-side thinking layer: the wire home (types,
+  validators, kinds), `create-worker.ts` (the in-worker bootstrap), the
+  worker entries (`system-one/system-two/remote-system-two.faculty.ts`), the
+  admission/judgment/supervision threads, and the socket lane
+- `src/b-program/` — the composition (`b-program.ts`, the ruled
+  two-key-plus-lanes surface) and its host-minted thread packs, the worker
+  entry (`b-program.worker.ts`), and the serving seam
+- `src/actuators/` — the daemon-side capability layer (shell, store,
+  security): the process entries and their spawner
+- `src/cli/` — the host entries (`serve`, the socket host, attach-or-start),
+  `init` (config generation), `load-config`, the trace consumer, the
+  plugin-thread registry
 - `src/controller/` — the browser Controller (a dumb relay), its `ui_*`
   vocabulary, and the AJV detail schemas hosts/threads use
 - `src/utils/` — shared pure utilities
@@ -118,11 +124,11 @@ Imported as `@behavioral/sh`:
 // (types it accepts: the bProgram options)
 import { defineConfig } from '@behavioral/sh'
 
-// The faculties surface — what a config.ts composes with:
-// useFaculty, the Faculty union, wire types + schemas/validators,
-// the override threads (shellThreads, mcpThreads),
-// and the System One/Two config surface
-import { useSystemOne, useSystemTwo } from '@behavioral/sh/faculties'
+// The faculties surface — the wire home: the lane types (FacultyLane,
+// LaneBuilder), the event types + once-compiled validators, the model
+// identifier types (SystemOneEndpointConfig, SystemTwoEndpoints),
+// and useWorker (the composition's worker lane)
+import { useWorker } from '@behavioral/sh/faculties'
 
 // Controller — browser-side controller bootstrap
 import { Controller } from '@behavioral/sh/controller'
@@ -135,11 +141,13 @@ import { keyMirror, deepEqual } from '@behavioral/sh/utils'
 
 ```ts
 import { defineConfig } from '@behavioral/sh'
-import { useSystemOne, useSystemTwo } from '@behavioral/sh/faculties'
 
+// The daemon's config: the actuator allow-list plus the model identifiers
+// (data riding the faculties' init frame; keys are env-resolved values).
 export default defineConfig({
-  systemOne: useSystemOne({ endpoint: { url: 'https://api.typesafe.ai/v1/systemone', apiKey: process.env.TYPESAFE_API_KEY, model: 'jev-latest' } }),
-  systemTwo: useSystemTwo({ endpoints: { openai: { url: 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY } } }),
+  actuators: ['shell', 'store', 'security'],
+  systemOne: { url: 'https://api.typesafe.ai/v1/systemone', apiKey: process.env.TYPESAFE_API_KEY, model: 'jev-latest' },
+  systemTwo: { openai: { url: 'https://api.openai.com/v1', apiKey: process.env.OPENAI_API_KEY } },
 })
 ```
 
@@ -152,9 +160,11 @@ behavioral init '{...}'  # agent JSON — see --schema input
 
 The composition returns `{ trigger, useTrace, start, terminate }`: subscribe
 before `start()` so boot traces are observable; `terminate()` kills every
-faculty process it invoked, overrides included. A custom provider is a
-`configSystemOne(respond)` entry file under `<home>/providers/` — the wire
-contract (and therefore the guards) is unchanged.
+faculty worker it wired and every actuator lane it completed. The browser
+boots the same composition per tab in a dedicated worker
+(`src/b-program/b-program.worker.ts`); the page attaches over the controller's
+worker transport with its provider map, which becomes the faculties'
+init-frame config.
 
 ## Development
 

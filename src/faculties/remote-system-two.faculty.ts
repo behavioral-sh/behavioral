@@ -16,9 +16,7 @@
  * its own calls in the host trace are logical breakpoints.
  *
  * MINIMAL: results are synchronous analyses; an analysis call blocks this
- * worker only, never the host — no stream lane needed. The in-process
- * `bindEmit` embed does not enter this tree (it stays in old-faculties for
- * the running app until the rewire).
+ * worker only, never the host — no stream lane needed.
  *
  * @packageDocumentation
  */

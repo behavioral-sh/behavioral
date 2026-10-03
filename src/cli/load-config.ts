@@ -134,7 +134,7 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
     }
   }
   validateModels(config, configPath)
-  // The shape is closed — a legacy key (the useFaculty factory overrides) is
+  // The shape is closed — a legacy key (the retired factory overrides) is
   // a stale config, and a stale config must fail fast, never silently shrink.
   const known = new Set(['actuators', 'systemOne', 'systemTwo', 'ui'])
   const stale = Object.keys(config).filter((key) => !known.has(key))

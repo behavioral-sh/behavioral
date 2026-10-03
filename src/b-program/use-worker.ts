@@ -5,8 +5,8 @@ import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import type { AddThreads } from '../faculties/faculties.types.ts'
 
 /**
- * The composition-side worker wiring — the successor of `useFaculty` (the
- * process-spawn primitive), for the faculties-first route: every faculty is
+ * The composition-side worker wiring — the successor of the process-spawn
+ * primitive, for the faculties-first route: every faculty is
  * a web worker on every host, wired over `postMessage` instead of stdio.
  *
  * @remarks
