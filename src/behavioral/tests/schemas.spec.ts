@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ajv,
+  SerializedThreadSchema,
   ThreadSchema,
   TraceBaseSchema,
   validateBPEvent,
@@ -70,6 +71,24 @@ describe('behavioral schemas', () => {
     expect(Object.keys(ThreadSchema.properties)).not.toContain('label')
     expect(ThreadSchema.required).toContain('name')
     expect(ThreadSchema.required).toContain('description')
+  })
+
+  test('SerializedThreadSchema — the one home for the serialized authored-thread shape', () => {
+    expect(SerializedThreadSchema.required).toContain('name')
+    expect(SerializedThreadSchema.required).toContain('description')
+    expect(SerializedThreadSchema.required).toContain('rules')
+    expect(SerializedThreadSchema.additionalProperties).toBe(false)
+    // Rules stay permissive — a caller's detailSchema reaches the runtime
+    // validator verbatim; the engine's ThreadSchema gate re-validates.
+    const validate = ajv.compile(SerializedThreadSchema)
+    expect(
+      validate({
+        name: 'a',
+        description: 'd',
+        rules: [{ waitFor: [{ type: 'x', detailSchema: { type: 'object' } }] }],
+      }),
+    ).toBe(true)
+    expect(validate({ name: 'a', rules: [] })).toBe(false)
   })
 
   test('Thread validator enforces the description cap and requires name', () => {

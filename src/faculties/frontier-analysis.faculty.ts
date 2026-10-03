@@ -39,7 +39,7 @@ import type {
   Thread,
   Trace,
 } from '../behavioral/behavioral.types.ts'
-import { ajv, BPEventSchema, ThreadSchema } from '../behavioral/behavioral.types.ts'
+import { ajv, BPEventSchema, SerializedThreadSchema, ThreadSchema } from '../behavioral/behavioral.types.ts'
 import {
   advanceRunningToPending,
   computeFrontier,
@@ -964,25 +964,13 @@ const verifyFrontiersRaw = ({ progress, ...args }: VerifyFrontiersArgs): VerifyF
 // Input boundary — the three operations' input schemas (moved from the
 // fleet wrapper; the worker compiles them and validates `detail.input` here)
 // ---------------------------------------------------------------------------
-// threads — structural (name + description + rules); idiom internals permissive so a
-// caller's detailSchema (JSON Schema) reaches the runtime validator verbatim
-// (generateRulesFunctions compiles it). The permissive idiom items can't be
-// statically verified for JSONSchemaType<Idioms>, so the sub-schema is cast
-// through `unknown` below — same pattern read.ts uses for Zod-derived
-// sub-schemas. AJV validates the structural shape at runtime.
+// threads — the serialized authored-thread shape, derived from the ONE
+// schema home in behavioral.types.ts (SerializedThreadSchema — rules as
+// plain JSON vs idiom tuples; the engine's ThreadSchema gate re-validates
+// at add_thread). No hand-mirrored thread shape.
 const threadsJsonSchema = {
   type: 'array',
-  items: {
-    type: 'object',
-    properties: {
-      name: { type: 'string', minLength: 1, description: 'Human-readable thread name.' },
-      description: { type: 'string', maxLength: 512 },
-      once: { type: 'boolean', enum: [true], nullable: true },
-      rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
-    },
-    required: ['name', 'description', 'rules'],
-    additionalProperties: false,
-  },
+  items: SerializedThreadSchema,
 } as const
 
 // messages — a selection-trace prefix. Validated as array-of-object; the

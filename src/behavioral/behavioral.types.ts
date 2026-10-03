@@ -379,6 +379,28 @@ export const validateThread = ajv.compile(ThreadSchema)
 export type Threads = Thread[]
 
 /**
+ * The serialized (plain-JSON) mirror of an authored {@link Thread} — the ONE
+ * home for wire consumers that validate an authored thread structurally
+ * (frontier's replay/add_thread input schemas) instead of hand-mirroring the
+ * shape. Rules stay permissive here (idiom internals as plain objects) — a
+ * caller's `detailSchema` reaches the runtime validator verbatim; the engine's
+ * `ThreadSchema` gate re-validates at registration.
+ *
+ * @internal
+ */
+export const SerializedThreadSchema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string', minLength: 1, description: 'Human-readable thread name.' },
+    description: { type: 'string', maxLength: 512 },
+    once: { type: 'boolean', enum: [true], nullable: true },
+    rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
+  },
+  required: ['name', 'description', 'rules'],
+  additionalProperties: false,
+} as const
+
+/**
  * Structural contract for consumer-supplied trace extensions.
  *
  * @remarks
