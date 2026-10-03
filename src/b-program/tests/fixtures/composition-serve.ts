@@ -65,6 +65,10 @@ const openResponsesBody = {
   error: null,
 }
 
+import { InMemoryKeychain } from '../../../actuators/keychain-oauth-provider.ts'
+import { saveProviderToken } from '../../../actuators/provider-keys.ts'
+import { createInferenceProxy } from '../../../cli/serve.ts'
+
 export const startCompositionServer = async (port = 0) => {
   const routes = new Map<string, () => Promise<{ body: BodyInit; contentType: string }>>()
   const built = new Map<string, Promise<{ body: BodyInit; contentType: string }>>()
@@ -118,7 +122,29 @@ export const startCompositionServer = async (port = 0) => {
   }))
 
   // 5. The Open Responses stub — the systemTwo round-trip's endpoint,
-  //    same-origin (the faculty fetches it through the init-frame config).
+  //    same-origin (the faculty reaches it THROUGH the inference proxy —
+  //    the page's models are the plan-constructed proxy routes, and the
+  //    proxy attaches the custody credential daemon-side). Bearer-enforced:
+  //    a successful round-trip PROVES the credential attached.
+  const PROVIDER_CREDENTIAL = 'sk-fixture-openai'
+
+  // 6. The inference proxy — the REAL daemon proxy (src/cli/serve.ts)
+  //    mounted at the serving contract's prefix, self-forwarding to this
+  //    server's own stub. The fixture's session gate is open — R3 auth is
+  //    proven in the cli suites (socket-host + inference-proxy specs).
+  const keychain = InMemoryKeychain()
+  let inferenceProxy: Awaited<ReturnType<typeof createInferenceProxy>> | undefined
+  const ensureProxy = async (origin: string) => {
+    if (inferenceProxy === undefined) {
+      await saveProviderToken({ provider: 'openai', origin, token: PROVIDER_CREDENTIAL, keychain })
+      inferenceProxy = createInferenceProxy({
+        providers: { openai: origin },
+        session: () => true,
+        keychain,
+      })
+    }
+    return inferenceProxy
+  }
   route('/responses', async () => ({ body: JSON.stringify(openResponsesBody), contentType: 'application/json' }))
 
   // 6. The controller page: WorkerTransport over a dedicated module Worker +
@@ -126,10 +152,12 @@ export const startCompositionServer = async (port = 0) => {
   //    pattern), extension buttons for deterministic ingress.
   const workerTransportEntry = Bun.resolveSync('./controller/worker-transport.ts', SRC_ROOT)
   const controllerEntry = Bun.resolveSync('./controller/controller.ts', SRC_ROOT)
+  const compositionPortEntry = Bun.resolveSync('./b-program/composition-port.ts', SRC_ROOT)
   route('/composition-page.js', async () => ({
     body: await bundleBrowser(`
 import { WorkerTransport } from ${JSON.stringify(workerTransportEntry)}
 import { Controller } from ${JSON.stringify(controllerEntry)}
+import { systemTwoEndpointsFromPlan } from ${JSON.stringify(compositionPortEntry)}
 
 window.__traces = []
 window.__workerError = null
@@ -141,9 +169,12 @@ worker.onerror = (event) => {
 }
 const transport = new WorkerTransport({
   worker,
-  // The page's provider map: the attach frame carries it, the composition
-  // boots with it, the faculties receive it as their init-frame payloads.
-  models: { systemTwo: { openai: { url: location.origin } } },
+  // The page's provider PLAN: the browser constructs the endpoints from it
+  // (the inference-transport ruling) — proxy routes for static-key vendors
+  // (no apiKey anywhere), webgpu entries verbatim. The attach frame carries
+  // the constructed map; the faculties receive it as their init-frame
+  // payloads.
+  models: { systemTwo: systemTwoEndpointsFromPlan({ openai: {} }) },
   onHello: (frame) => {
     window.__hello = frame.identity
     window.__space = frame.space
@@ -238,11 +269,20 @@ window.__triggerStore = (id, key) => {
   const server = Bun.serve({
     port,
     async fetch(request) {
-      const path = new URL(request.url).pathname
+      const url = new URL(request.url)
+      const path = url.pathname
       if (path === '/responses') {
+        // Bearer-enforced: only the proxy's attached credential passes.
+        if (request.headers.get('authorization') !== `Bearer ${PROVIDER_CREDENTIAL}`) {
+          return withIsolation(Response.json({ error: { code: 'invalid_api_key', message: 'no' } }, { status: 401 }))
+        }
         return withIsolation(
           new Response(JSON.stringify(openResponsesBody), { headers: { 'content-type': 'application/json' } }),
         )
+      }
+      if (path.startsWith('/v1/inference/')) {
+        const proxy = await ensureProxy(url.origin)
+        return withIsolation(await proxy(request))
       }
       const build = routes.get(path)
       if (build) {

@@ -1108,6 +1108,73 @@ describe('model faculty — output conformance', () => {
   })
 })
 
+describe('model faculty — the re-init channel (the R3 token rotation)', () => {
+  /**
+   * The R3 token fallback (only when cross-origin serving arms it): the
+   * token rides the init frame and rotates via re-init. This pins the
+   * rotation machinery the init-frame slice landed — no new production
+   * code, the proof the prompt asks for: token 'expires' → re-init → the
+   * next call succeeds.
+   */
+  test('re-init overwrites the endpoint config: the expired token fails, the rotated one succeeds', async () => {
+    // A provider whose accepted credential rotates underneath the worker.
+    let token = 'token-v1'
+    const assistantItem = {
+      id: 'msg_rot_001',
+      type: 'message',
+      status: 'completed',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'rotated' }],
+    }
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        if (req.headers.get('authorization') !== `Bearer ${token}`) {
+          return Response.json({ error: { code: 'invalid_api_key', message: 'stale token' } }, { status: 401 })
+        }
+        return Response.json({
+          id: 'resp_rot_001',
+          object: 'response',
+          status: 'completed',
+          model: 'm',
+          output: [assistantItem],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          error: null,
+        })
+      },
+    })
+    const url = `http://localhost:${server.port}`
+    const worker = spawnFacultyWorker({
+      url: new URL('../system-two.faculty.ts', import.meta.url),
+      requestType: FACULTY_MESSAGE_KINDS.system_two_request,
+      resultType: FACULTY_MESSAGE_KINDS.system_two_request_result,
+      initData: { p: { url, apiKey: 'token-v1' } },
+    })
+    try {
+      worker.call({ id: 'r1', input: { provider: 'p', modelId: 'm', input: [userMessage] } } as JsonObject)
+      const first = await worker.resultFor('r1')
+      expect(first.detail.ok).toBe(true)
+
+      // The token expires underneath the worker (the rotation moment).
+      token = 'token-v2'
+      worker.call({ id: 'r2', input: { provider: 'p', modelId: 'm', input: [userMessage] } } as JsonObject)
+      const stale = await worker.resultFor('r2')
+      expect(stale.detail.ok).toBe(false)
+      expect(String((stale.detail.error as { message?: string }).message)).toContain('HTTP 401')
+
+      // Re-init overwrites: the rotated token rides the init frame; the very
+      // next call succeeds. No respawn, no re-post of any request.
+      worker.post({ kind: 'init', data: { p: { url, apiKey: 'token-v2' } } } as never)
+      worker.call({ id: 'r3', input: { provider: 'p', modelId: 'm', input: [userMessage] } } as JsonObject)
+      const rotated = await worker.resultFor('r3')
+      expect(rotated.detail.ok).toBe(true)
+    } finally {
+      worker.terminate()
+      server.stop(true)
+    }
+  })
+})
+
 describe('model faculty — the transport toggle (rest ↔ webgpu)', () => {
   test('a webgpu endpoint dispatches to the local runtime as a normal result', async () => {
     const model = spawnModelBehavior({ local: { transport: 'webgpu', model: 'stub-1' } })

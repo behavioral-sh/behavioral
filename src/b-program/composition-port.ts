@@ -2,6 +2,7 @@ import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { JsonObject, Trace } from '../behavioral/behavioral.types.ts'
 import type { ClientMessage, ServerMessage } from '../controller/controller.types.ts'
 import { ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import type { SystemTwoEndpointConfig } from '../faculties/system-two.types.ts'
 import { keyMirror } from '../utils.ts'
 import type { RuntimeIdentity } from './runtime-identity.ts'
 
@@ -49,6 +50,53 @@ export type CompositionPortAttachFrame = {
   space?: string
   models?: CompositionPortModels
 }
+
+// ---------------------------------------------------------------------------
+// The provider plan — the inference transport's browser construction
+// ---------------------------------------------------------------------------
+
+/**
+ * The proxy route prefix — `POST /v1/inference/<provider>/<path>` (the
+ * daemon's provider-shaped inference routes). Defined HERE because the
+ * browser-side construction derives proxy URLs from it; the daemon's
+ * serving side imports the same constant (the serving contract's paths,
+ * same spirit as `B_PROGRAM_WORKER_PATH`).
+ */
+export const INFERENCE_PROXY_PREFIX = '/v1/inference/'
+
+/**
+ * One provider plan entry — what the attach frame carries per provider:
+ * the transport decision (+ the local model id for webgpu). No URLs, no
+ * credentials — the browser constructs the endpoints from the plan.
+ */
+export type SystemTwoProviderPlanEntry = {
+  transport?: 'rest' | 'webgpu'
+  /** Webgpu transport only — the local model id. */
+  model?: string
+}
+
+/** Provider label → plan entry. The attach frame's systemTwo plan shape. */
+export type SystemTwoProviderPlan = Record<string, SystemTwoProviderPlanEntry>
+
+/**
+ * The browser-side construction of system-two's initData provider map (the
+ * inference-transport ruling): static-key vendors become the daemon's proxy
+ * routes (`${INFERENCE_PROXY_PREFIX}<label>` — the key attaches daemon-side
+ * and never enters a browser context; relative URLs resolve against the
+ * worker's same-origin script URL); webgpu entries pass through verbatim
+ * (local compute, no network, no credential). No `apiKey` field is ever
+ * produced — the type's optionality is for daemon-vended short-lived
+ * tokens only.
+ */
+export const systemTwoEndpointsFromPlan = (plan: SystemTwoProviderPlan): Record<string, SystemTwoEndpointConfig> =>
+  Object.fromEntries(
+    Object.entries(plan).map(([label, entry]) => [
+      label,
+      entry.transport === 'webgpu'
+        ? { transport: 'webgpu', ...(entry.model === undefined ? {} : { model: entry.model }) }
+        : { url: `${INFERENCE_PROXY_PREFIX}${label}` },
+    ]),
+  )
 
 /** Page → worker: scope the trace stream. Omitted kinds = all (full fidelity). */
 export type CompositionPortTraceSubscribeFrame = {

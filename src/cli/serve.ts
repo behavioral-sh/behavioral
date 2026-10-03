@@ -13,6 +13,7 @@ import { vendProviderToken } from '../actuators/provider-keys.ts'
 import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
+import { INFERENCE_PROXY_PREFIX } from '../b-program/composition-port.ts'
 import { pluginThreadsThreads } from '../b-program/plugin-threads.threads.ts'
 import { remoteMcpThreads } from '../b-program/remote-mcp.threads.ts'
 import { rpcAuthThreads } from '../b-program/rpc-auth.threads.ts'
@@ -133,7 +134,7 @@ export const createHost = ({
 // ---------------------------------------------------------------------------
 
 /** The proxy route prefix: `POST /v1/inference/<provider>/<path>` — the serving contract's paths. */
-export const INFERENCE_PROXY_PREFIX = '/v1/inference/'
+export { INFERENCE_PROXY_PREFIX } from '../b-program/composition-port.ts'
 
 /** A structured JSON error body at the proxy boundary. */
 const proxyError = (status: number, code: string, message: string): Response =>
