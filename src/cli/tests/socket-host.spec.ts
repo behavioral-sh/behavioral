@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
 import type { ClientMessage } from '../../controller/controller.types.ts'
+import { B_PROGRAM_WORKER_PATH } from '../../controller/worker-transport.ts'
 import { createSocketHost, instanceSocketPath } from '../socket-host.ts'
 
 /** The identity the engine stamps on every trace — the hello's payload. */
@@ -313,5 +314,24 @@ describe('createSocketHost', () => {
     const response = await fetch('http://localhost/', { unix: host.path })
     expect(response.status).toBe(426)
     await host.close()
+  })
+
+  test('the conventional worker route serves the self-booting composition bundle', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const host = await createSocketHost({ runtime: fake.runtime, home })
+    try {
+      const response = await fetch(`http://localhost${B_PROGRAM_WORKER_PATH}`, { unix: host.path })
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')?.startsWith('text/javascript')).toBe(true)
+      // fetch transparently decompresses the gzip body — the composition's
+      // wire markers (the bundler-visible faculty literals + the attach
+      // protocol) ride the decoded text.
+      const body = await response.text()
+      expect(body).toContain('attach')
+      expect(body).toContain('system-one.faculty.ts')
+    } finally {
+      await host.close()
+    }
   })
 })

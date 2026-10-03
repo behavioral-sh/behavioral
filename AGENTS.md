@@ -224,7 +224,15 @@ kind-filtered space-isolated REDACTED trace stream via `trace-redact.ts` +
 `credential-patterns.ts`, egress-as-selection `message` frames), the
 actuator leg taking pre-built lane builders over an injected Transport (the
 socket-lane default lands with the rewire's socket slice; no default yet),
-and `runtime-identity.ts` (the hello's one schema home). `tests/` holds the
+and `runtime-identity.ts` (the hello's one schema home). `bundle-worker.ts`
+— the serving seam: `bundleBProgramWorker({ dev, threads })` bundles the
+SELF-BOOTING wrapper (the entry is a library shape; `runCompositionWorker`
+is the boot seam) for the conventional `B_PROGRAM_WORKER_PATH` route the
+controller's default carrier spawns (prod AOT/cached, dev rebundle — the
+socket-host serves it), and `connectSrcPolicy` is the page CSP's
+`connect-src` allow-list shape (the daemon origin + the proxied provider
+origins — the list is the serving side's config, the inference-transport
+slice owns the provider list). `tests/` holds the
 lane's ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over a real Bun web
 Worker), the composition's bundle gate + WebView spec, and every moved
 pack's specs.

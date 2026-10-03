@@ -2,9 +2,11 @@ import { join } from 'node:path'
 import type { JSONSchemaType } from 'ajv'
 import type { ServerWebSocket } from 'bun'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
+import { bundleBProgramWorker } from '../b-program/bundle-worker.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
+import { B_PROGRAM_WORKER_PATH } from '../controller/worker-transport.ts'
 import type { JsonRpcMessage } from './json-rpc.ts'
 import { dispatchToRuntime, type HostRuntime, type RuntimeIdentity, wireRuntimeEgress } from './serve.ts'
 
@@ -159,6 +161,12 @@ export const createSocketHost = async ({
         // Prod: one AOT bundle, cached. Dev: rebundle per request.
         const routes = await bundleController({ dev })
         return routes[CONNECT_BEHAVIORAL_ROUTE] ?? new Response(null, { status: 404 })
+      }
+      if (url.pathname === B_PROGRAM_WORKER_PATH) {
+        // The composition worker at the controller's conventional spawn path —
+        // the self-booting wrapper (the socket-lane actuator default).
+        const routes = await bundleBProgramWorker({ dev })
+        return routes[B_PROGRAM_WORKER_PATH] ?? new Response(null, { status: 404 })
       }
       return server.upgrade(req)
         ? undefined
