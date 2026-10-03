@@ -70,6 +70,14 @@ const PLUGIN_FILE_ENV = 'PLUGIN_THREADS_FILE'
  */
 const ENGINE_SCHEMA_HOME = new URL('../behavioral/behavioral.types.ts', import.meta.url).href
 
+/**
+ * The hash util home, resolved the same way — the canonical masked djb2
+ * (`hashString`) the sourceHash is minted with. The canonical source string
+ * is the plugin root path exactly as proposed (the caller's canonical form);
+ * the content hash is a DIFFERENT hash with a different job — re-adjudication.
+ */
+const UTIL_SCHEMA_HOME = new URL('../utils/hash-string.ts', import.meta.url).href
+
 // ── The import script (bun-direct, executed in the worker) ──────────────────
 
 /**
@@ -89,6 +97,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const { ajv, ThreadSchema } = await import(${JSON.stringify(ENGINE_SCHEMA_HOME)})
+const { hashString } = await import(${JSON.stringify(UTIL_SCHEMA_HOME)})
 
 const root = process.env.${PLUGIN_ROOT_ENV}
 const file = process.env.${PLUGIN_FILE_ENV}
@@ -130,7 +139,7 @@ for (const name of Object.keys(mod)) {
     warnings.push('Skipped export "' + name + '": ' + ajv.errorsText(validate.errors))
   }
 }
-console.log(JSON.stringify({ threads, warnings, hash }))
+console.log(JSON.stringify({ threads, warnings, hash, sourceHash: hashString(root) }))
 `
 
 // ── Trusted shapes (the thread gates) ───────────────────────────────────────
@@ -214,8 +223,9 @@ const IMPORT_SUCCESS_SCHEMA = {
           properties: {
             threads: { type: 'array', items: { type: 'object' } },
             hash: { type: 'string', minLength: 1 },
+            sourceHash: { type: 'integer', minimum: 0 },
           },
-          required: ['threads', 'hash'],
+          required: ['threads', 'hash', 'sourceHash'],
           additionalProperties: true,
         },
       },
@@ -274,11 +284,12 @@ const IMPORTED_SCHEMA = {
         plugin: { type: 'string', minLength: 1 },
         file: { type: 'string', minLength: 1 },
         hash: { type: 'string', minLength: 1 },
+        sourceHash: { type: 'integer', minimum: 0 },
         threads: { type: 'array', items: { type: 'object' } },
         warnings: { type: 'array', items: { type: 'string' } },
         space: { type: 'string', minLength: 1 },
       },
-      required: ['plugin', 'file', 'hash', 'threads'],
+      required: ['plugin', 'file', 'hash', 'threads', 'sourceHash'],
       additionalProperties: false,
     },
   },
@@ -314,9 +325,10 @@ const CANDIDATE_SCHEMA = {
         plugin: { type: 'string', minLength: 1 },
         file: { type: 'string', minLength: 1 },
         hash: { type: 'string', minLength: 1 },
+        sourceHash: { type: 'integer', minimum: 0 },
         space: { type: 'string', minLength: 1 },
       },
-      required: ['thread', 'plugin', 'file', 'hash'],
+      required: ['thread', 'plugin', 'file', 'hash', 'sourceHash'],
       additionalProperties: false,
     },
   },
@@ -336,7 +348,7 @@ const importJoin: Thread = {
         {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
           query:
-            '. as $d | { id: $d.ctx.echo.source, input: ({ plugin: $d.ctx.echo.plugin, file: $d.ctx.echo.file, hash: $d.result.jsonData.hash, threads: $d.result.jsonData.threads, warnings: ($d.result.jsonData.warnings // []) } + (if $d.ctx.echo.space != null then { space: $d.ctx.echo.space } else {} end)) }',
+            '. as $d | { id: $d.ctx.echo.source, input: ({ plugin: $d.ctx.echo.plugin, file: $d.ctx.echo.file, hash: $d.result.jsonData.hash, sourceHash: $d.result.jsonData.sourceHash, threads: $d.result.jsonData.threads, warnings: ($d.result.jsonData.warnings // []) } + (if $d.ctx.echo.space != null then { space: $d.ctx.echo.space } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.imported,
           detailSchema: IMPORT_SUCCESS_SCHEMA,
         },
@@ -362,14 +374,14 @@ const candidateIssue: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.imported,
           query:
-            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-0"), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-0"), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.candidate,
           detailSchema: IMPORTED_SCHEMA,
         },
         {
           type: PLUGIN_THREADS_EVENT_TYPES.imported,
           query:
-            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, threads: $d.input.threads[1:], next: 1 } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: 1 } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.pending,
           detailSchema: IMPORTED_SCHEMA,
         },
@@ -388,14 +400,14 @@ const pendingIssue: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.pending,
           query:
-            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-" + ($d.input.next | tostring)), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-" + ($d.input.next | tostring)), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.candidate,
           detailSchema: PENDING_SCHEMA,
         },
         {
           type: PLUGIN_THREADS_EVENT_TYPES.pending,
           query:
-            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, threads: $d.input.threads[1:], next: ($d.input.next + 1) } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: ($d.input.next + 1) } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.pending,
           detailSchema: PENDING_SCHEMA,
         },
@@ -414,7 +426,7 @@ const candidateDispatch: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.candidate,
           query:
-            '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.space)) + (if $d.input.space != null then { space: $d.input.space } else {} end)) } }',
+            '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.space)) + ({ sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end))) } }',
           target: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
           detailSchema: CANDIDATE_SCHEMA,
         },

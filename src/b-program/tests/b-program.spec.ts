@@ -29,6 +29,7 @@ import {
 } from '../../faculties/system-one.threads.ts'
 import { startDecisionsServer } from '../../faculties/tests/fixtures/decisions-server.ts'
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
+import { hashString } from '../../utils.ts'
 import { bProgram, type LaneBuilder } from '../b-program.ts'
 import { PLUGIN_THREADS_EVENT_TYPES, pluginThreadsThreads } from '../plugin-threads.threads.ts'
 import {
@@ -409,6 +410,7 @@ describe('bProgram — the runtime composition', () => {
         // The verdict is data: the frontier validated, the composition owns the write.
         expect(detail?.ok).toBe(true)
         expect(detail?.result?.ok).toBe(true)
+
         const added = traces.find(
           (t) =>
             t.kind === TRACE_MESSAGE_KINDS.thread_added &&
@@ -1291,9 +1293,18 @@ describe('bProgram — the runtime composition', () => {
             (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
         )
         expect(adds.map((t) => (t.selected.detail as { id?: string }).id)).toEqual(['pt1-add-0'])
-        const thread = (adds[0]?.selected.detail as { input?: { thread?: { name?: string } } } | undefined)?.input
-          ?.thread
+        const thread = (
+          adds[0]?.selected.detail as
+            | {
+                input?: { thread?: { name?: string; sourceHash?: number } }
+              }
+            | undefined
+        )?.input?.thread
         expect(thread?.name).toBe('greeter')
+        // PROVENANCE: the candidate's thread carries the source hash — djb2
+        // over the plugin's canonical source path — stamped at the proposal
+        // path, before the add_thread dispatch (the association join key).
+        expect(thread?.sourceHash).toBe(hashString(plugin))
         // the invalid export skipped with a warning — the imported batch surface carries it
         const imported = selectionsOf(traces).find((t) => t.selected.type === PLUGIN_THREADS_EVENT_TYPES.imported)
         const importedInput = (imported?.selected.detail as { input?: { warnings?: string[] } } | undefined)?.input
@@ -1306,6 +1317,16 @@ describe('bProgram — the runtime composition', () => {
               (t as { thread?: { name?: string } }).thread?.name === 'greeter',
           ),
         )
+        // the admitted thread's provision trace carries the provenance join —
+        // matched on the proposal's own source hash (a boot-mounted snapshot
+        // from a prior run would carry its own)
+        const added = traces.find(
+          (t) =>
+            t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+            (t as { thread?: { name?: string; sourceHash?: number } }).thread?.name === 'greeter' &&
+            (t as { thread?: { sourceHash?: number } }).thread?.sourceHash === hashString(plugin),
+        )
+        expect(added).toBeDefined()
       } finally {
         runtime.terminate()
       }
@@ -1367,6 +1388,15 @@ describe('bProgram — the runtime composition', () => {
           }
         }
         expect(Object.keys(readPluginThreadRegistry(home))).toHaveLength(1)
+        // the registry's admitted snapshot carries the provenance join — the
+        // agent query joins thread → plugin origin on the source hash (the
+        // registry's OWN content hash stays the re-adjudication key; two
+        // hashes, two jobs)
+        {
+          const [entry] = Object.values(readPluginThreadRegistry(home))
+          expect(entry?.status).toBe('admitted')
+          expect(entry?.status === 'admitted' && entry.thread.sourceHash).toBe(hashString(plugin))
+        }
         // the plugin file mutates post-admission — the content hash re-arms…
         writePluginThread(plugin, 'hello2')
         // …but a fresh boot mounts the SNAPSHOT: greeter is live with NO

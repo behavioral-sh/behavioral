@@ -23,6 +23,13 @@
  * writer could reorder or drop the last admission on exit (the trace-log
  * sink's rule).
  *
+ * TWO HASHES, TWO JOBS (the thread-identity ruling): the key's content
+ * hash is the file content digest — the re-adjudication key. The
+ * admitted thread's `sourceHash` field is a different hash — djb2 over
+ * the plugin's canonical source (local path or remote URI) — the
+ * IDENTITY/provenance join key: agentic search and eval tooling join
+ * thread → plugin origin on the field, never on the registry key.
+ *
  * @packageDocumentation
  */
 
@@ -151,6 +158,11 @@ export const foldPluginThreadSnapshots = (registry: PluginThreadRegistry): Threa
  *   registers the proposal (the thread leg validated against the engine's
  *   ThreadSchema home — a non-conforming thread is a null snapshot, never an
  *   admission);
+ * - `frontier_analysis_request` { op: "add_thread", input: { thread, ... } }
+ *   refreshes the pending thread from the dispatch — the stamped candidate
+ *   (the proposal path stamps `sourceHash` onto the thread before the
+ *   add_thread dispatch), so the admitted snapshot carries the provenance
+ *   join;
  * - `frontier_analysis_request_result` { id, ok, result/error } captures the structural
  *   verdict (a failed verdict carries its reason);
  * - `thread_admission` / `thread_admission_rejected` { id, reason? } is the
@@ -198,6 +210,17 @@ export const watchPluginThreadRegistry = ({
         hash: input.hash,
         ...(typeof input.space === 'string' ? { space: input.space } : {}),
       })
+      return
+    }
+    // The dispatch refresh: the candidate-dispatch stamps the sourceHash onto
+    // the thread before the add_thread dispatch — the pending record adopts
+    // the stamped thread (validated again against the engine's schema home).
+    if (candidate.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request && pending.has(detail.id as string)) {
+      const input = (detail as { input?: { op?: unknown; thread?: unknown } }).input
+      if ((detail.op as string | undefined) !== 'add_thread' || input === undefined || typeof input !== 'object') return
+      const thread = (input as { thread?: unknown }).thread
+      const rec = pending.get(detail.id as string)!
+      rec.thread = validateThread(thread) ? (thread as Thread) : null
       return
     }
     if (candidate.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result && pending.has(detail.id as string)) {

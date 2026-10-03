@@ -16,6 +16,7 @@ import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { hashString } from '../../utils.ts'
 import {
   PLUGIN_THREAD_IMPORT_SCRIPT,
   PLUGIN_THREADS_EVENT_TYPES,
@@ -117,7 +118,12 @@ describe('plugin threads — the join and the candidates', () => {
         // composition's own candidate emission casts the same way
         result: {
           status: 'completed',
-          jsonData: { threads: threads as unknown as JsonObject[], warnings: ['a warning'], hash: 'abc123' },
+          jsonData: {
+            threads: threads as unknown as JsonObject[],
+            warnings: ['a warning'],
+            hash: 'abc123',
+            sourceHash: hashString('/plugins/alpha'),
+          },
         },
         ctx: { echo },
       },
@@ -135,6 +141,7 @@ describe('plugin threads — the join and the candidates', () => {
     expect(importedInput.plugin).toBe('/plugins/alpha')
     expect(importedInput.file).toBe('t.ts')
     expect(importedInput.hash).toBe('abc123')
+    expect(importedInput.sourceHash).toBe(hashString('/plugins/alpha'))
     expect(importedInput.threads).toHaveLength(2)
     expect(importedInput.warnings).toEqual(['a warning'])
     // one add_thread proposal per thread, correlated ids
@@ -142,9 +149,12 @@ describe('plugin threads — the join and the candidates', () => {
     expect(adds.map((s) => s.detail?.id)).toEqual(['p1-add-0', 'p1-add-1'])
     for (const add of adds) {
       expect(add.detail?.op).toBe('add_thread')
-      const input = add.detail?.input as { thread?: { name?: string } }
+      const input = add.detail?.input as { thread?: { name?: string; sourceHash?: number } }
       const label = input.thread?.name ?? ''
       expect(['greeter', 'farewell']).toContain(label)
+      // PROVENANCE: the candidate's thread carries the source hash — djb2 over
+      // the plugin's canonical source path — stamped at the proposal path.
+      expect(input.thread?.sourceHash).toBe(hashString('/plugins/alpha'))
     }
   })
 
@@ -275,6 +285,8 @@ describe('plugin threads — the import script (real run)', () => {
       expect(warnings[0]).toContain('notAThread')
       // the content hash — the registry's re-arm key
       expect(out.hash).toBe(new Bun.CryptoHasher('sha256').update(source).digest('hex'))
+      // the source hash — provenance: djb2 over the plugin's canonical source path
+      expect(out.sourceHash).toBe(hashString(plugin))
     } finally {
       rmSync(plugin, { recursive: true, force: true })
     }

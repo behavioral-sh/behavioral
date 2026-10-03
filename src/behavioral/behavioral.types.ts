@@ -329,6 +329,7 @@ export type CandidateBid = {
  * @property description - One short paragraph (≤512 chars) describing what the thread does — model-readable.
  * @property rules - The thread's synchronization statements, executed in order.
  * @property once - When `true`, the thread runs its rules once and completes.
+ * @property sourceHash - Optional provenance: the djb2 hash of the plugin's local path or remote URI, stamped at the proposal path.
  *
  * @public
  */
@@ -338,6 +339,7 @@ export type Thread = {
   description: string
   once?: true
   rules: Idioms[]
+  sourceHash?: number
 }
 
 /**
@@ -368,6 +370,13 @@ export const ThreadSchema: JSONSchemaType<Thread> = {
       description: 'When true, the thread runs its rules once and completes; otherwise it loops indefinitely.',
     },
     rules: { type: 'array', items: IdiomSchema, description: 'The synchronization statements executed in order.' },
+    sourceHash: {
+      type: 'integer',
+      minimum: 0,
+      nullable: true,
+      description:
+        "Provenance: djb2 of the plugin's canonical source (path or URI) — the association join key; minted at the proposal path.",
+    },
   },
   required: ['name', 'description', 'rules'],
   additionalProperties: false,
@@ -393,6 +402,7 @@ export const SerializedThreadSchema = {
   properties: {
     name: { type: 'string', minLength: 1, description: 'Human-readable thread name.' },
     description: { type: 'string', maxLength: 512 },
+    sourceHash: { type: 'integer', minimum: 0 },
     once: { type: 'boolean', enum: [true], nullable: true },
     rules: { type: 'array', items: { type: 'object', additionalProperties: true } },
   },

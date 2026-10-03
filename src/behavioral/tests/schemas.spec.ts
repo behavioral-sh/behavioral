@@ -91,6 +91,13 @@ describe('behavioral schemas', () => {
     expect(validate({ name: 'a', rules: [] })).toBe(false)
   })
 
+  test('Thread validator accepts an optional provenance sourceHash — uint32 djb2 only', () => {
+    expect(validateThread({ name: 'a', description: 'd', rules: [], sourceHash: 3328524204 })).toBe(true)
+    expect(validateThread({ name: 'a', description: 'd', rules: [], sourceHash: -1 })).toBe(false)
+    expect(validateThread({ name: 'a', description: 'd', rules: [], sourceHash: 1.5 })).toBe(false)
+    expect(validateThread({ name: 'a', description: 'd', rules: [], sourceHash: 'abc' })).toBe(false)
+  })
+
   test('Thread validator enforces the description cap and requires name', () => {
     expect(validateThread({ name: 'a', description: 'd', rules: [] })).toBe(true)
     expect(validateThread({ name: 'a', description: 'x'.repeat(513), rules: [] })).toBe(false)
