@@ -2,7 +2,7 @@
  * The ui autoresearch loop — the in-process raw capture consumer (the eval
  * ruling's canonical path: in-process = raw, a second `useTrace` subscriber
  * coexisting with the redacted lane) plus the minimal frontier-analysis pass
- * over a captured run (`remote_system_two_request { op: replay }` — the divergence
+ * over a captured run (`frontier_analysis_request { op: replay }` — the divergence
  * view: where requests blocked, what the frontier looked like when the hold
  * happened). The graders are consumer-authored; this pins the wiring.
  *
@@ -284,7 +284,7 @@ const replay = async (
   for (;;) {
     const found = selectionsOf(traces).find(
       (t) =>
-        t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
+        t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result &&
         (t.selected.detail as { id?: string } | undefined)?.id === (request.detail as { id: string }).id,
     )
     if (found !== undefined)

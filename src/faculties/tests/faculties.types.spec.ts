@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import {
   validateBehaviorErrorEvent,
-  validateRemoteSystemTwoRequestEvent,
-  validateRemoteSystemTwoRequestResultEvent,
+  validateFrontierAnalysisRequestEvent,
+  validateFrontierAnalysisRequestResultEvent,
   validateSecurityCancelEvent,
   validateSecurityRequestEvent,
   validateSecurityRequestResultEvent,
@@ -175,48 +175,48 @@ describe('workers.types event vocabulary', () => {
     })
   })
 
-  describe('remote_system_two_request', () => {
+  describe('frontier_analysis_request', () => {
     test('accepts a well-formed request with a known operation', () => {
-      const valid = validateRemoteSystemTwoRequestEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+      const valid = validateFrontierAnalysisRequestEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
         detail: { id: 'fr_1', op: 'explore', input: { threads: [], maxDepth: 1 } },
       })
       expect(valid).toBe(true)
     })
     test('accepts the add_thread operation — the admission path', () => {
-      const valid = validateRemoteSystemTwoRequestEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+      const valid = validateFrontierAnalysisRequestEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
         detail: { id: 'fr_1', op: 'add_thread', input: { thread: { label: 't', rules: [] }, maxDepth: 8 } },
       })
       expect(valid).toBe(true)
     })
     test('rejects an unknown operation — frontier is its own worker, not a tool', () => {
-      const valid = validateRemoteSystemTwoRequestEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+      const valid = validateFrontierAnalysisRequestEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
         detail: { id: 'fr_1', op: 'frontier-explore', input: {} },
       })
       expect(valid).toBe(false)
     })
     test('rejects a detail without op', () => {
-      const valid = validateRemoteSystemTwoRequestEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+      const valid = validateFrontierAnalysisRequestEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
         detail: { id: 'fr_1', input: {} },
       })
       expect(valid).toBe(false)
     })
   })
 
-  describe('remote_system_two_request_result', () => {
+  describe('frontier_analysis_request_result', () => {
     test('accepts a well-formed result', () => {
-      const valid = validateRemoteSystemTwoRequestResultEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+      const valid = validateFrontierAnalysisRequestResultEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
         detail: { id: 'fr_1', ok: true, result: { status: 'verified' } },
       })
       expect(valid).toBe(true)
     })
     test('rejects a non-object result payload', () => {
-      const valid = validateRemoteSystemTwoRequestResultEvent({
-        type: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+      const valid = validateFrontierAnalysisRequestResultEvent({
+        type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
         detail: { id: 'fr_1', ok: true, result: 'not-an-object' },
       })
       expect(valid).toBe(false)

@@ -10,7 +10,7 @@
  *
  * The requests are the level-1 gate's pins: the typed-error answers prove
  * the FULL path (init frame → validateInput → respond → envelope) without
- * network; the remoteSystemTwo analysis answers ok.
+ * network; the frontier analysis answers ok.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { startBundleGateServer } from './fixtures/bundle-gate-serve.ts'
@@ -72,8 +72,8 @@ describe('the bundle gate level 2 — faculty classic bundles boot in the real W
     const systemTwo = results['system-two'] as { detail: { ok?: boolean; error?: { message?: string } } }
     expect(systemTwo.detail.ok).toBe(false)
     expect(systemTwo.detail.error?.message).toBe('[Error: unknown provider "missing"]')
-    // remoteSystemTwo: the analysis answers ok (the replay ran in the bundle).
-    const remote = results['remote-system-two'] as { detail: { ok?: boolean } }
+    // frontier: the analysis answers ok (the replay ran in the bundle).
+    const remote = results['frontier-analysis'] as { detail: { ok?: boolean } }
     expect(remote.detail.ok).toBe(true)
   }, 30_000)
 })

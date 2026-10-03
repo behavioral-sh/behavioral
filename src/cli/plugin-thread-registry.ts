@@ -151,7 +151,7 @@ export const foldPluginThreadSnapshots = (registry: PluginThreadRegistry): Threa
  *   registers the proposal (the thread leg validated against the engine's
  *   ThreadSchema home — a non-conforming thread is a null snapshot, never an
  *   admission);
- * - `remote_system_two_request_result` { id, ok, result/error } captures the structural
+ * - `frontier_analysis_request_result` { id, ok, result/error } captures the structural
  *   verdict (a failed verdict carries its reason);
  * - `thread_admission` / `thread_admission_rejected` { id, reason? } is the
  *   outcome: the write fires exactly once per registered id — the admitted
@@ -200,7 +200,7 @@ export const watchPluginThreadRegistry = ({
       })
       return
     }
-    if (candidate.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result && pending.has(detail.id as string)) {
+    if (candidate.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result && pending.has(detail.id as string)) {
       const rec = pending.get(detail.id as string)!
       if (detail.ok === false)
         rec.verdictReason =

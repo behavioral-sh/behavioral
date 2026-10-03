@@ -91,7 +91,7 @@ export type FacultyRespond<I = JsonObject, D = JsonObject> = (
  *
  * The bootstrap hands the faculty the FULL correlated detail (`{ id, ctx? } & I`):
  * where the payload sits inside the detail is the faculty wire's convention
- * (the system faculties nest it at `input`; remoteSystemTwo's dispatch key `op` rides
+ * (the system faculties nest it at `input`; frontier's dispatch key `op` rides
  * beside it) — not the bootstrap's business.
  */
 type FacultyRequestEvent<I> = {

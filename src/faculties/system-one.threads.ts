@@ -15,7 +15,7 @@ import { type ChoiceQuestion, choiceQuestionSchema } from './system-one.schemas.
  * thread, and the Decision determines whether the block lifts.
  *
  * Three threads, mounted by `bProgram` only when systemOne is on (the judge
- * requires the Decisions lane; the remoteSystemTwo analysis — its structural layer — is the
+ * requires the Decisions lane; the frontier analysis — its structural layer — is the
  * in-process embed, always present):
  *
  * - **`admission-issue`** — a `thread_candidate` event (the composition's
@@ -47,7 +47,7 @@ import { type ChoiceQuestion, choiceQuestionSchema } from './system-one.schemas.
  * MINIMAL: the Decision's policy (what makes a thread "appropriate") is the
  * fixed instruction below; a policy input rides a config seam when a named
  * need arrives. Hostile-thread forgery of `thread_admission` is the same
- * class as the existing remote_system_two_request self-request posture — a known
+ * class as the existing frontier_analysis_request self-request posture — a known
  * frontier for a later hardening slice.
  *
  * **Supervision** — `supervisionThreads({ watch, threshold })` builds one

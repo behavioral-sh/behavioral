@@ -137,15 +137,17 @@ pattern. Shared modules sit at the top:
   browser target and boots the artifact through a real round-trip.
 The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
 (+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
-(+ types/schemas), `remote-system-two.faculty.ts` (+ `.threads.ts`): each
+(+ types/schemas), `system-two.faculty.ts` (+ types/schemas), and
+`frontier-analysis.faculty.ts` (+ `.threads.ts`): each
 entry is a `respond` behind the top-level `createWorker` (system-one:
 TypeSafe/OpenRouter Decisions, 429/529 retry-after — ALWAYS LOCAL, no
 remote variant; system-two: Open Responses, the endpoints map via the init
 frame, per-provider `transport: 'rest' | 'webgpu'` — rest URLs point at the
 daemon's provider-shaped proxy for static-key vendors (the key attaches
 daemon-side, never in a browser context), webgpu runs the local runtime
-(`system-two.webgpu.ts`, lazy-imported); remoteSystemTwo: the reachability
-analyses — synchronous, no cancel contract, no timeout).
+(`system-two.webgpu.ts`, lazy-imported); frontierAnalysis: the reachability
+analyses (replay/explore/verify/add_thread over the `frontier_analysis`
+wire kinds) — synchronous, no cancel contract, no timeout).
 Endpoints/config arrive as the init frame — the secret never enters a
 request message. `system-one.threads.ts` carries the
 admission judgment threads (the BP-native blocking judge over the Decisions
@@ -186,7 +188,7 @@ supervision, ui_*; the root guard threads stay internal, always-mounted),
 `models` (the faculties' init-frame payloads + the ui generation target),
 and `actuators` (PRE-CONSTRUCTED four-key lanes — reachability is
 construction, never config; unknown lane names throw at wiring). The fixed
-three (remoteSystemTwo, systemOne, systemTwo) mount through `useWorker` —
+three (frontierAnalysis, systemOne, systemTwo) mount through `useWorker` —
 never optional, never overrides. `use-worker.ts` — `useWorker({ name,
 worker: () => new Worker(...), validateRequest, validateCancel, resultKind,
 initData })`, the worker construction a FACTORY at the call site (the
@@ -211,7 +213,7 @@ preflight, generation, `ui_render`, the scoped `ui_style` serving seam,
 every correlation id per-trigger); mounted with shell + store + systemTwo,
 composition territory — no process, not a faculty), and `ui-capture.ts`
 (the autoresearch loop's capture side — the in-process lineage-keyed raw
-run consumer + the remoteSystemTwo replay builder; the socket host wires
+run consumer + the frontierAnalysis replay builder; the socket host wires
 its file sink under `<home>/captures`). `b-program.worker.ts` — the bProgram
 WORKER ENTRY (the per-tab dedicated module worker; the composition boots on
 the first `attach`, whose frame carries the page's space + the provider map
@@ -279,7 +281,7 @@ fold into the `threads` array at boot, decided keys never re-adjudicate)
 **`src/faculties/system-one.threads.ts` + `system-one.faculty.ts`** — the
 admission judgment threads (the BP-native blocking judge over the Decisions
 lane) and the supervision threads (the runtime circuit breaker, its
-judgment, and its recovery) — the `remote-system-two.threads.ts` pack adds
+judgment, and its recovery) — the `frontier-analysis.threads.ts` pack adds
 the structural review pack (the no-systemOne admission gate). Threads are
 composition-side or faculty-side policy; actuators ship without theirs. The
 root guard threads (`src/faculties/faculties.threads.ts`) are always

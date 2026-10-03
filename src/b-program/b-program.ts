@@ -11,13 +11,13 @@ import {
   SystemTwoCancelEventSchema,
   SystemTwoRequestEventSchema,
   SystemTwoRequestResultEventSchema,
-  validateRemoteSystemTwoRequestEvent,
+  validateFrontierAnalysisRequestEvent,
   validateSystemOneCancelEvent,
   validateSystemOneRequestEvent,
   validateSystemTwoCancelEvent,
   validateSystemTwoRequestEvent,
 } from '../faculties/faculties.types.ts'
-import { admissionAnalysisInput, admissionReviewThreads } from '../faculties/remote-system-two.threads.ts'
+import { admissionAnalysisInput, admissionReviewThreads } from '../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
   admissionJudgmentThreads,
@@ -32,7 +32,7 @@ import { useWorker } from './use-worker.ts'
  * The runtime composition — IN-PROCESS (the browser bProgram worker entry
  * boots the same graph over postMessage at the rewire). The engine is
  * behavioral(): addThread/trigger/step called directly, traces through
- * useTrace. The FIXED faculties — remoteSystemTwo, systemOne, systemTwo — are web
+ * useTrace. The FIXED faculties — frontierAnalysis, systemOne, systemTwo — are web
  * workers wired HERE through useWorker (factory at the call site, the
  * bundler-visible `new Worker` literal): never optional, never overrides —
  * endpoints/models are data riding the INIT FRAME (`models`). The actuator
@@ -136,14 +136,15 @@ export const bProgram = ({
 
   // ── Faculty wiring: the fixed three as workers; the actuators pre-built ────
 
-  // The remoteSystemTwo faculty (the analysis engine — replay/explore/verify/
+  // The frontierAnalysis faculty (the reachability analysis engine —
+  // replay/explore/verify/
   // add_thread): a worker (the deepened wire — `op` beside `input` in the
   // correlated detail). No cancel contract, no config — it boots bare.
-  const remoteSystemTwo = useWorker({
-    name: 'remote_system_two',
-    worker: () => new Worker(new URL('../faculties/remote-system-two.faculty.ts', import.meta.url)),
-    validateRequest: validateRemoteSystemTwoRequestEvent,
-    resultKind: FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+  const frontierAnalysis = useWorker({
+    name: 'frontier_analysis',
+    worker: () => new Worker(new URL('../faculties/frontier-analysis.faculty.ts', import.meta.url)),
+    validateRequest: validateFrontierAnalysisRequestEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
   })(facultyAddThreads)
 
   // The system faculties: fixed workers; their config rides the INIT FRAME
@@ -258,8 +259,8 @@ export const bProgram = ({
   }
 
   // The admission path — pending add_thread ids. An id registers when its
-  // request routes through the remoteSystemTwo lane (the request leg below); the
-  // correlated remote_system_two_request_result carries the verdict. The map is the
+  // request routes through the frontier lane (the request leg below); the
+  // correlated frontier_analysis_request_result carries the verdict. The map is the
   // authorization: only results correlated to requests this composition
   // itself routed can ever admit. A null thread (the proposal failed the
   // Thread-schema gate at registration) never admits. The id survives until
@@ -267,10 +268,10 @@ export const bProgram = ({
   // outcome events below are the write legs.
   const pendingAdmissions = new Map<string, Thread | null>()
 
-  route([FACULTY_MESSAGE_KINDS.remote_system_two_request], {
+  route([FACULTY_MESSAGE_KINDS.frontier_analysis_request], {
     send: (event: BPEvent): void => {
       // The request leg: register the id against the proposed thread, then
-      // route through the remoteSystemTwo dispatch. The analysis stays
+      // route through the frontierAnalysis dispatch. The analysis stays
       // analysis-shaped — it validates and returns; the composition owns the
       // write (the verdict leg, in the pump below).
       const detail = event.detail as { id?: string; op?: string; input?: { thread?: unknown } } | undefined
@@ -322,20 +323,20 @@ export const bProgram = ({
         // and the clamped exploration budget — never the requester's claim.
         // A self-sustaining loop proposal comes back a failed verdict and
         // never reaches the write.
-        remoteSystemTwo.send({
+        frontierAnalysis.send({
           ...event,
           detail: { ...detail, input: admissionAnalysisInput(detail.input as JsonObject) },
         })
         return
       }
-      remoteSystemTwo.send(event)
+      frontierAnalysis.send(event)
     },
-    gate: remoteSystemTwo.invalidEventGate,
+    gate: frontierAnalysis.invalidEventGate,
   })
 
   // ── The engine pump: traces out, gated events to their faculty lanes ─────
 
-  // The verdict leg: a remote_system_two_request_result correlated to a pending
+  // The verdict leg: a frontier_analysis_request_result correlated to a pending
   // add_thread id. Both verdict legs must be ok for the thread to admit under
   // the re-entry law (addThread + step): the outer envelope (the analysis ran)
   // and the inner verdict (it verified). The rejection is data — the
@@ -399,7 +400,7 @@ export const bProgram = ({
       }
       return
     }
-    if (candidate.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result) {
+    if (candidate.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result) {
       const detail = candidate.detail as { id?: string; ok?: boolean; result?: { ok?: boolean } } | undefined
       const id = detail?.id
       if (typeof id === 'string' && pendingAdmissions.has(id)) {
@@ -454,7 +455,7 @@ export const bProgram = ({
     // a render INGRESS mints the per-trigger pipeline. The factory composes
     // pure data (jq strings, no closures) from trusted host code — the
     // admission-path precedent; addThread's ThreadSchema gate is the
-    // backstop, no remoteSystemTwo judgment needed for host-authored threads. The
+    // backstop, no frontierAnalysis judgment needed for host-authored threads. The
     // mint is the re-entry: addThreads pumps the super-step, so the minted
     // scale-issue request runs in the same wave as the ingress. The switch
     // is the host's ui pack itself: the mint fires iff a `ui/`-labeled pack
@@ -510,7 +511,7 @@ export const bProgram = ({
     start,
     identity,
     terminate: (): void => {
-      remoteSystemTwo.terminate()
+      frontierAnalysis.terminate()
       systemOne.terminate()
       systemTwo.terminate()
       for (const lane of actuatorLanes) lane.terminate()

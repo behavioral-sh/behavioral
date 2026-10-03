@@ -22,7 +22,7 @@
  * lazily: the pipeline id arrives with the mint (or the first id-bearing
  * message), the ingress trace is inserted at message 0 whenever it binds.
  *
- * The replay pass is `frontier_request { op: 'replay' }` over a captured
+ * The replay pass is `frontier_analysis_request { op: 'replay' }` over a captured
  * run — the divergence view: where requests blocked, what the frontier
  * looked like when the hold happened. Replay the full run for the end
  * state; replay a PREFIX (`uiReplayRequest(run, upTo)` — the message count,
@@ -234,7 +234,7 @@ const replayThreads = (run: UiRun, upTo: number): Thread[] => [
 ]
 
 /**
- * The replay pass — build the `remote_system_two_request { op: 'replay' }` event over
+ * The replay pass — build the `frontier_analysis_request { op: 'replay' }` event over
  * a captured run. The default replays the whole run (the end state); pass
  * `upTo` (a message count) to replay a PREFIX and re-derive a mid-run state
  * — e.g. the index of the browser's scale reply for the preflight hold.
@@ -242,7 +242,7 @@ const replayThreads = (run: UiRun, upTo: number): Thread[] => [
  * result re-enters as a selection carrying `{ frontier, stateKey, pendingCount }`.
  */
 export const uiReplayRequest = (run: UiRun, upTo = run.messages.length): BPEvent => ({
-  type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+  type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
   detail: {
     id: `ui-replay-${uuid()}`,
     op: 'replay',

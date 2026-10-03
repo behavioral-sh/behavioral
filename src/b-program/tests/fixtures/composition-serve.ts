@@ -90,7 +90,7 @@ export const startCompositionServer = async (port = 0) => {
   // 3. The fixed three faculty workers — the composition bundle's literals
   //    resolve to `/faculties/<entry>.faculty.ts` (the bundle sits at the
   //    root). Each served as a bundled single-file (classic-safe) artifact.
-  for (const faculty of ['system-one', 'system-two', 'remote-system-two']) {
+  for (const faculty of ['system-one', 'system-two', 'frontier-analysis']) {
     const entry = Bun.resolveSync(`./faculties/${faculty}.faculty.ts`, SRC_ROOT)
     route(`/faculties/${faculty}.faculty.ts`, async () => ({
       body: await bundleBrowser(`import ${JSON.stringify(entry)}`),

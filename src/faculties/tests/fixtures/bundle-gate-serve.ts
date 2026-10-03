@@ -54,9 +54,9 @@ const ENTRIES: Array<{ name: string; request: Record<string, unknown>; resultKin
     resultKind: 'system_two_request_result',
   },
   {
-    name: 'remote-system-two',
-    request: { type: 'remote_system_two_request', detail: { id: 'l2_3', op: 'replay', input: { threads: [] } } },
-    resultKind: 'remote_system_two_request_result',
+    name: 'frontier-analysis',
+    request: { type: 'frontier_analysis_request', detail: { id: 'l2_3', op: 'replay', input: { threads: [] } } },
+    resultKind: 'frontier_analysis_request_result',
   },
 ]
 

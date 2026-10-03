@@ -371,14 +371,14 @@ describe('bProgram — the runtime composition', () => {
 
   describe('add_thread — the admission path', () => {
     const addThreadRequest = (id: string, thread: JsonObject, extra?: JsonObject): BPEvent => ({
-      type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+      type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
       detail: { id, op: 'add_thread', input: { thread, maxDepth: 8, ...extra } },
     })
 
     const resultDetailFor = (traces: Trace[], id: string) => {
       const sel = selectionsOf(traces).find(
         (t) =>
-          t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
+          t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result &&
           (t.selected.detail as { id?: string }).id === id,
       )
       return sel?.selected.detail as { id?: string; ok?: boolean; result?: { ok?: boolean } } | undefined
@@ -397,7 +397,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'at1')
@@ -424,7 +424,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'at2')
@@ -458,7 +458,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'at3' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const at3Detail = resultDetailFor(traces, 'at3')
@@ -491,7 +491,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'lk1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'lk1')
@@ -541,7 +541,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'lk2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'lk2')
@@ -565,7 +565,7 @@ describe('bProgram — the runtime composition', () => {
         // (20k) at the route seam — the analysis runs instead of failing the
         // op's input validation.
         runtime.trigger({
-          type: FACULTY_MESSAGE_KINDS.remote_system_two_request,
+          type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
           detail: {
             id: 'md1',
             op: 'add_thread',
@@ -576,7 +576,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'md1' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'md1')
@@ -615,7 +615,7 @@ describe('bProgram — the runtime composition', () => {
           s.some(
             (t) =>
               (t.selected.detail as { id?: string } | undefined)?.id === 'md2' &&
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result,
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           ),
         )
         const detail = resultDetailFor(traces, 'md2')
@@ -659,7 +659,7 @@ describe('bProgram — the runtime composition', () => {
         expect(
           selections.some(
             (t) =>
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request_result &&
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request_result &&
               (t.selected.detail as { id?: string }).id === 'rv1',
           ),
         ).toBe(true)
@@ -1239,13 +1239,13 @@ describe('bProgram — the runtime composition', () => {
         await waitForTraces(traces, (s) =>
           s.some(
             (t) =>
-              t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
+              t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
               (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
           ),
         )
         const adds = selectionsOf(traces).filter(
           (t) =>
-            t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
+            t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
             (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
         )
         expect(adds.map((t) => (t.selected.detail as { id?: string }).id)).toEqual(['pt1-add-0'])
@@ -1478,7 +1478,7 @@ describe('bProgram — the runtime composition', () => {
             await waitForTraces(traces, (s) =>
               s.some(
                 (t) =>
-                  t.selected.type === FACULTY_MESSAGE_KINDS.remote_system_two_request &&
+                  t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
                   (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
               ),
             )
