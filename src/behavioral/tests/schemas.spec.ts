@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ajv,
+  ThreadSchema,
   TraceBaseSchema,
   validateBPEvent,
   validateThread,
@@ -53,6 +54,14 @@ describe('behavioral schemas', () => {
     expect(validateTransformEvaluation({ ok: true, value: { id: 1 }, extra: true })).toBe(false)
     expect(validateTransformEvaluation({ ok: false, reason: 'jq_error', value: {} })).toBe(false)
     expect(validateTransformEvaluation('ok')).toBe(false)
+  })
+
+  test('ThreadSchema properties carry non-empty descriptions (the model-facing contract)', () => {
+    for (const schema of Object.values(ThreadSchema.properties)) {
+      const description = (schema as { description?: string }).description
+      expect(typeof description).toBe('string')
+      expect(description!.length).toBeGreaterThan(0)
+    }
   })
 
   test('Thread validator requires non-empty label and rules', () => {

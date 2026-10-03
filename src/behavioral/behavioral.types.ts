@@ -48,9 +48,15 @@ export type BPEvent = {
 export const BPEventSchema: JSONSchemaType<BPEvent> = {
   type: 'object',
   properties: {
-    type: { type: 'string' },
-    detail: { type: 'object', required: [], additionalProperties: true, nullable: true },
-    space: { type: 'string', nullable: true },
+    type: { type: 'string', description: 'Event identifier; listeners match on this.' },
+    detail: {
+      type: 'object',
+      required: [],
+      additionalProperties: true,
+      nullable: true,
+      description: 'JSON payload carried by the event.',
+    },
+    space: { type: 'string', nullable: true, description: 'Scope stamp; listeners match only same-space events.' },
   },
   required: ['type'],
   additionalProperties: false,
@@ -83,11 +89,18 @@ export type BPListener = {
 export const BPListenerSchema: JSONSchemaType<BPListener> = {
   type: 'object',
   properties: {
-    type: { type: 'string' },
-    ingressMatch: { type: 'boolean', enum: [true, false], nullable: true },
+    type: { type: 'string', description: 'Event type to match.' },
+    ingressMatch: {
+      type: 'boolean',
+      enum: [true, false],
+      nullable: true,
+      description:
+        'Channel restriction: absent matches either; true = trigger-origin only; false = request-origin only.',
+    },
     detailSchema: {
       type: 'object', // <-- Must be at the top level of detailSchema
       nullable: true,
+      description: 'JSON Schema the matched event detail must conform to.',
       allOf: [
         { $ref: 'https://json-schema.org/draft/2020-12/schema' },
         {
@@ -102,7 +115,12 @@ export const BPListenerSchema: JSONSchemaType<BPListener> = {
         },
       ],
     },
-    detailMatch: { type: 'boolean', enum: [true, false], nullable: true },
+    detailMatch: {
+      type: 'boolean',
+      enum: [true, false],
+      nullable: true,
+      description: 'Detail filter: true matches conforming details, false non-conforming; absent requires conformity.',
+    },
   },
   required: ['type'],
   additionalProperties: false,
@@ -125,8 +143,8 @@ const TransformListenerSchema: JSONSchemaType<TransformListener> = {
   type: 'object',
   properties: {
     ...BPListenerSchema.properties,
-    query: { type: 'string' },
-    target: { type: 'string' },
+    query: { type: 'string', description: 'Query (e.g. a jq expression) applied to the matched event detail.' },
+    target: { type: 'string', description: 'Event type the query result is emitted as.' },
   } as NonNullable<JSONSchemaType<TransformListener>['properties']>,
   required: ['type', 'query', 'target'],
   additionalProperties: false,
@@ -182,11 +200,39 @@ export type Idioms = {
 const IdiomSchema: JSONSchemaType<Idioms> = {
   type: 'object',
   properties: {
-    [IDIOMS.waitFor]: { type: 'array', items: BPListenerSchema, minItems: 1, nullable: true },
-    [IDIOMS.interrupt]: { type: 'array', items: BPListenerSchema, minItems: 1, nullable: true },
-    [IDIOMS.block]: { type: 'array', items: BPListenerSchema, minItems: 1, nullable: true },
-    [IDIOMS.request]: { ...BPEventSchema, nullable: true },
-    [IDIOMS.transform]: { type: 'array', items: TransformListenerSchema, minItems: 1, nullable: true },
+    [IDIOMS.waitFor]: {
+      type: 'array',
+      items: BPListenerSchema,
+      minItems: 1,
+      nullable: true,
+      description: 'Event listeners this thread pauses on; the thread resumes when one is selected.',
+    },
+    [IDIOMS.interrupt]: {
+      type: 'array',
+      items: BPListenerSchema,
+      minItems: 1,
+      nullable: true,
+      description: 'Event listeners that terminate the thread when selected.',
+    },
+    [IDIOMS.block]: {
+      type: 'array',
+      items: BPListenerSchema,
+      minItems: 1,
+      nullable: true,
+      description: 'Event listeners whose matches are prevented from selection while the thread holds this sync point.',
+    },
+    [IDIOMS.request]: {
+      ...BPEventSchema,
+      nullable: true,
+      description: 'The event proposed for selection at this sync point.',
+    },
+    [IDIOMS.transform]: {
+      type: 'array',
+      items: TransformListenerSchema,
+      minItems: 1,
+      nullable: true,
+      description: 'Declarative reshape contracts: match an event, query its detail, re-enter via target.',
+    },
   },
   additionalProperties: false,
 }
@@ -300,10 +346,19 @@ export type Thread = {
 export const ThreadSchema: JSONSchemaType<Thread> = {
   type: 'object',
   properties: {
-    space: { type: 'string', nullable: true },
-    label: { type: 'string', minLength: 1 },
-    once: { type: 'boolean', enum: [true], nullable: true },
-    rules: { type: 'array', items: IdiomSchema },
+    space: {
+      type: 'string',
+      nullable: true,
+      description: 'Scope stamp; the thread matches only events in the same space.',
+    },
+    label: { type: 'string', minLength: 1, description: 'Human-readable thread name; appears in trace messages.' },
+    once: {
+      type: 'boolean',
+      enum: [true],
+      nullable: true,
+      description: 'When true, the thread runs its rules once and completes; otherwise it loops indefinitely.',
+    },
+    rules: { type: 'array', items: IdiomSchema, description: 'The synchronization statements executed in order.' },
   },
   required: ['label', 'rules'],
   additionalProperties: false,
@@ -351,10 +406,10 @@ type TraceBase = {
 export const TraceBaseSchema = {
   type: 'object',
   properties: {
-    kind: { type: 'string' },
-    timestamp: { type: 'number' },
-    instanceId: { type: 'string' },
-    sessionId: { type: 'string' },
+    kind: { type: 'string', description: 'Trace discriminator; narrow the unified trace stream on this.' },
+    timestamp: { type: 'number', description: 'Wall-clock time the trace was emitted.' },
+    instanceId: { type: 'string', description: 'Per-process identity the engine self-mints.' },
+    sessionId: { type: 'string', description: "Host-managed session identity; defaults to the engine's instanceId." },
   },
   required: ['kind', 'timestamp', 'instanceId', 'sessionId'],
 } as const
@@ -506,8 +561,13 @@ export const TransformEvaluationSchema = {
     {
       type: 'object',
       properties: {
-        ok: { type: 'boolean', enum: [true] },
-        value: { type: 'object', required: [], additionalProperties: true },
+        ok: { type: 'boolean', enum: [true], description: 'True — the transform produced a value.' },
+        value: {
+          type: 'object',
+          required: [],
+          additionalProperties: true,
+          description: 'The parsed query output object.',
+        },
       },
       required: ['ok', 'value'],
       additionalProperties: false,
@@ -515,13 +575,14 @@ export const TransformEvaluationSchema = {
     {
       type: 'object',
       properties: {
-        ok: { type: 'boolean', enum: [false] },
+        ok: { type: 'boolean', enum: [false], description: 'False — the transform failed; see reason.' },
         reason: {
           type: 'string',
           enum: ['jq_error', 'no_detail', 'empty_output', 'non_object_output', 'jq_timeout', 'output_too_large'],
+          description: 'Machine-readable failure reason; the engine never throws for these.',
         },
-        stderr: { type: 'string', nullable: true },
-        exitCode: { type: 'integer', nullable: true },
+        stderr: { type: 'string', nullable: true, description: 'jq stderr, present when reason is jq_error.' },
+        exitCode: { type: 'integer', nullable: true, description: 'jq exit code, present when reason is jq_error.' },
       },
       required: ['ok', 'reason'],
       additionalProperties: false,
