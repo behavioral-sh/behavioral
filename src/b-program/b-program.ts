@@ -2,7 +2,6 @@ import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import { behavioral } from '../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../behavioral/behavioral.types.ts'
 import { validateThread } from '../behavioral/behavioral.types.ts'
-import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import { eventGuardEntries, facultiesThreads, guardThreads } from '../faculties/faculties.threads.ts'
 import {
   SystemOneCancelEventSchema,
@@ -67,12 +66,8 @@ import type { LaneBuilder } from '../faculties/faculties.types.ts'
 const decidedKey = (meta: { plugin: string; file: string; hash: string; space?: string }): string =>
   `${meta.plugin}\u0000${meta.file}\u0000${meta.hash}\u0000${meta.space ?? ''}`
 
-/** The actuator names the composition routes (the trio; the registry of the faculty wire). */
-const ACTUATOR_ROUTE: Record<string, string[]> = {
-  shell: [FACULTY_MESSAGE_KINDS.shell_request, FACULTY_MESSAGE_KINDS.shell_cancel],
-  store: [FACULTY_MESSAGE_KINDS.store_request],
-  security: [FACULTY_MESSAGE_KINDS.credential_request, FACULTY_MESSAGE_KINDS.credential_cancel],
-}
+/** The actuator names the composition routes (the trio) — the registry lives in the wire home. */
+import { ACTUATOR_ROUTE, FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 
 export const bProgram = ({
   threads: hostThreads = [],

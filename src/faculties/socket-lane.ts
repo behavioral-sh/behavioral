@@ -1,7 +1,7 @@
 import type { ValidateFunction } from 'ajv'
 import type { BPEvent, JsonObject } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
-import type { AddThreads, FacultyLane } from './faculties.types.ts'
+import type { AddThreads, FacultyLane, FacultyWireFrame } from './faculties.types.ts'
 
 /**
  * The socket lane — the faculty wire's WebSocket client, the ruled third lane
@@ -56,7 +56,7 @@ export type SocketLaneOptions = {
   resultKind: string
 }
 
-type SocketLine = { type: string; detail?: Record<string, unknown>; space?: string }
+type SocketLine = FacultyWireFrame
 
 /**
  * The socket lane's factory — `socketLane({ url, name, validateRequest,

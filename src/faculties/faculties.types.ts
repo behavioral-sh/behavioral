@@ -484,6 +484,18 @@ export const validateStoreRequestResultEvent = ajv.compile(StoreRequestResultEve
 export type AddThreads = (newThreads: Thread[]) => void
 
 /**
+ * The faculty wire's line frame — one JSON line per event, the socket lane's
+ * landed framing. THE shared home: the socket-lane client speaks it, and the
+ * daemon's bridge speaks exactly it back (no second framing invented
+ * server-side — both sides import this type).
+ */
+export type FacultyWireFrame = {
+  type: string
+  detail?: Record<string, unknown>
+  space?: string
+}
+
+/**
  * The ruled four-key lane — what every faculty wiring returns (worker, spawn,
  * or socket). The composition routes on it; the wire home owns the shape.
  */

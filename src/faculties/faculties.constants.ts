@@ -33,3 +33,14 @@ export const FACULTY_MESSAGE_KINDS = keyMirror(
   'store_request_result',
   'faculty_error',
 )
+
+/**
+ * The actuator routing registry — lane name → the wire kinds that route to
+ * it. ONE home: the composition's routing (b-program.ts) and the daemon's
+ * faculty bridge derive from the same table; a parallel table would drift.
+ */
+export const ACTUATOR_ROUTE: Record<string, string[]> = {
+  shell: [FACULTY_MESSAGE_KINDS.shell_request, FACULTY_MESSAGE_KINDS.shell_cancel],
+  store: [FACULTY_MESSAGE_KINDS.store_request],
+  security: [FACULTY_MESSAGE_KINDS.credential_request, FACULTY_MESSAGE_KINDS.credential_cancel],
+}

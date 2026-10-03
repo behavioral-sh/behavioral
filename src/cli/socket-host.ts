@@ -8,6 +8,12 @@ import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
 import { B_PROGRAM_WORKER_PATH } from '../controller/worker-transport.ts'
+import {
+  createFacultyBridge,
+  DAEMON_BRIDGE_PATH,
+  FACULTY_BRIDGE_SOCKET,
+  type FacultyBridgeSocketData,
+} from './faculty-bridge.ts'
 import type { JsonRpcMessage } from './json-rpc.ts'
 import {
   createInferenceProxy,
@@ -86,6 +92,7 @@ export const createSocketHost = async ({
   dev = false,
   inferenceProviders = {},
   keychain,
+  facultyLanes,
 }: {
   runtime: HostRuntime
   home?: string
@@ -95,6 +102,12 @@ export const createSocketHost = async ({
   inferenceProviders?: Record<string, string>
   /** The custody floor; defaults to the OS keychain. */
   keychain?: Keychain
+  /**
+   * The actuator lane builders for the faculty bridge — the entries own
+   * construction; absent means the bridge route is closed (no faculty-wire
+   * traffic, fail-closed).
+   */
+  facultyLanes?: import('../faculties/faculties.types.ts').LaneBuilder[]
 }): Promise<SocketHost> => {
   const path = instanceSocketPath(home)
   // A socket file left by a dead instance cannot be bound again — remove it
@@ -116,6 +129,14 @@ export const createSocketHost = async ({
     keychain: keychain ?? BunKeychain(),
   })
 
+  // The faculty bridge (the thin faculty host): the composition capability —
+  // the actuator trio over the landed socket-lane framing, session-gated.
+  // Closed when the host configures no lanes (fail-closed).
+  const facultyBridge =
+    facultyLanes === undefined
+      ? undefined
+      : createFacultyBridge({ laneBuilders: facultyLanes, session: (req) => validSession(req, sessionToken) })
+
   /**
    * R6's header (list-is-config): the emitted `connect-src` carries ONLY
    * 'self' + the daemon origin (the request's own origin — a unix socket
@@ -125,13 +146,17 @@ export const createSocketHost = async ({
   const cspHeader = (req: Request): string =>
     connectSrcPolicy([new URL(req.url).origin, ...Object.values(inferenceProviders)])
 
-  const server = Bun.serve({
+  const server = Bun.serve<FacultyBridgeSocketData | undefined>({
     unix: path,
     // MINIMAL: ws idleTimeout max is 255s; long-lived attaches get the ceiling
     // until a heartbeat/reconnect story is needed.
     websocket: {
       idleTimeout: 255,
       open: (ws) => {
+        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+          facultyBridge?.open(ws as ServerWebSocket<FacultyBridgeSocketData>)
+          return
+        }
         clients.add(ws)
         // Hello-with-id: one connection-scoped notification carrying the
         // engine identity, before any trace traffic — an attacher learns the
@@ -146,6 +171,13 @@ export const createSocketHost = async ({
         }
       },
       message: (ws, message) => {
+        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+          facultyBridge?.message(
+            ws as ServerWebSocket<FacultyBridgeSocketData>,
+            typeof message === 'string' ? message : new TextDecoder().decode(message),
+          )
+          return
+        }
         const line = typeof message === 'string' ? message : new TextDecoder().decode(message)
         let parsed: JsonRpcMessage
         try {
@@ -186,12 +218,22 @@ export const createSocketHost = async ({
         }
       },
       close: (ws) => {
+        if (ws.data?.kind === FACULTY_BRIDGE_SOCKET) {
+          facultyBridge?.close(ws as ServerWebSocket<FacultyBridgeSocketData>)
+          return
+        }
         clients.delete(ws)
       },
     },
     fetch: async (req, server) => {
       const url = new URL(req.url)
       if (url.pathname.startsWith(INFERENCE_PROXY_PREFIX)) return inferenceProxy(req)
+      if (url.pathname === DAEMON_BRIDGE_PATH) {
+        // Fail-closed: a host that configures no lanes serves no bridge at all.
+        if (facultyBridge === undefined) return new Response('not found', { status: 404 })
+        // The composition capability gate lives in the bridge (fail-closed).
+        return facultyBridge.upgrade(req, (r, options) => server.upgrade(r, options as never))
+      }
       if (url.pathname === CONNECT_BEHAVIORAL_ROUTE) {
         // Prod: one AOT bundle, cached. Dev: rebundle per request.
         const routes = await bundleController({ dev })
@@ -210,7 +252,7 @@ export const createSocketHost = async ({
         response.headers.set('content-security-policy', cspHeader(req))
         return response
       }
-      return server.upgrade(req)
+      return server.upgrade(req, { data: undefined })
         ? undefined
         : new Response('behavioral instance socket — a WebSocket upgrade is required\n', { status: 426 })
     },

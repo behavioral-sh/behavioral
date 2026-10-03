@@ -3,6 +3,7 @@ import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { acquireInstanceLock } from '../actuators/instance-lock.ts'
 import { attachTui } from './attach.ts'
 import type { HostRuntime } from './serve.ts'
+import { actuatorLaneBuilders } from './serve.ts'
 import { createSocketHost, instanceSocketPath } from './socket-host.ts'
 
 /**
@@ -83,6 +84,7 @@ export const attachOrStart = async ({
     home,
     dev,
     inferenceProviders: config.inference?.providers ?? {},
+    facultyLanes: actuatorLaneBuilders(config.actuators ?? ['shell', 'store', 'security']),
   })
   let cleaned = false
   const cleanup = async (): Promise<void> => {

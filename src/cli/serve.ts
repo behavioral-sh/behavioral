@@ -239,6 +239,49 @@ export const createInferenceProxy = ({
 }
 
 /**
+ * The actuator lane builders for an allow-list — the entry's construction,
+ * shared by the engine composition (createRuntime) and the faculty bridge
+ * (the socket host mounts it at /faculty-wire; per-connection lanes).
+ *
+ * @public
+ */
+export const actuatorLaneBuilders = (enabled: Iterable<string>): LaneBuilder[] => {
+  const on = new Set<string>(enabled)
+  const builders: LaneBuilder[] = []
+  if (on.has('shell'))
+    builders.push(
+      useActuator({
+        command: ['bun', 'run', 'shell.actuator.ts'],
+        name: 'shell',
+        validateRequest: validateShellRequestEvent,
+        validateCancel: validateShellCancelEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
+      }),
+    )
+  if (on.has('store'))
+    builders.push(
+      useActuator({
+        command: ['bun', 'run', 'store.actuator.ts'],
+        name: 'store',
+        // No cancel contract — the request schema is the gate.
+        validateRequest: validateStoreRequestEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
+      }),
+    )
+  if (on.has('security'))
+    builders.push(
+      useActuator({
+        command: ['bun', 'run', 'security.actuator.ts'],
+        name: 'security',
+        validateRequest: validateSecurityRequestEvent,
+        validateCancel: validateSecurityCancelEvent,
+        resultKind: ACTUATOR_MESSAGE_KINDS.credential_result,
+      }),
+    )
+  return builders
+}
+
+/**
  * The entry-side runtime constructor — the ruled reachability-is-construction
  * seam: THIS owns actuator spawning (the trio via `useActuator`, per the
  * config's allow-list), the thread-pack minting (the packs' reachability
@@ -259,37 +302,7 @@ export const createRuntime = (config: BehavioralConfig = {}): HostRuntime => {
   const systemTwoConfigured = config.systemTwo !== undefined && config.systemTwo !== null
 
   // ── The actuator lanes: the trio per the allow-list (pre-built builders). ──
-  const laneBuilders: LaneBuilder[] = []
-  if (enabled.has('shell'))
-    laneBuilders.push(
-      useActuator({
-        command: ['bun', 'run', 'shell.actuator.ts'],
-        name: 'shell',
-        validateRequest: validateShellRequestEvent,
-        validateCancel: validateShellCancelEvent,
-        resultKind: ACTUATOR_MESSAGE_KINDS.shell_request_result,
-      }),
-    )
-  if (enabled.has('store'))
-    laneBuilders.push(
-      useActuator({
-        command: ['bun', 'run', 'store.actuator.ts'],
-        name: 'store',
-        // No cancel contract — the request schema is the gate.
-        validateRequest: validateStoreRequestEvent,
-        resultKind: ACTUATOR_MESSAGE_KINDS.store_request_result,
-      }),
-    )
-  if (enabled.has('security'))
-    laneBuilders.push(
-      useActuator({
-        command: ['bun', 'run', 'security.actuator.ts'],
-        name: 'security',
-        validateRequest: validateSecurityRequestEvent,
-        validateCancel: validateSecurityCancelEvent,
-        resultKind: ACTUATOR_MESSAGE_KINDS.credential_result,
-      }),
-    )
+  const laneBuilders = actuatorLaneBuilders(enabled)
 
   // ── The thread packs: minted here, where the reachability is known. ────────
   const threads: Thread[] = []

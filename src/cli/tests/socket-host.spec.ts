@@ -388,6 +388,53 @@ describe('createSocketHost', () => {
     }
   })
 
+  test('the faculty-wire bridge route is gated at the host: sessionless → 401, sessioned → upgrade attempted', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const { actuatorLaneBuilders } = await import('../serve.ts')
+    const host = await createSocketHost({
+      runtime: fake.runtime,
+      home,
+      facultyLanes: actuatorLaneBuilders(['store']),
+    })
+    try {
+      // Fail-closed: no session, no faculty-wire traffic.
+      const denied = await fetch('http://localhost/faculty-wire', {
+        unix: host.path,
+        headers: { connection: 'upgrade', upgrade: 'websocket' },
+      })
+      expect(denied.status).toBe(401)
+
+      // The session (bearer — the CLI attacher presentation) admits the
+      // upgrade; a plain fetch has no WS handshake, so the host answers 426
+      // (the upgrade was attempted, the gate passed).
+      const token = (await Bun.file(sessionTokenPath(home)).text()).trim()
+      const admitted = await fetch('http://localhost/faculty-wire', {
+        unix: host.path,
+        headers: { connection: 'upgrade', upgrade: 'websocket', authorization: `Bearer ${token}` },
+      })
+      expect(admitted.status).toBe(426)
+    } finally {
+      await host.close()
+    }
+  })
+
+  test('the faculty-wire bridge route is closed when the host configures no lanes', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const host = await createSocketHost({ runtime: fake.runtime, home })
+    try {
+      const token = (await Bun.file(sessionTokenPath(home)).text()).trim()
+      const res = await fetch('http://localhost/faculty-wire', {
+        unix: host.path,
+        headers: { connection: 'upgrade', upgrade: 'websocket', authorization: `Bearer ${token}` },
+      })
+      expect(res.status).toBe(404)
+    } finally {
+      await host.close()
+    }
+  })
+
   test('a plain HTTP request on the carrier is refused with 426', async () => {
     const home = tempHome()
     const fake = fakeRuntime()
