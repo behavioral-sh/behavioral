@@ -1320,23 +1320,18 @@ describe('bProgram — the runtime composition', () => {
         const imported = selectionsOf(traces).find((t) => t.selected.type === PLUGIN_THREADS_EVENT_TYPES.imported)
         const importedInput = (imported?.selected.detail as { input?: { warnings?: string[] } } | undefined)?.input
         expect(importedInput?.warnings?.some((w) => w.includes('notAThread'))).toBe(true)
-        // the verdict admits: the thread_added provision fires — the candidate is live
-        await waitForTraces(traces, () =>
-          traces.some(
-            (t) =>
-              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-              (t as { thread?: { name?: string } }).thread?.name === 'greeter',
-          ),
-        )
-        // the admitted thread's provision trace carries the provenance join —
-        // matched on the proposal's own source hash (a boot-mounted snapshot
-        // from a prior run would carry its own)
-        const added = traces.find(
-          (t) =>
-            t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-            (t as { thread?: { name?: string; sourceHash?: number } }).thread?.name === 'greeter' &&
-            (t as { thread?: { sourceHash?: number } }).thread?.sourceHash === hashString(plugin),
-        )
+        // the verdict admits: the thread_added provision fires — the candidate
+        // is live. The wait demands the PROVENANCE JOIN (name + the proposal's
+        // own source hash): a boot-fold-mounted snapshot from a prior run also
+        // provisions a greeter — with a different plugin's hash — and must
+        // never satisfy this wait (parallel-suite pollution otherwise wins the
+        // race and the test passes on the wrong provision).
+        const provisionMatches = (t: Trace): boolean =>
+          t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+          (t as { thread?: { name?: string; sourceHash?: number } }).thread?.name === 'greeter' &&
+          (t as { thread?: { sourceHash?: number } }).thread?.sourceHash === hashString(plugin)
+        await waitForTraces(traces, () => traces.some(provisionMatches))
+        const added = traces.find(provisionMatches)
         expect(added).toBeDefined()
       } finally {
         runtime.terminate()
