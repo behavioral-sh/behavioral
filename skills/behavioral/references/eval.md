@@ -68,14 +68,14 @@ one stream but are too coarse to join the engine's traces with an agent
 SDK's side-channel reliably. One trial = one sessionId; the boundary
 question below decides what a trial is.
 
-## Space
+## Umwelt
 
-A trace's space is best-effort, derived by the consumer lane (`traceSpace`
-in `src/cli/trace-consumer.ts`): a top-level trace `space` if present, else
-the `selection`'s / `interrupt`'s `selected.space`, else a
-`thread_added`'s `thread.space`, else root. Per-space grading is
-**consumer-side filtering** — the engine stamps spaces on events, not on
-traces beyond the above; a grader that wants per-space results filters the
+A trace's umwelt is best-effort, derived by the consumer lane (`traceUmwelt`
+in `src/cli/trace-consumer.ts`): a top-level trace `umwelt` if present, else
+the `selection`'s / `interrupt`'s `selected.umwelt`, else a
+`thread_added`'s `thread.umwelt`, else root. Per-umwelt grading is
+**consumer-side filtering** — the engine stamps umwelts on events, not on
+traces beyond the above; a grader that wants per-umwelt results filters the
 stream itself using the same derivation.
 
 ## `Thread[]` for divergence
@@ -118,7 +118,7 @@ others):
 - **Every remote carrier is redacted-once.** The stdio serve and the
   instance-socket host wire the egress consumer
   (`createTraceConsumer` in `src/cli/trace-consumer.ts`): one redaction
-  pass, then fan-out to the JSONL log (`<root>/<space>/<date>.jsonl`) and
+  pass, then fan-out to the JSONL log (`<root>/<umwelt>/<date>.jsonl`) and
   the `trace` notification. Redaction replaces exactly the secret-bearing
   values — declared secret values (env keys matching the sensitive-name
   pattern, minimum length 8), sensitive field names (`authorization`,

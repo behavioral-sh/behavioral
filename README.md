@@ -49,7 +49,7 @@ flowchart TD
 **One wire.** Every faculty speaks the same behavioral event vocabulary
 (`faculties.types.ts` + `faculties.constants.ts` — one home for every
 request/result kind, schema, and validator): requests in as one JSON line,
-results out as one JSON line, `space` preserved end to end. The engine itself is
+results out as one JSON line, `umwelt` preserved end to end. The engine itself is
 generic over events and never imports the wire.
 
 **Every faculty is a web worker.** Wired through `useWorker` (the worker lane)
@@ -71,7 +71,7 @@ sequenceDiagram
   participant F as Faculty worker / socket lane
   participant G as Guard thread (in-engine)
   P->>F: request — one postMessage / WS frame
-  F-->>P: result — re-enters the engine, space preserved
+  F-->>P: result — re-enters the engine, umwelt preserved
   Note over P,G: a valid result selects, and the caller's waitFor fires
   F-->>G: a malformed result re-enters instead of being discarded
   G--xP: blocked — visible in the frontier/deadlock traces, never selected

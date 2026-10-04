@@ -56,8 +56,8 @@ JSON Schema (draft 2020-12), compiled at registration.
 
 | Member | Signature | Use when |
 |--------|-----------|----------|
-| `addThread(args)` | `(args: Thread) => void` | Register a b-thread (`{ label, rules, once?, space? }`). The thread's optional `space` field stamps all its idioms (applied at registration). Inert — does not start a super-step. |
-| `trigger(event)` | `(event: BPEvent) => void` | Inject an external event (the event carries `space`; absent = root). Triggered candidates carry `ingress: true`, have highest priority (0), and can be blocked. Initiates a super-step. |
+| `addThread(args)` | `(args: Thread) => void` | Register a b-thread (`{ label, rules, once?, umwelt? }`). The thread's optional `umwelt` field stamps all its idioms (applied at registration). Inert — does not start a super-step. |
+| `trigger(event)` | `(event: BPEvent) => void` | Inject an external event (the event carries `umwelt`; absent = root). Triggered candidates carry `ingress: true`, have highest priority (0), and can be blocked. Initiates a super-step. |
 | `useTrace(listener)` | `(listener) => Disconnect` | Observe internal state traces emitted after each event selection. Does not affect execution. |
 | `removeThread(args)` | `(args: { instanceHash?: number }) => void` | Stage a removal for an instance-hash-stamped thread. Inert until the next super-step — removal applies at the top of `step()` (the addThread re-entry-law mirror), tearing down the generator + any pending bid, traced `thread_removed`. Only `i:<instanceHash>`-keyed entries are removal-addressable (ephemeral `u:`-keyed threads are never); content never enters identity, so a removal address survives rewrites. |
 | `step()` | `() => void` | Pump one super-step. The internal re-entry primitive — `addThread` alone is inert, so every re-entry pairs the thread addition with a `step()` pump. |
@@ -79,10 +79,10 @@ addThread({
 ```
 
 A thread is an object with `label`, `rules` (an array of `Idioms` sync points),
-and optional `once` and `space`. Without `once`, the thread loops its `rules`
+and optional `once` and `umwelt`. Without `once`, the thread loops its `rules`
 indefinitely; with `once: true`, it runs through the rules once and completes.
-The `label` identifies the thread in traces; the `space` stamps its idioms
-(absent = root — see Space matching below). Invalid thread arguments (failing
+The `label` identifies the thread in traces; the `umwelt` stamps its idioms
+(absent = root — see Umwelt matching below). Invalid thread arguments (failing
 `ThreadSchema`, or an un-compilable `detailSchema`) are surfaced as an
 `add_thread_error` trace, not a throw — the thread simply isn't added.
 
@@ -91,14 +91,14 @@ The `label` identifies the thread in traces; the `space` stamps its idioms
 ```ts
 const { trigger } = behavioral()
 trigger({ type: 'kickoff' })
-trigger({ type: 'evt', detail: { ... }, space: 'space-1' })
+trigger({ type: 'evt', detail: { ... }, umwelt: 'umwelt-1' })
 ```
 
 Triggered events behave like a one-shot thread requesting the event at
 priority 0, stamped `ingress: true`. They are subject to `block` like any
 request. An event that fails `BPEvent` validation is rejected at the ingress
 boundary and surfaced as a `trigger_error` trace (not a throw), echoing the
-attempted `space` when present. `trigger` is how external systems (UI,
+attempted `umwelt` when present. `trigger` is how external systems (UI,
 network, timers) drive the program — it is external admission plus one
 super-step, nothing else. Internal re-entry never uses `trigger`: it adds a
 request thread and pumps a super-step with `step()` (see the action channel).
@@ -132,24 +132,24 @@ idioms — `waitFor`, `block`, `interrupt`, `transform` — share this one match
 seam, so both flags apply uniformly. `block` with `ingressMatch: true` is how
 backpressure on external events is expressed.
 
-#### Space matching
+#### Umwelt matching
 
-Space scoping is **root authority** — visibility flows UP only. A thread's
-optional `space` stamp (absent = root) applies to all its idioms:
+Umwelt scoping is **root authority** — visibility flows UP only. A thread's
+optional `umwelt` stamp (absent = root) applies to all its idioms:
 
 | listener | candidate event | matches? |
 |----------|-----------------|----------|
-| root (unstamped) | any space | yes — a root listener sees every space |
-| space `s1` | `s1` | yes |
-| space `s1` | root or a sibling space | no — a stamped listener never escapes its space |
+| root (unstamped) | any umwelt | yes — a root listener sees every umwelt |
+| umwelt `s1` | `s1` | yes |
+| umwelt `s1` | root or a sibling umwelt | no — a stamped listener never escapes its umwelt |
 
 A root thread can wait on, block, interrupt, and transform candidates in
-every space; a space-stamped thread is confined to its own — a thread
-governing several spaces is admitted per space explicitly, each mount
+every umwelt; a umwelt-stamped thread is confined to its own — a thread
+governing several umwelts is admitted per umwelt explicitly, each mount
 stamped. Requests are emissions, not observations: a thread's request bids
-only in its own space (root requests bid in root). The `transform` target
-re-enters stamped with the **source event's** space — a root transformer's
-output stays in the space it observed.
+only in its own umwelt (root requests bid in root). The `transform` target
+re-enters stamped with the **source event's** umwelt — a root transformer's
+output stays in the umwelt it observed.
 
 ### `useTrace` — observation and the action channel
 
@@ -203,7 +203,7 @@ The contract:
   `ingressMatch: false` listeners match internal results while
   `ingressMatch: true` listeners stay external-only.
 - Faculty/I/O failures return as **data** on the result event and re-enter
-  through the same seam — they never throw into the space.
+  through the same seam — they never throw into the umwelt.
 - A listener throw is `console.error`'d and swallowed — it cannot corrupt the
   program.
 
@@ -237,7 +237,7 @@ addThread({
 Shape (`TransformListener` in `behavioral.types.ts`): a `BPListener` plus
 `query` (string) and `target` (string). When a matching event is selected,
 the engine emits a `transform` trace carrying `transformers: { query, target,
-thread, space?, id }[]` **immediately before** the `selection` trace (the `id`
+thread, umwelt?, id }[]` **immediately before** the `selection` trace (the `id`
 is the minted request's correlation id — the composition's park key), then
 mints a `transform_request` **once-thread** — the same re-entry mechanism as
 the old target mint. The engine evaluates NOTHING: the composition routes the
@@ -245,8 +245,8 @@ request to the fixed fourth faculty (`src/faculties/transform.faculty.ts`,
 jq-wasm in a per-request nested eval worker, terminated at the 1s budget),
 which answers the correlated result; the composition mints the target as a
 `once` thread requesting `{ type: target, detail: result.value }` stamped with
-the **source event's** space (a stamped contract's space equals the event's —
-stamped confinement; a root transformer's output stays in the space it
+the **source event's** umwelt (a stamped contract's umwelt equals the event's —
+stamped confinement; a root transformer's output stays in the umwelt it
 observed) — the target stays request-origin. **The target selects one
 super-step later** (the evaluation is an async faculty round-trip, not an
 in-engine synchronous call). The
@@ -282,9 +282,9 @@ op.
 | `deadlock` | `step` | Candidates exist but all are blocked |
 | `thread_added` | `thread` (the full validated `Thread`) | `addThread` registered a thread — the provision record; replay = `thread_added` payloads + ingress events in order |
 | `interrupt` | `selected`, `threadLabel`, `step` | A thread was terminated by an interrupt |
-| `transform` | `step`, `transformers` (`query`, `target`, `thread`, `space?`, `id`) | A transform listener matched; the engine minted the `transform_request` (the id is the composition's park key). The target arrives one super-step later — the faculty evaluated it |
-| `add_thread_error` | `error` (AJV errors), `space?` | `addThread` rejected invalid args / un-compilable `detailSchema` |
-| `trigger_error` | `error` (AJV errors), `space?` | `trigger` rejected an invalid `BPEvent` |
+| `transform` | `step`, `transformers` (`query`, `target`, `thread`, `umwelt?`, `id`) | A transform listener matched; the engine minted the `transform_request` (the id is the composition's park key). The target arrives one super-step later — the faculty evaluated it |
+| `add_thread_error` | `error` (AJV errors), `umwelt?` | `addThread` rejected invalid args / un-compilable `detailSchema` |
+| `trigger_error` | `error` (AJV errors), `umwelt?` | `trigger` rejected an invalid `BPEvent` |
 | `thread_removed` | `instanceHash`, `thread` | A staged `removeThread` applied at the top of a super-step — the thread's generator + pending bid tore down (traced even when the target was already displaced; replay = `thread_added` minus `thread_removed`) |
 
 The three error kinds are the engine's failure surfaces, and all are

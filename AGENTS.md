@@ -73,6 +73,20 @@ and the impact is broad or unclear, expand coverage until the affected surface i
 `docs:` and `chore:` commits may skip executable validation when they do not change
 behavior.
 
+## Vocabulary
+
+**umwelt** (von Uexküll) — the event-scoping dimension of the cascade:
+Merkwelt = what a thread perceives, Wirkwelt = where it acts; the optional
+stamp on threads, events, traces, and store rows. An unstamped (root)
+listener sees every umwelt — visibility flows UP only; root's umwelt is the
+union. The store's tenancy dimension and the wire's echo fields all carry
+this one name.
+
+**NOT atproto spaces.** atproto spaces are permissioned record stores;
+behavioral's umwelt is not that — it is observe/act confinement. We
+orchestrate atproto-space rendering via threads; the runtime concept itself
+never conflates with it.
+
 ## Directory Boundaries
 
 **`src/actuators/`** — the daemon-side capability layer: the baked-in trio,
@@ -81,7 +95,7 @@ FLAT — no faculty subfolders. The process entries are dot-suffixed
 `bun run -`, `shell` op Bun Shell commands through the wrapper; `rpc` op
 generic remote JSON-RPC — the remote-mcp layering is the threads, not the op;
 temp-file payloads over ~100KB, deleted on every exit; `rpc.client.ts`),
-`store.actuator.ts` (durable space-scoped persistence), and
+`store.actuator.ts` (durable umwelt-scoped persistence), and
 `security.actuator.ts` (the cross-cutting credential/policy actuator:
 `keychain-oauth-provider.ts` is the issuer-bound OAuth `BunKeychain`
 over `Bun.secrets`; it vends `credential_request` → `credential_result` —
@@ -124,7 +138,7 @@ pattern. Shared modules sit at the top:
   never `import.meta` — classic bundles cannot touch it and Bun's main
   thread carries the worker globals anyway); owns inbound routing, the
   ok/isError envelope, the cancel map, the request timeout (`0` = none),
-  space + ctx echo; no-ops outside a worker global, so importing an entry in
+  umwelt + ctx echo; no-ops outside a worker global, so importing an entry in
   the main thread wires nothing and the `respond` stays importable by specs);
 - the faculty config's only channel: the INIT FRAME (the construction
   message — `create-worker.ts` owns the frame kind; the composition posts
@@ -168,8 +182,8 @@ admission judgment threads (the BP-native blocking judge over the Decisions
 lane; mounted when systemOne is wired) and the supervision threads (the
 runtime circuit breaker — the counting supervisor, its block-then-judge
 verdict, and its recovery; a root-mounted supervisor's block is global —
-one space's runaway loop halts the watched type everywhere — while a
-space-stamped supervisor set confines, expressible but not built). Specs live
+one umwelt's runaway loop halts the watched type everywhere — while a
+umwelt-stamped supervisor set confines, expressible but not built). Specs live
 in `tests/` and drive REAL
 Bun web Workers on the TS entries directly (no bundling needed to prove the
 lane; `faculty-harness.ts` `spawnFacultyWorker`; the create-worker fixture
@@ -230,7 +244,7 @@ spine), `remote-mcp.threads.ts` (the MCP layering over the rpc op),
 import join, candidate carry, add_thread dispatch; the import script's
 ENGINE_SCHEMA_HOME is resolved against this file's location),
 `plugin-threads.registry.ts` (the STORE-RESIDENT admission registry — ONE
-root-space record `plugin-threads`/`registry`, whole-doc get/put, the
+root-umwelt record `plugin-threads`/`registry`, whole-doc get/put, the
 entry-side watcher writing verdicts via trigger-based store puts with lazy
 seed + exit flush; the file registry under `<home>` is DEAD), and
 `plugin-threads.reconcile.ts` (the boot/reload reconciliation pack — the
@@ -248,10 +262,10 @@ composition territory — no process, not a faculty), and `ui-capture.ts`
 run consumer + the frontierAnalysis replay builder; the socket host wires
 its file sink under `<home>/captures`). `b-program.worker.ts` — the bProgram
 WORKER ENTRY (the per-tab dedicated module worker; the composition boots on
-the first `attach`, whose frame carries the page's space + the provider map
+the first `attach`, whose frame carries the page's umwelt + the provider map
 that becomes the faculties' init-frame payloads): the port protocol
 (`composition-port.ts` — attach→hello with the validated engine identity,
-kind-filtered space-isolated REDACTED trace stream via `trace-redact.ts` +
+kind-filtered umwelt-isolated REDACTED trace stream via `trace-redact.ts` +
 `credential-patterns.ts`, egress-as-selection `message` frames), the
 actuator leg taking pre-built lane builders over an injected Transport (the
 socket-lane default lands with the rewire's socket slice; no default yet),
@@ -273,7 +287,7 @@ pack's specs.
 ephemeral ones); `removeThread({ instanceHash })` stages removal applied at the top of
 the next `step()`, traced `thread_removed` — the addThread re-entry-law mirror; only
 instance-hash-keyed entries are removal-addressable, and THE THIRD HASH's one-line job:
-djb2(canonical plugin path + space + thread name) — content never enters identity, so
+djb2(canonical plugin path + umwelt + thread name) — content never enters identity, so
 removal addresses survive rewrites), and NOTHING ELSE — the engine is
 worker-free (the transform-faculty ruling: transform EVALUATION left the
 engine for the fixed fourth faculty; the jq pool, the SAB bridge, and the
