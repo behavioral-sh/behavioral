@@ -77,6 +77,18 @@ const decidedKey = (meta: { plugin: string; file: string; hash: string; umwelt?:
 /** The actuator names the composition routes (the trio) — the registry lives in the wire home. */
 import { ACTUATOR_ROUTE, FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 
+/**
+ * The composition-owned admission thread names — the orchestration packs are
+ * composition-INTERNAL thread data, never host-passable (the orchestration
+ * ruling): the double-mount hazard dies by dissolution, and this set is the
+ * construction-time belt (a host passing any of these throws below).
+ */
+const OWNED_ADMISSION_THREAD_NAMES = new Set(
+  [...admissionCandidateMintThreads, ...admissionStructuralOutcomeThreads, ...admissionJudgmentThreads].map(
+    (thread) => thread.name,
+  ),
+)
+
 export const bProgram = ({
   threads: hostThreads = [],
   models = {},
@@ -86,7 +98,8 @@ export const bProgram = ({
    * The host-minted policy packs: shell threads, rpc-auth, remote-mcp,
    * plugin-threads, supervision, ui_* — reachability conditions are the
    * host's (it built the lanes). The root guard threads mount internally,
-   * always.
+   * always. The ADMISSION orchestration packs are composition-internal —
+   * a host passing one throws at construction (the ownership guard).
    */
   threads?: Thread[]
   /**
@@ -105,6 +118,21 @@ export const bProgram = ({
   /** The pre-built actuator lanes — reachability is construction, never config. */
   actuators?: LaneBuilder[]
 }) => {
+  // The ownership guard (the orchestration ruling, belt not load-bearing):
+  // the admission orchestration packs are composition-internal thread data.
+  // A host passing one double-mounts it beside the composition's own mount
+  // (the per-listener mint doubles, thread_admission fires twice) — so the
+  // collision fails fast at CONSTRUCTION, naming every colliding thread.
+  const ownedCollisions = hostThreads
+    .filter((thread) => OWNED_ADMISSION_THREAD_NAMES.has(thread.name))
+    .map((thread) => thread.name)
+  if (ownedCollisions.length > 0) {
+    throw new Error(
+      `composition-owned admission threads are never host-passable: ${ownedCollisions.join(', ')} — ` +
+        'hosts never mount admission threads (the orchestration packs mount internally, keyed on the model config)',
+    )
+  }
+
   // ── The engine, in-process ────────────────────────────────────────────────
 
   const { addThread, removeThread, step, trigger, useTrace, instanceId } = behavioral()

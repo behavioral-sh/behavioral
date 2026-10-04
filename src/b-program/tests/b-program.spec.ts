@@ -14,9 +14,14 @@ import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
-import { ADMISSION_PROGRESS } from '../../faculties/frontier-analysis.threads.ts'
+import {
+  ADMISSION_PROGRESS,
+  admissionCandidateMintThreads,
+  admissionStructuralOutcomeThreads,
+} from '../../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
+  admissionJudgmentThreads,
   SUPERVISION_EVENT_TYPES,
   supervisionJudgmentThreads,
   supervisionRecoveryThreads,
@@ -409,6 +414,42 @@ describe('bProgram — the runtime composition', () => {
     } finally {
       runtime.terminate()
     }
+  })
+
+  describe('the admission ownership guard', () => {
+    // The orchestration ruling: the admission packs are COMPOSITION-INTERNAL
+    // thread data — every orchestration pack is composition-owned and never
+    // host-passable, so the double-mount hazard dies by dissolution. The
+    // guard is belt, not load-bearing: a host passing an admission pack
+    // throws at CONSTRUCTION, naming the collision.
+    test('a host passing a composition-owned admission pack throws at construction, naming the collision', () => {
+      expect(() => bProgram({ threads: [...admissionJudgmentThreads] })).toThrow(/composition-owned/)
+      expect(() => bProgram({ threads: [...admissionStructuralOutcomeThreads] })).toThrow(/composition-owned/)
+      expect(() => bProgram({ threads: [...admissionCandidateMintThreads] })).toThrow(/composition-owned/)
+      // A mixed list reports EVERY collision, not just the first.
+      try {
+        bProgram({ threads: [...admissionCandidateMintThreads, ...admissionJudgmentThreads] })
+        throw new Error('unreachable — the mixed list must throw')
+      } catch (error) {
+        const message = (error as Error).message
+        expect(message).toContain('frontier/admission-candidate-mint')
+        expect(message).toContain('system-one/admission-issue')
+      }
+    })
+
+    test('distinct host packs construct clean — the guard names only the owned set', async () => {
+      const runtime = bProgram({
+        threads: [
+          {
+            name: 'host/probe',
+            description: 'A host-minted probe thread.',
+            rules: [{ request: { type: 'probe' } }],
+          },
+        ],
+      })
+      // Construction succeeded — the guard never fires on host-owned names.
+      runtime.terminate()
+    })
   })
 
   describe('add_thread — the admission path', () => {
@@ -970,6 +1011,35 @@ describe('bProgram — the runtime composition', () => {
             ),
           ).toBe(false)
           expect(selectionsOf(traces).some((t) => t.selected.type === 'evil')).toBe(false)
+          // NEVER STACKED (the orchestration ruling's pin): the candidate is
+          // thread-minted even in judgment mode, but NO structural outcome
+          // mounts beside the judgment pack — so nothing ever maps the
+          // candidate to thread_admission, not even after the rejection's
+          // gate lift. Settle past the async wire, then assert the absence
+          // holds: a late admitted selection or provision would be the
+          // reject-then-admit bug.
+          await waitForTraces(traces, (s) =>
+            s.some(
+              (t) =>
+                t.selected.type === ADMISSION_EVENT_TYPES.candidate &&
+                (t.selected.detail as { id?: string }).id === 'aj2',
+            ),
+          )
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          expect(
+            selectionsOf(traces).some(
+              (t) =>
+                t.selected.type === ADMISSION_EVENT_TYPES.admitted &&
+                (t.selected.detail as { id?: string }).id === 'aj2',
+            ),
+          ).toBe(false)
+          expect(
+            traces.some(
+              (t) =>
+                t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+                (t as { thread?: { name?: string } }).thread?.name === 'suspicious',
+            ),
+          ).toBe(false)
         } finally {
           runtime.terminate()
           await server.close()
