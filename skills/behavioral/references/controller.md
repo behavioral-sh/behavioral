@@ -48,7 +48,14 @@ messages:
 | `ui_dispatch_custom_event` | Fire a `CustomEvent` on the target |
 | `ui_navigate` | Navigate the page (URL change) |
 | `ui_scale_check` | Resolve the effective `b-scale` for a target and reply with `ui_scale_check_result` |
-| `ui_style` | Apply scoped CSS (`@scope` block, verbatim) to the target's subtree — one idempotent style element per target |
+
+There is no `ui_style` message (the #style-deletion ruling, 2026-10-03):
+design tokens ride `ui_attrs` — `attr: { style: <bare declarations> }`, the
+custom-property declaration list applied inline on the target root
+(`setAttribute('style', …)` replaces the WHOLE attribute); the target's
+subtree inherits the properties. Scoped component styles ride the `ui_render`
+lane: a fragment may carry its own `<style>` with the prelude-less inline-form
+`@scope`.
 
 User interactions and page lifecycle emit `ui_*` messages back to the agent:
 
@@ -181,21 +188,22 @@ values pass through verbatim) stored as the `design` collection's `artifact`
 value, compiled from the TENANT only, never from the shipped asset. Generated
 html references the properties, not literals.
 
-The artifact's serving seam is the `ui_style` egress message: a token-bearing
-pipeline composes the SAME declarations wrapped in an `@scope` block whose
-scope root is the render target's `b-target` selector —
-`@scope ([b-target=…]) { :scope { --design-…: …; } }` — so the properties
-live on the target and its subtree inherits them, without leaking to the
-page (scoping proximity; `:scope` carries the declarations). The browser
-applies the css VERBATIM into one `data-b-style`-keyed style element per
-target (idempotent replace, never stack). Baseline 2026 — Chrome/Edge 118+,
-Firefox 146+, Safari 26.4; an older engine drops the block silently, the
-same plain degradation as no tenant. Emitted BEFORE the `ui_render` when a
-token-bearing tenant exists; plain (no tenant, no tokens) emits nothing. The
-css is jq-deterministic from validated tenant tokens — no model in the loop,
-no standing gate (the render gate exists for MODEL output). MINIMAL: the
-`=` selector match only (match variants ride a named need); the store
-artifact remains the durable record for other consumers.
+The artifact's serving seam is the `ui_attrs` egress message: a token-bearing
+pipeline composes the SAME declarations as the stored artifact — BARE
+custom-property declarations (`--design-<token-path>: <value>;`) — as
+`ui_attrs { target, attr: { style: <declarations> } }`, applied inline on the
+target root; the subtree inherits through the properties. THE OWNERSHIP
+CONVENTION: `setAttribute('style', …)` replaces the WHOLE attribute — the
+design lane owns the target root's style attribute; generated fragments style
+their DESCENDANTS, never the target root. An innerHTML swap PRESERVES the
+target's attributes (`replaceChildren` never touches attributes); the
+outerHTML case replaces the element — the per-trigger re-issue re-applies.
+Emitted BEFORE the `ui_render` when a token-bearing tenant exists; plain (no
+tenant, no tokens) emits nothing. The declarations are jq-deterministic from
+validated tenant tokens — no model in the loop, no standing gate (the render
+gate exists for MODEL output). MINIMAL: the `=` selector match only (match
+variants ride a named need); the store artifact remains the durable record
+for other consumers.
 
 ### The autoresearch loop
 

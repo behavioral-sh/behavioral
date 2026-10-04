@@ -346,9 +346,58 @@ describe('controller: render floors', () => {
       await view.evaluate<boolean>("document.querySelector('[b-target=main]').getAttribute('b-trigger') === null"),
     ).toBe(true)
   }, 20000)
+
+  test('the attrs lane on* floor: an onclick key is rejected + reported, an innocent key around it applies', async () => {
+    await using view = await open('/test/floors-test')
+    // Report-and-skip: the on* key's error surfaces (the new error name)…
+    const error = await waitFor(() => Promise.resolve(errorByName('on_star_attribute')))
+    expect((error.message.detail as { id?: string }).id).toBe('ft4')
+    // …no live handler attribute lands…
+    expect(
+      await view.evaluate<boolean>("document.querySelector('[b-target=main]').getAttribute('onclick') === null"),
+    ).toBe(true)
+    // …and the innocent key in the SAME message still applied.
+    expect(await view.evaluate<string>("document.querySelector('[b-target=main]').getAttribute('style')")).toBe(
+      '--design-x: 1;',
+    )
+  }, 20000)
 })
 
 // ─── Extensions ─────────────────────────────────────────────────────────────
+
+describe('controller: the design-lane ownership pins (the #style-deletion ruling)', () => {
+  test('an innerHTML swap PRESERVES the target root style attribute — replaceChildren never touches attributes', async () => {
+    await using view = await open('/test/swap-preserve-test')
+    // The attrs landed, then the fragment swapped in: the root's style
+    // attribute survives the swap…
+    const preserved = await waitFor(async () => {
+      const v = await view.evaluate<string>("document.querySelector('[b-target=main]').getAttribute('style')")
+      return v === '--design-keep: 1;' ? v : undefined
+    })
+    expect(preserved).toBe('--design-keep: 1;')
+    // …the swapped content is live…
+    expect(await view.evaluate<string>("document.getElementById('swapped-p')?.textContent ?? ''")).toBe('swapped')
+    // …and the property still resolves inside the subtree (inherited).
+    const color = await view.evaluate<string>(
+      "getComputedStyle(document.getElementById('swapped-p')).getPropertyValue('--design-keep')",
+    )
+    expect(color.trim()).toBe('1')
+  }, 20_000)
+
+  test('a fragment scoped style rides the render lane — the prelude-less inline-form @scope applies within the target', async () => {
+    await using view = await open('/test/floors-test')
+    const scoped = await waitFor(async () => {
+      const v = await view.evaluate<string>(
+        "getComputedStyle(document.getElementById('scoped-p')).getPropertyValue('--design-scoped')",
+      )
+      return v && v.trim() !== '' ? v : undefined
+    })
+    expect(scoped.trim()).toBe('rebeccapurple')
+    // Scope confinement: the page root resolves nothing.
+    const page = await view.evaluate<string>("getComputedStyle(document.body).getPropertyValue('--design-scoped')")
+    expect(page.trim()).toBe('')
+  }, 20_000)
+})
 
 describe('controller: extensions', () => {
   test('extension module is invoked for its matching b-trigger and triggers a BP event', async () => {
@@ -489,11 +538,11 @@ describe('controller: error reporting & success acks', () => {
   }, 15000)
 })
 
-describe('controller: style handler', () => {
-  test('ui_style applies the scoped css — the subtree resolves the custom property, idempotently', async () => {
-    await using view = await open('/test/style-test')
-    // The scoped style applied: the descendant inherits the custom
-    // property from the @scope root (the b-target element).
+describe('controller: the attrs style lane (the #style-deletion ruling)', () => {
+  test('ui_attrs style applies inline on the target — the subtree inherits the custom property, idempotently', async () => {
+    await using view = await open('/test/attrs-style-test')
+    // The style attribute applied INLINE on the target root; the descendant
+    // inherits the custom property through CSS custom properties.
     const color = await waitFor(async () => {
       const c = await view.evaluate<string | undefined>(
         "getComputedStyle(document.getElementById('styled')).getPropertyValue('--design-colors-primary')",
@@ -501,19 +550,17 @@ describe('controller: style handler', () => {
       return c && c.trim() !== '' ? c : undefined
     })
     expect(color.trim()).toBe('rebeccapurple')
-    // Idempotent: two identical messages replaced, never stacked — one
-    // style element per target, its text the css verbatim.
-    const applied = await view.evaluate<string>(
-      "JSON.stringify(Array.from(document.querySelectorAll('style')).map((s) => s.textContent))",
-    )
-    const styles = JSON.parse(applied) as string[]
-    const scoped = styles.filter((t) => t.includes('@scope ([b-target="main"])'))
-    expect(scoped).toHaveLength(1)
-    // Scope isolation: the style lives OUTSIDE the target subtree (head
-    // adoption or body-level), yet applies only within it — a sibling
-    // element resolves nothing.
+    // The OWNERSHIP CONVENTION: setAttribute('style', …) replaced the WHOLE
+    // attribute (updateAttributes) — the target root's style attribute is
+    // the design lane's, exactly the tenant declarations, no stack.
+    const inline = await view.evaluate<string>("document.querySelector('[b-target=main]').getAttribute('style')")
+    expect(inline.trim()).toBe('--design-colors-primary: rebeccapurple;')
+    // Idempotent: two identical ui_attrs messages replaced, never stacked.
+    expect(inline.split('--design-colors-primary')).toHaveLength(2)
+    // Scope isolation by ownership: the style lives ON the target root — a
+    // sibling target resolves nothing.
     const sibling = await view.evaluate<string>(
-      "document.body.style.getPropertyValue('--design-colors-primary') || getComputedStyle(document.body).getPropertyValue('--design-colors-primary')",
+      "getComputedStyle(document.body).getPropertyValue('--design-colors-primary')",
     )
     expect(sibling.trim()).toBe('')
   }, 20_000)

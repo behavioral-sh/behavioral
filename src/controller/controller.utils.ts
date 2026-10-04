@@ -28,6 +28,22 @@ export class DelegatedListener<T extends Event = Event> {
 }
 
 /**
+ * The attrs lane's handler-attribute floor: an `on*` ATTRIBUTE KEY compiles
+ * a live event handler the moment `setAttribute` runs (inline event-handler
+ * attributes are live on connected elements) — the ui_attrs lane is
+ * server-pushed, so a hostile or naive agent-supplied key must never
+ * become executable code. Deterministic, report-and-skip per key (the
+ * UpdateTriggerAttributeError precedent): errors-as-data, the innocent keys
+ * around it still apply.
+ *
+ * @param key - The attribute key (a string expected; anything else rejects).
+ * @returns true when the key is an event-handler attribute (`/^on[a-z]/i` —
+ *   the HTML event-handler-content-attribute prefix).
+ * @public
+ */
+export const isOnStarAttribute = (key: unknown): boolean => typeof key !== 'string' || /^on[a-z]/i.test(key)
+
+/**
  * Classify whether a swap mode's structural boundary is the target element
  * itself (`'self'` — content nests *into* the target) or the target's parent
  * (`'parent'` — content *replaces or flanks* the target, so the parent is the

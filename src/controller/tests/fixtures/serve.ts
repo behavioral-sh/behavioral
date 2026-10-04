@@ -97,7 +97,10 @@ const TEST_PAGE_CONTENT: Record<string, string> = {
   'navigate-test': `<div b-target="main"><p>navigate target</p></div>`,
   'scale-check-test': `<section b-scale="s5"><article b-scale="s3"><div b-target="slot">content</div></article></section>`,
   'scale-check-parent-test': `<section b-scale="s5"><span b-target="slot" b-scale="s1">content</span></section>`,
-  'style-test': `<div b-target="main"><p id="styled">text</p></div>`,
+  'attrs-style-test': `<div b-target="main"><p id="styled">text</p></div>`,
+  // No static style — the attrs message (sp1) is the ONLY writer, so the
+  // post-swap readback proves the swap preserved what the lane wrote.
+  'swap-preserve-test': `<div b-target="main"><p id="preserved-p">text</p></div>`,
 }
 
 // Inline scripts injected before the connect module, keyed by source tag.
@@ -232,6 +235,23 @@ const sendFloorsMessages = (ws: ServerWebSocket<{ source: string }>) => {
     ),
   )
   ws.send(JSON.stringify(attrsMsg({ id: 'ft3', target: 'main', attr: { 'b-trigger': 'focus' } })))
+  // The attrs lane's on* floor: an onclick key must be REJECTED (report-and-
+  // skip, errors-as-data) and a style key applied around it.
+  ws.send(
+    JSON.stringify(attrsMsg({ id: 'ft4', target: 'main', attr: { onclick: 'alert(1)', style: '--design-x: 1;' } })),
+  )
+  // The render lane's scoped styles: a fragment may carry its own <style>
+  // with the prelude-less inline-form @scope — detectXssVectors admits
+  // <style> (the #style-deletion ruling).
+  ws.send(
+    JSON.stringify(
+      renderMsg({
+        id: 'ft5',
+        target: 'main',
+        html: '<div><style>@scope ([b-target="main"]) { :scope { --design-scoped: rebeccapurple; } }</style><p id="scoped-p">text</p></div>',
+      }),
+    ),
+  )
 }
 
 const sendActionInitialRender = (ws: ServerWebSocket<{ source: string }>) => {
@@ -358,6 +378,17 @@ export const startServer = (port = 0): FixtureServer => {
           case 'floors-test':
             sendFloorsMessages(ws)
             break
+          case 'swap-preserve-test':
+            // The design attrs land first; THEN an innerHTML swap — the
+            // attribute must survive (replaceChildren never touches
+            // attributes — the ownership convention's pin).
+            ws.send(JSON.stringify(attrsMsg({ id: 'sp1', target: 'main', attr: { style: '--design-keep: 1;' } })))
+            ws.send(
+              JSON.stringify(
+                renderMsg({ id: 'sp2', target: 'main', html: '<p id="swapped-p">swapped</p>', swap: 'innerHTML' }),
+              ),
+            )
+            break
           case 'form-test':
             sendFormInitialRender(ws)
             break
@@ -380,31 +411,20 @@ export const startServer = (port = 0): FixtureServer => {
               }),
             )
             break
-          case 'style-test':
-            // The scoped style egress: the css arrives @scope-wrapped with
-            // the target's b-target selector as the scope root; the
-            // controller applies it verbatim. A SECOND message proves
-            // idempotency (replace, not stack).
-            ws.send(
-              JSON.stringify({
-                type: 'ui_style',
-                detail: {
-                  id: 'st1',
-                  target: 'main',
-                  css: '@scope ([b-target="main"]) {\n  :scope {\n    --design-colors-primary: rebeccapurple;\n  }\n}',
-                },
-              }),
-            )
-            ws.send(
-              JSON.stringify({
-                type: 'ui_style',
-                detail: {
-                  id: 'st2',
-                  target: 'main',
-                  css: '@scope ([b-target="main"]) {\n  :scope {\n    --design-colors-primary: rebeccapurple;\n  }\n}',
-                },
-              }),
-            )
+          case 'attrs-style-test':
+            // The ATTRS lane's style delivery (the #style-deletion ruling):
+            // bare custom-property declarations as the style attribute —
+            // the design lane owns the target root's style attribute; the
+            // subtree inherits through CSS custom properties. A SECOND
+            // message proves idempotency (replace, not stack).
+            for (const id of ['at1', 'at2']) {
+              ws.send(
+                JSON.stringify({
+                  type: 'ui_attrs',
+                  detail: { id, target: 'main', attr: { style: '--design-colors-primary: rebeccapurple;' } },
+                }),
+              )
+            }
             break
           case 'retry-test': {
             state.retryConnections++

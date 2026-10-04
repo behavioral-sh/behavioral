@@ -1,8 +1,7 @@
 /**
  * The ui_* producer threads — the view-generation policy that turns browser
  * ingress (`ui_event`, `ui_snapshot`, `ui_form_submit`) into engine-requested
- * egress (`ui_render`, `ui_attrs`, `ui_navigate`, `ui_scale_check`,
- * `ui_style`).
+ * egress (`ui_render`, `ui_attrs`, `ui_navigate`, `ui_scale_check`).
  *
  * @remarks
  * Composition territory (no process, not a faculty) — mounted by `bProgram`
@@ -352,7 +351,10 @@ export const UI_GENERATE_SCHEMA = {
       type: 'object',
       properties: {
         scale: { type: 'string', minLength: 1 },
-        target: { type: 'string', minLength: 1 },
+        // The target constraint rides the pipeline too (the controller
+        // schemas' slug pattern — one vocabulary; ui_attrs/ui_render targets
+        // stamp from this ctx).
+        target: { type: 'string', minLength: 1, pattern: '^[A-Za-z][A-Za-z0-9_-]*$' },
         echo: {
           type: 'object',
           properties: { pipeline: { type: 'string', minLength: 1 } },
@@ -409,14 +411,15 @@ const GENERATION_INSTRUCTIONS =
  *   and the prose rides system context; the trigger's detail composes the
  *   user message; with NO tenant the request composes plain — the design
  *   lane is an optional input, never a gate.
- * - **style-issue** — a token-bearing tenant ALSO composes the scoped
- *   style: the compiled `--design-*` declarations wrapped in an `@scope`
- *   block rooted on the render target's `b-target` selector (`:scope`
- *   carries the properties; the subtree inherits them — Baseline 2026,
- *   older engines drop the block, plain degradation). The css is
- *   jq-deterministic from validated tenant tokens — no model in the loop, no
- *   standing gate needed (the render gate exists for MODEL output); emitted
- *   before the render, idempotent per target on the browser side. MINIMAL:
+ * - **attrs-issue** — a token-bearing tenant ALSO composes the design
+ *   tokens as `ui_attrs` style declarations: BARE custom-property
+ *   declarations (`--design-<token-path>: <value>;` — no @scope wrapper, no
+ *   selector block; the #style-deletion ruling). The declarations are
+ *   jq-deterministic from validated tenant tokens — no model in the loop,
+ *   no standing gate needed (the render gate exists for MODEL output);
+ *   emitted before the render; the fan-out rides the controller's attrs
+ *   nodelist loop; idempotent per target on the browser side
+ *   (`setAttribute('style', …)` replaces the whole attribute). MINIMAL:
  *   the `=` selector match only (match variants ride a named need).
  * - **render-compose** — the model reply composes the render draft: id,
  *   target, and swap are host-stamped (the model is never trusted with the
@@ -521,9 +524,22 @@ export const uiPipelineThreads = ({
     ],
   }
 
-  const styleIssue: Thread = {
-    name: `ui/pipeline:${id}/style-issue`,
-    description: 'Serves the scoped ui_style seam for the per-trigger pipeline.',
+  /**
+   * attrsIssue — the ATTRS-issue leg (the #style-deletion ruling): a
+   * token-bearing tenant composes the `ui_attrs` style attribute — BARE
+   * declarations (custom properties; no @scope wrapper, no selector block).
+   * The style attribute value is the declaration list; the target's subtree
+   * inherits the properties through CSS custom properties. The fan-out rides
+   * the controller's attrs nodelist loop; `setAttribute('style', …)`
+   * replaces the WHOLE attribute — the design lane owns the target root's
+   * style attribute, this leg styles the target root itself (the tokens ARE
+   * the design lane's product; generated fragments style their descendants,
+   * never the root). Idempotent per target on the browser side (a repeat
+   * replaces the attribute).
+   */
+  const attrsIssue: Thread = {
+    name: `ui/pipeline:${id}/attrs-issue`,
+    description: "Serves the tenant's design tokens as ui_attrs style declarations.",
     once: true,
     rules: [
       {
@@ -565,11 +581,11 @@ export const uiPipelineThreads = ({
             query:
               `. as $d | ($d.ctx.echo) as $e | ($d.result.value.tokens) as $t` +
               ` | {` +
-              `    id: "${id}-style",` +
+              `    id: "${id}-attrs",` +
               `    target: $e.ctx.target,` +
-              `    css: ("@scope ([b-target=\\"" + $e.ctx.target + "\\"]) {\\n  :scope {\\n" + ([ ($t | paths(scalars)) as $p | "    --design-" + ($p | join("-")) + ": " + ($t | getpath($p) | tostring) + ";" ] | join("\\n")) + "\\n  }\\n}"),` +
+              `    attr: { style: ([ ($t | paths(scalars)) as $p | "--design-" + ($p | join("-")) + ": " + ($t | getpath($p) | tostring) + ";" ] | join(" ")) },` +
               `  }`,
-            target: CONTROLLER_INCOMING_MESSAGE_TYPES.ui_style,
+            target: CONTROLLER_INCOMING_MESSAGE_TYPES.ui_attrs,
           },
         ],
       },
@@ -648,7 +664,7 @@ export const uiPipelineThreads = ({
                 ok: { type: 'boolean', const: true },
                 ctx: {
                   type: 'object',
-                  properties: { target: { type: 'string', minLength: 1 } },
+                  properties: { target: { type: 'string', minLength: 1, pattern: '^[A-Za-z][A-Za-z0-9_-]*$' } },
                   required: ['target'],
                   additionalProperties: true,
                 },
@@ -664,7 +680,7 @@ export const uiPipelineThreads = ({
     ],
   }
 
-  return [scaleIssue, scaleJoin, contextIssue, styleIssue, generationCompose, renderCompose]
+  return [scaleIssue, scaleJoin, contextIssue, attrsIssue, generationCompose, renderCompose]
 }
 
 /**

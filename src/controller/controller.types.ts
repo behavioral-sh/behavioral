@@ -257,29 +257,6 @@ export type ScaleCheckMessage = {
 }
 
 /**
- * Schema for style messages applying scoped CSS to a render target's subtree.
- *
- * @remarks
- * The `css` arrives fully composed — an `@scope` block whose scope root is
- * the target's `b-target` attribute selector (`@scope ([b-target=…])`), with
- * the custom properties on `:scope` so the target's subtree inherits them
- * (Baseline 2026: Chrome/Edge 118+, Firefox 146+, Safari 26.4; older engines
- * drop the block silently — plain degradation, same as no tenant). The
- * controller applies the text VERBATIM into a per-target style element
- * (idempotent replace, never stack); it composes nothing.
- *
- * @public
- */
-export type StyleMessage = {
-  type: typeof CONTROLLER_INCOMING_MESSAGE_TYPES.ui_style
-  detail: {
-    id: string
-    target: string
-    css: string
-  }
-}
-
-/**
  * Discriminated union of all server-to-controller message kinds.
  * Consumers narrow by the `type` field.
  *
@@ -291,7 +268,6 @@ export type ServerMessage =
   | DispatchCustomEventMessage
   | NavigateMessage
   | ScaleCheckMessage
-  | StyleMessage
 
 // ---------------------------------------------------------------------------
 // Client → server messages

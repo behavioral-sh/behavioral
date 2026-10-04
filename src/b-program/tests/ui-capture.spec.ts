@@ -179,11 +179,11 @@ describe('ui capture — the pipeline-keyed raw run consumer', () => {
       expect(kinds).toContain('ui_scale_check_result')
       expect(kinds).toContain('generate')
       expect(kinds).toContain('system_two_request')
-      // The scoped style rides the run (the serving seam's egress, by
-      // lineage: the `<pid>-style` id routes it).
-      expect(kinds).toContain('ui_style')
+      // The attrs style rides the run (the serving seam's egress, by
+      // lineage: the `<pid>-attrs` id routes it).
+      expect(kinds).toContain('ui_attrs')
       expect(kinds.at(-1)).toBe('ui_render')
-      expect(kinds.indexOf('ui_style')).toBeLessThan(kinds.indexOf('ui_render'))
+      expect(kinds.indexOf('ui_attrs')).toBeLessThan(kinds.indexOf('ui_render'))
       // NO unrelated faculty traffic: the boot's design-store puts (tenant,
       // artifact) are NOT in the run — lineage, not time window.
       const storeKinds = run.messages

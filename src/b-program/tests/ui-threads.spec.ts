@@ -523,7 +523,7 @@ describe('ui threads — the per-trigger generation lane', () => {
     expect(content).toContain('a panel')
   })
 
-  test('the style-issue leg composes a scoped ui_style from the tenant — @scope root on the target', () => {
+  test('the attrs-issue leg composes ui_attrs style declarations from the tenant — bare declarations on the target', () => {
     const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', {
@@ -532,30 +532,32 @@ describe('ui threads — the per-trigger generation lane', () => {
         warnings: [],
       }),
     ])
-    const style = selected.find((s) => s.type === 'ui_style')
-    expect(style).toBeDefined()
-    expect(style?.detail?.id).toBe('ui-x1-style')
-    expect(style?.detail?.target).toBe('body')
-    const css = style?.detail?.css as string
-    // The @scope root is the render target's b-target selector; :scope
-    // carries the custom properties (the subtree inherits them).
-    expect(css).toContain('@scope ([b-target="body"])')
-    expect(css).toContain(':scope')
-    expect(css).toContain('--design-colors-primary: light-dark(#755576, #E2BAE0);')
+    const attrs = selected.find((s) => s.type === 'ui_attrs')
+    expect(attrs).toBeDefined()
+    expect(attrs?.detail?.id).toBe('ui-x1-attrs')
+    expect(attrs?.detail?.target).toBe('body')
+    // Bare declarations ONLY — no @scope wrapper, no selector block: the
+    // style attribute value is the declaration list, inherited by the
+    // target's subtree through CSS custom properties.
+    const attr = (attrs?.detail?.attr ?? {}) as Record<string, string>
+    const style = attr.style as string
+    expect(style).toContain('--design-colors-primary: light-dark(#755576, #E2BAE0);')
+    expect(style).not.toContain('@scope')
+    expect(style).not.toContain('{')
   })
 
-  test('plain degradation — a null tenant or tokenless tenant emits no ui_style', () => {
+  test('plain degradation — a null tenant or tokenless tenant emits no ui_attrs style', () => {
     const tokenless = pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', { tokens: null, sections: { Overview: 'x' }, warnings: [] }),
     ])
-    expect(tokenless.selected.some((s) => s.type === 'ui_style')).toBe(false)
+    expect(tokenless.selected.some((s) => s.type === 'ui_attrs')).toBe(false)
 
     const tenantless = pipelineRun('ui-x2', { message: 'a panel' }, [
       scaleReply('ui-x2'),
       tenantStoreResult('ui-x2', null),
     ])
-    expect(tenantless.selected.some((s) => s.type === 'ui_style')).toBe(false)
+    expect(tenantless.selected.some((s) => s.type === 'ui_attrs')).toBe(false)
   })
 
   test('named provider/modelId reach the composed systemTwo request — the config seam', () => {
@@ -977,7 +979,7 @@ describe('ui threads — the composition mount', () => {
     }
   }, 15_000)
 
-  test('the artifact serving seam: ui_style egresses before ui_render with a tenant, never plain', async () => {
+  test('the artifact serving seam: ui_attrs style egresses before ui_render with a tenant, never plain', async () => {
     const home = tempHome()
     try {
       writeFileSync(join(home, 'DESIGN.md'), '---\ncolors:\n  primary: "#0A0A0A"\n---\n\n## Overview\n\nMine.\n')
@@ -1010,7 +1012,7 @@ describe('ui threads — the composition mount', () => {
             return detail?.op === 'put' && detail.input?.collection === UI_DESIGN_COLLECTION
           }),
         )
-        // The tenant-bearing pipeline emits ui_style BEFORE ui_render.
+        // The tenant-bearing pipeline emits the ui_attrs style BEFORE ui_render.
         dispatchToRuntime(runtime, {
           method: 'ui_event',
           params: { event: { type: 'render', detail: { message: 'a panel' } }, timeStamp: 1 },
@@ -1026,11 +1028,13 @@ describe('ui threads — the composition mount', () => {
           params: { id: checkId, target: 'body', effectiveScale: 's3', timeStamp: 2 },
         })
         await waitForTraces(traces, (s) => s.some((t) => t.selected.type === 'ui_render'))
-        const styleLine = out.findIndex((line) => line.includes('"method":"ui_style"'))
+        const attrsLine = out.findIndex((line) => line.includes('"method":"ui_attrs"'))
         const renderLine = out.findIndex((line) => line.includes('"method":"ui_render"'))
-        expect(styleLine).toBeGreaterThan(-1)
-        expect(renderLine).toBeGreaterThan(styleLine)
-        expect(out[styleLine]).toContain('@scope')
+        expect(attrsLine).toBeGreaterThan(-1)
+        expect(renderLine).toBeGreaterThan(attrsLine)
+        // Bare declarations — the @scope wrapper died with the #style lane.
+        expect(out[attrsLine]).toContain('--design-colors-primary')
+        expect(out[attrsLine]).not.toContain('@scope')
       } finally {
         runtime.terminate()
         await server.close()
@@ -1263,7 +1267,7 @@ describe('ui threads — the composition mount', () => {
         expect(out.some((line) => line.includes('"method":"ui_render"') && line.includes(ASSISTANT_TEXT))).toBe(true)
         // Plain degradation emits no style — the design lane is optional,
         // never a gate, and never a phantom message.
-        expect(out.some((line) => line.includes('"method":"ui_style"'))).toBe(false)
+        expect(out.some((line) => line.includes('"method":"ui_attrs"'))).toBe(false)
         const body = server.requests.at(-1)?.body as { instructions?: string } | undefined
         expect(body?.instructions?.includes('--design-')).toBe(false)
       } finally {

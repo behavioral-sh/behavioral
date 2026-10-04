@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { SWAP_MODES, SWAP_TARGETS } from '../controller.constants.ts'
-import { DelegatedListener, isInvalidTrigger, swapBoundary } from '../controller.utils.ts'
+import { DelegatedListener, isInvalidTrigger, isOnStarAttribute, swapBoundary } from '../controller.utils.ts'
 
 describe('swapBoundary — into modes return self', () => {
   test('afterbegin, beforeend, innerHTML are self boundaries', () => {
@@ -76,6 +76,32 @@ describe('isInvalidTrigger — accepted declarations', () => {
   test('a trailing or duplicated separator is tolerated', () => {
     expect(isInvalidTrigger('click:a;')).toBe(false)
     expect(isInvalidTrigger('click:a;;')).toBe(false)
+  })
+})
+
+describe('isOnStarAttribute — the attrs lane handler-attribute floor', () => {
+  test('on* KEYS are rejected: event-handler attributes compile live handlers', () => {
+    expect(isOnStarAttribute('onclick')).toBe(true)
+    expect(isOnStarAttribute('onerror')).toBe(true)
+    expect(isOnStarAttribute('onmouseover')).toBe(true)
+    expect(isOnStarAttribute('OnClick')).toBe(true)
+    expect(isOnStarAttribute('onload')).toBe(true)
+  })
+
+  test('innocent attribute keys pass — including names that merely contain on', () => {
+    expect(isOnStarAttribute('style')).toBe(false)
+    expect(isOnStarAttribute('class')).toBe(false)
+    expect(isOnStarAttribute('data-on-click')).toBe(false)
+    expect(isOnStarAttribute('font')).toBe(false)
+  })
+
+  test('the ruling regex is PREFIX-form — an innocent key that starts with on over-flags (the conservative fail-safe)', () => {
+    expect(isOnStarAttribute('once')).toBe(true)
+  })
+
+  test('non-string keys are rejected', () => {
+    expect(isOnStarAttribute(undefined)).toBe(true)
+    expect(isOnStarAttribute(42 as unknown as string)).toBe(true)
   })
 })
 

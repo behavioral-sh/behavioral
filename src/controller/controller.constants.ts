@@ -98,6 +98,7 @@ export const ERROR_TYPES = keyMirror(
   'update_trigger_attribute',
   'render_invalid_trigger',
   'xss_vectors_detected',
+  'on_star_attribute',
 )
 
 /**
@@ -127,7 +128,6 @@ export const CONTROLLER_INCOMING_MESSAGE_TYPES = keyMirror(
   'ui_dispatch_custom_event',
   'ui_navigate',
   'ui_scale_check',
-  'ui_style',
 )
 
 /**

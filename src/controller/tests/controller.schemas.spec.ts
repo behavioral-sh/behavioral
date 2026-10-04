@@ -30,16 +30,27 @@ const samples: Array<[string, unknown, unknown]> = [
     { id: 's1', target: 'slot', effectiveScale: 's3', timeStamp: 1 },
     { id: 's1', target: 'slot', effectiveScale: 'nope', timeStamp: 1 },
   ],
-  [
-    'ui_style',
-    {
-      id: 'st1',
-      target: 'main',
-      css: '@scope ([b-target="main"]) {\n  :scope {\n    --design-colors-primary: #0A0A0A;\n  }\n}',
-    },
-    { id: 'st1', target: 'main' },
-  ],
 ]
+
+describe('the target constraint — the selector sites slug floor', () => {
+  // Targets are b-target attribute VALUES feeding querySelectorAll in
+  // #render/#attrs/#scaleCheck — the slug charset, pattern-constrained in
+  // the detail schemas (the one pattern const home; the match nuance rides
+  // the OPERATOR, never the target).
+  const badTargets = ['main > div', 'a b', '[id=x]', 'main"div', '.cls', 'body; td', '']
+  for (const [type, valid] of [
+    ['ui_render', { id: 'r1', target: 'side-panel_2', html: '<p>x</p>', swap: 'innerHTML' }],
+    ['ui_attrs', { id: 'a1', target: 'side-panel_2', attr: {} }],
+    ['ui_scale_check', { id: 's1', target: 'side-panel_2', swap: 'innerHTML' }],
+  ] as Array<[string, unknown]>) {
+    test(`${type}: slug-ish targets accepted, selector-syntax targets rejected`, () => {
+      expect(validateControllerDetail(type, valid)).toBe(true)
+      for (const bad of badTargets) {
+        expect(validateControllerDetail(type, { ...(valid as { id: string }), target: bad })).toBe(false)
+      }
+    })
+  }
+})
 
 describe('controller detail schemas', () => {
   test('every controller message kind has a detail schema', () => {
@@ -54,7 +65,6 @@ describe('controller detail schemas', () => {
       'ui_scale_check',
       'ui_scale_check_result',
       'ui_snapshot',
-      'ui_style',
       'ui_success',
     ])
   })

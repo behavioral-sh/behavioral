@@ -87,7 +87,7 @@ const pipelineOfThread = (thread: Thread): string | undefined => {
   if (mint !== null) return mint[1]
   const transform = /Transform\(ui\/pipeline:([^/]+)\//.exec(thread.name)
   if (transform !== null) return transform[1]
-  const reentry = /_(ui-[0-9a-f-]+-(?:scale|tenant|gen|render|style))$/.exec(thread.name)
+  const reentry = /_(ui-[0-9a-f-]+-(?:scale|tenant|gen|render|attrs))$/.exec(thread.name)
   if (reentry !== null) return reentry[1]!.slice(0, -(reentry[1]!.length - reentry[1]!.lastIndexOf('-')))
   return undefined
 }
@@ -106,7 +106,7 @@ const pipelineOfSelection = (selected: { type: string; detail?: BPEvent['detail'
   if (typeof detail.ctx?.echo?.pipeline === 'string') return detail.ctx.echo.pipeline
   if (typeof detail.ctx?.pipeline === 'string') return detail.ctx.pipeline
   if (typeof detail.id === 'string') {
-    const id = /^(.+)-(scale|tenant|gen|render|style)$/.exec(detail.id)
+    const id = /^(.+)-(scale|tenant|gen|render|attrs)$/.exec(detail.id)
     if (id !== null) return id[1]
   }
   return undefined

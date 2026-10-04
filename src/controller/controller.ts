@@ -17,6 +17,7 @@ import {
   type ControllerErrors,
   ElementNotFoundError,
   FormSubmitError,
+  OnStarAttributeError,
   PageExtensionError,
   RenderInvalidTriggerError,
   TriggerError,
@@ -34,10 +35,15 @@ import type {
   RenderMessage,
   ScaleCheckMessage,
   ServerMessage,
-  StyleMessage,
   Transport,
 } from './controller.types.ts'
-import { DelegatedListener, detectXssVectors, isInvalidTrigger, swapBoundary } from './controller.utils.ts'
+import {
+  DelegatedListener,
+  detectXssVectors,
+  isInvalidTrigger,
+  isOnStarAttribute,
+  swapBoundary,
+} from './controller.utils.ts'
 import { B_PROGRAM_WORKER_PATH, WorkerTransport } from './worker-transport.ts'
 
 const delegates = new WeakMap<EventTarget, DelegatedListener>()
@@ -363,6 +369,14 @@ export class Controller {
           },
         })
       for (const key in attr) {
+        // The on* floor (the #style-deletion ruling's amendment): an inline
+        // event-handler attribute compiles a LIVE handler on a connected
+        // element — report-and-skip per key, errors-as-data; innocent keys
+        // around it still apply.
+        if (isOnStarAttribute(key)) {
+          this.#reportError(new OnStarAttributeError(key), id)
+          continue
+        }
         if (key === B_TRIGGER && attr[key] !== null && isInvalidTrigger(attr[key])) {
           this.#reportError(new UpdateTriggerAttributeError(`${attr[key]}`), id)
           continue
@@ -402,26 +416,6 @@ export class Controller {
   #navigate({ url, replace }: NavigateMessage['detail']) {
     if (replace) window.location.replace(url)
     else window.location.assign(url)
-  }
-  /**
-   * Apply a scoped style: the css arrives fully composed (`@scope` block,
-   * scope root = the target's b-target selector) — this applies the text
-   * VERBATIM into one style element per target, idempotently replacing (a
-   * repeat message updates the same element, never stacks). The element is
-   * keyed by `data-b-style` (the target), adopted into `document.head` so it
-   * survives subtree swaps; the @scope root is what confines its reach.
-   */
-  #style({ target, css }: StyleMessage['detail']) {
-    let element: HTMLStyleElement | undefined
-    for (const candidate of Array.from(document.head.querySelectorAll<HTMLStyleElement>('style[data-b-style]'))) {
-      if (candidate.dataset.bStyle === target) element = candidate
-    }
-    if (element === undefined) {
-      element = document.createElement('style')
-      element.dataset.bStyle = target
-      document.head.append(element)
-    }
-    element.textContent = css
   }
   #scaleCheck({ target, swap, id, match = '=' }: ScaleCheckMessage['detail']) {
     const nodelist = document.querySelectorAll(`[${B_TARGET}${match}"${target}"]`)
@@ -475,10 +469,6 @@ export class Controller {
         case CONTROLLER_INCOMING_MESSAGE_TYPES.ui_scale_check: {
           this.#scaleCheck(detail)
           return
-        }
-        case CONTROLLER_INCOMING_MESSAGE_TYPES.ui_style: {
-          this.#style(detail)
-          break
         }
       }
       this.#send({

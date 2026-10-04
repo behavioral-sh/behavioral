@@ -79,6 +79,23 @@ export class UpdateTriggerAttributeError extends Error implements Error {
   }
 }
 
+/**
+ * Thrown (reported-and-skipped per key) when a server-pushed `ui_attrs`
+ * message carries an `on*` attribute key — an inline event-handler attribute
+ * compiles a live handler on a connected element; the attrs lane never
+ * installs executable code. Innocent keys around it still apply.
+ *
+ * @public
+ */
+export class OnStarAttributeError extends Error implements Error {
+  override name = ERROR_TYPES.on_star_attribute
+  readonly violations: string[]
+  constructor(key: string) {
+    super('Event-handler attribute keys are rejected in ui_attrs')
+    this.violations = [key]
+  }
+}
+
 export class XSSVectorsDetected extends Error implements Error {
   override name = ERROR_TYPES.xss_vectors_detected
   readonly violations: XssViolation[]
