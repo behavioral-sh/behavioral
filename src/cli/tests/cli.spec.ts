@@ -64,11 +64,19 @@ describe('Router-level flags (subprocess)', () => {
   })
 
   test('no args runs the attach-or-start default (a closed stdin detaches cleanly)', async () => {
+    // RE-PIN (the systemOne deployment requirement, 2026-10-03): the home
+    // carries the minimal valid deployment config — the requirement rejects
+    // its absence at load.
+    const home = path.join('/tmp', `behavioral-cli-default-${Date.now()}`)
+    await Bun.write(
+      path.join(home, 'config.ts'),
+      "export default { systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+    )
     const proc = Bun.spawn(['bun', 'bin/behavioral.ts'], {
       stdout: 'pipe',
       stderr: 'pipe',
       cwd: path.resolve(import.meta.dir, '../../..'),
-      env: { ...process.env, BEHAVIORAL_HOME: path.join('/tmp', `behavioral-cli-default-${Date.now()}`) },
+      env: { ...process.env, BEHAVIORAL_HOME: home },
     })
     // No running instance → the bare command starts a foreground instance; the
     // closed stdin (non-TTY) ends the TUI and detaches cleanly.

@@ -19,7 +19,13 @@ import type { Actuator } from '../faculties.ts'
 export type BehavioralConfig = {
   /** The actuator allow-list — absent means the whole trio is on. */
   actuators?: Actuator[]
-  /** The SystemOne endpoint config riding the init frame; `null` omits it. */
+  /**
+   * The SystemOne endpoint config riding the init frame. REQUIRED in
+   * deployments (the 2026-10-03 ruling): a deployment boots with a decision
+   * model or fails fast — `loadConfig` rejects a missing/null systemOne.
+   * (The composition's `models.systemOne` stays optional — the testing
+   * posture; the enforcement is ONE POINT, here.)
+   */
   systemOne?: SystemOneEndpointConfig | null
   /** The SystemTwo endpoints map riding the init frame; `null` omits it. */
   systemTwo?: SystemTwoEndpoints | null
@@ -201,16 +207,33 @@ const validate = (value: unknown, configPath: string): BehavioralConfig => {
  * @remarks
  * The file is **executable config** — trusted, user-owned machine state,
  * dynamically imported so it can carry live values (the `actuators` allow-list
- * and the env-resolved model identifiers). A missing file yields the empty
- * config, so the defaults apply; an unloadable file or an invalid shape throws
- * with the path and a fix hint.
+ * and the env-resolved model identifiers). The DEPLOYMENT REQUIREMENT applies
+ * at this one point: the loaded config (or the missing file's default) must
+ * carry a `systemOne` decision model — a deployment without one fails fast
+ * with the path and the regenerate-via-init hint; an unloadable file or an
+ * invalid shape throws with the path and a fix hint.
  *
  * @public
  */
 export const loadConfig = async (
   configPath: string = join(behavioralHome(), 'config.ts'),
 ): Promise<BehavioralConfig> => {
-  if (!(await Bun.file(configPath).exists())) return {}
+  // The DEPLOYMENT REQUIREMENT (the 2026-10-03 ruling, ONE POINT): the
+  // deployed config requires a decision model — a missing file is not a
+  // deployment either (the old empty-config default applied the defaults;
+  // the requirement rejects it at the resolved path). The composition's
+  // `models.systemOne` optionality stays — tests construct bProgram
+  // directly, never riding load-config.
+  const requireSystemOne = (config: BehavioralConfig): BehavioralConfig => {
+    if (config.systemOne === undefined || config.systemOne === null) {
+      invalid(
+        configPath,
+        '"systemOne" is REQUIRED — a deployment boots with a decision model or fails fast; regenerate via behavioral init',
+      )
+    }
+    return config
+  }
+  if (!(await Bun.file(configPath).exists())) return requireSystemOne({})
   let module: { default?: unknown }
   try {
     module = (await import(pathToFileURL(configPath).href)) as { default?: unknown }
@@ -218,5 +241,5 @@ export const loadConfig = async (
     throw new Error(`invalid config at ${configPath}: failed to load — ${(error as Error).message}`)
   }
   if (module.default === undefined) invalid(configPath, 'no default export — add `export default { ... }`')
-  return validate(module.default, configPath)
+  return requireSystemOne(validate(module.default, configPath))
 }

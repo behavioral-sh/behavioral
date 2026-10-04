@@ -179,7 +179,9 @@ the faculty worker never wedges. No cancel contract.
 Endpoints/config arrive as the init frame — the secret never enters a
 request message. `system-one.threads.ts` carries the
 admission judgment threads (the BP-native blocking judge over the Decisions
-lane; mounted when systemOne is wired) and the supervision threads (the
+lane — the judgment mode's OUTCOME STAGE; the verdict's division: an
+explicit approve admits, a spoken NO rejects durably, the typed-error
+HOLDS-AND-RETRIES) and the supervision threads (the
 runtime circuit breaker — the counting supervisor, its block-then-judge
 verdict, and its recovery; a root-mounted supervisor's block is global —
 one umwelt's runaway loop halts the watched type everywhere — while a
@@ -214,10 +216,35 @@ its host-minted policy packs; the boundary is `src/b-program.ts`, the
 `src/controller.ts` precedent): `b-program.ts` — `bProgram({ threads,
 models, actuators })`, the ruled two-key-plus-lanes surface: `threads` (every
 policy pack host-minted — shell, rpc-auth, remote-mcp, plugin-threads,
-supervision, ui_*; the root guard threads stay internal, always-mounted),
+supervision, ui_*; the root guard threads stay internal, always-mounted; the
+ADMISSION orchestration packs are composition-INTERNAL — never host-passable,
+the ownership guard throws at construction on any owned name),
 `models` (the faculties' init-frame payloads + the ui generation target),
 and `actuators` (PRE-CONSTRUCTED four-key lanes — reachability is
-construction, never config; unknown lane names throw at wiring). The fixed
+construction, never config; unknown lane names throw at wiring). THE
+ADMISSION ORCHESTRATION IS THREAD DATA (the 2026-10-03 ruling): the ALWAYS
+set — the proposal carry composes the full add_thread request (progress +
+the clamped budget live in the dispatch jq, the constants' one home in
+`frontier-analysis.threads.ts`; the route seam passes the request through
+UNCHANGED — the op's validation is the boundary) and the candidate-mint
+thread (a both-legs-ok verdict → `thread_candidate`, the thread riding the
+verdict envelope's echo) — mounts regardless of mode; the OUTCOME STAGE is
+mode-exclusive: structural mode mounts the structural-outcome stage (the
+review gate + candidate → `thread_admission`, failed verdict →
+`thread_admission_rejected`), judgment mode mounts the judgment pack (the
+block-then-judge over the Decisions lane) — NEVER stacked (a stacked
+structural mint + gate is the reject-then-admit bug). The composition keeps
+the WRITE legs (the `thread_admission` → addThreads stamped mount, the
+decidedKeys writes, the rejection capture — host authority, the
+removeThread precedent) and the OUTAGE SHAPE's timer: a judge-unavailable
+outcome (the typed-error result or a systemOne lane death) HOLDS — never a
+durable rejection, no registry record — and re-issues the same Decision via
+the candidate re-emission (the `<candidate>-judge` correlation holds) on
+the composition-hosted backoff (`jitteredBackoffMs`, the shared
+websocket-transport `#retry` shape; the `scheduler` option is the injection
+seam), bounded at 3 retries; exhaustion leaves the candidate UNDECIDED
+(held, fail-visible — the next boot/reload re-adjudicates for free), the
+gate lifts, an explicit judged NO stays durable. The fixed
 FOUR (frontierAnalysis, systemOne, systemTwo, transform) mount through
 `useWorker` — never optional, never overrides. THE TRANSFORM LEGS: the
 engine's `transform_request` mints route to the transform faculty (the init
@@ -328,7 +355,9 @@ watcher (store on) + the reconcile pack (shell + store on); ingress
 messages → triggers, `ui_*` selections → client notifications, redacted
 traces out), `load-config.ts` (`<BEHAVIORAL_HOME>/config.ts` — the actuator
 allow-list plus model identifiers; the shape is closed, legacy keys fail
-fast), and `trace-consumer.ts`. The FILE-BASED plugin-thread registry
+fast; systemOne is REQUIRED — a missing/null decision model rejects at load
+with the path + the regenerate-via-init hint, the 2026-10-03 ruling; the
+composition's models optionality stays for tests), and `trace-consumer.ts`. The FILE-BASED plugin-thread registry
 (`<home>/plugin-threads.json`, the `plugin-thread-registry.ts` entry) is
 DEAD — the registry record lives in the store (plugin-threads.registry.ts,
 b-program home) and the boot fold is the reconcile pack. The
@@ -342,7 +371,11 @@ dispatches).
 admission judgment threads (the BP-native blocking judge over the Decisions
 lane) and the supervision threads (the runtime circuit breaker, its
 judgment, and its recovery) — the `frontier-analysis.threads.ts` pack adds
-the structural review pack (the no-systemOne admission gate). Threads are
+the admission POLICY home (the progress constants + the budget clamp) and
+the structural layer: the candidate-mint thread (ALWAYS-mounted) and the
+structural-outcome stage (the no-systemOne admission gate). ALL admission
+orchestration threads are composition-internal mounts — hosts never pass
+them (the ownership guard). Threads are
 composition-side or faculty-side policy; actuators ship without theirs. The
 root guard threads (`src/faculties/faculties.threads.ts`) are always
 mounted regardless of the host's pack list. The former `src/threads/` is

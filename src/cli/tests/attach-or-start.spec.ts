@@ -11,10 +11,18 @@ import type { HostRuntime } from '../serve.ts'
 import { instanceSocketPath } from '../socket-host.ts'
 
 const homes: string[] = []
+// RE-PIN (the systemOne deployment requirement, 2026-10-03): every temp home
+// carries the minimal valid deployment config — a deployment boots with a
+// decision model or fails fast at load. The endpoint is never contacted (the
+// runtime is the echo seam).
 const tempHome = (): string => {
   const home = join(tmpdir(), `behavioral-attach-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   homes.push(home)
   mkdirSync(home, { recursive: true })
+  void Bun.write(
+    join(home, 'config.ts'),
+    "export default { systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+  )
   return home
 }
 

@@ -154,7 +154,13 @@ describe('serve entry (stdio)', () => {
     const home = mkdtempSync(join(tmpdir(), 'behavioral-serve-'))
     try {
       // actuators: [] prunes every actuator process — the engine alone, no spawns.
-      await Bun.write(join(home, 'config.ts'), `export default { actuators: [] }`)
+      // RE-PIN (the systemOne deployment requirement, 2026-10-03): the entry
+      // config carries the decision model — the requirement rejects its
+      // absence at load.
+      await Bun.write(
+        join(home, 'config.ts'),
+        "export default { actuators: [], systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+      )
       const proc = Bun.spawn(['bun', 'bin/behavioral.ts', 'serve'], {
         cwd: repoRoot,
         env: { ...process.env, BEHAVIORAL_HOME: home },

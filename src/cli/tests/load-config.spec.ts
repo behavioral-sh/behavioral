@@ -15,17 +15,29 @@ const withConfig = async (source: string | undefined, run: (path: string) => Pro
   }
 }
 
+// The deployment requirement's shared fixture fragment (the 2026-10-03
+// ruling): a deployment boots with a decision model or fails fast.
+const ONE = "systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' }"
+
 describe('loadConfig', () => {
-  test('a missing config file yields the empty config (defaults apply)', async () => {
+  test('a missing config file fails fast — a deployment without a decision model never boots', async () => {
+    // RE-PIN (the deployment requirement): the old empty-config default
+    // applied the defaults; now the requirement rejects at the resolved path.
     await withConfig(undefined, async (file) => {
-      expect(await loadConfig(file)).toEqual({})
+      const error = await loadConfig(file).catch((e: Error) => e)
+      expect((error as Error).message).toMatch(/"systemOne" is REQUIRED/)
+      expect((error as Error).message).toContain(file)
+      expect((error as Error).message).toContain('regenerate via behavioral init')
     })
   })
 
   test('a present config file yields its default export', async () => {
-    await withConfig(`export default { actuators: ['shell'] }`, async (file) => {
+    await withConfig(`export default { actuators: ['shell'], ${ONE} }`, async (file) => {
       const config = await loadConfig(file)
-      expect(config).toEqual({ actuators: ['shell'] })
+      expect(config).toEqual({
+        actuators: ['shell'],
+        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+      })
     })
   })
 
@@ -50,9 +62,10 @@ describe('loadConfig', () => {
   })
 
   test('systemTwo: null is valid — the faculty stays mounted but endpoint-less', async () => {
-    await withConfig(`export default { systemOne: null, systemTwo: null }`, async (file) => {
+    // RE-PIN (the deployment requirement): the systemOne-null leg of the old
+    // fixture now rejects (below); systemTwo's null stays valid.
+    await withConfig(`export default { ${ONE}, systemTwo: null }`, async (file) => {
       const config = await loadConfig(file)
-      expect(config.systemOne).toBeNull()
       expect(config.systemTwo).toBeNull()
     })
   })
@@ -83,9 +96,12 @@ describe('loadConfig', () => {
     const previous = process.env.BEHAVIORAL_HOME
     process.env.BEHAVIORAL_HOME = home
     try {
-      await Bun.write(join(home, 'config.ts'), `export default { actuators: ['store'] }`)
+      await Bun.write(join(home, 'config.ts'), `export default { actuators: ['store'], ${ONE} }`)
       const config = await loadConfig()
-      expect(config).toEqual({ actuators: ['store'] })
+      expect(config).toEqual({
+        actuators: ['store'],
+        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+      })
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
       else process.env.BEHAVIORAL_HOME = previous
@@ -159,7 +175,7 @@ describe('loadConfig', () => {
   describe('inference providers (the proxy allow-list + CSP list)', () => {
     test('a provider origin map loads as data', async () => {
       await withConfig(
-        `export default { inference: { providers: { typesafe: 'https://api.typesafe.ai' } } }`,
+        `export default { ${ONE}, inference: { providers: { typesafe: 'https://api.typesafe.ai' } } }`,
         async (file) => {
           const config = await loadConfig(file)
           expect(config.inference).toEqual({ providers: { typesafe: 'https://api.typesafe.ai' } })
@@ -177,6 +193,42 @@ describe('loadConfig', () => {
       await withConfig(`export default { inference: { providers: { bad: 'file:///etc' } } }`, async (file) => {
         await expect(loadConfig(file)).rejects.toThrow(/"inference".*"bad"/s)
       })
+    })
+  })
+
+  describe('the systemOne deployment requirement (the 2026-10-03 ruling)', () => {
+    // The ruling: the deployed config REQUIRES a decision model — the
+    // optionality was test convenience (bProgram's models stay optional; the
+    // enforcement is ONE POINT, here). Fail fast with the config path and
+    // the regenerate-via-init hint.
+    test('a config without systemOne rejects, naming the path and the init hint', async () => {
+      await withConfig(`export default { actuators: ['shell'] }`, async (file) => {
+        const error = await loadConfig(file).catch((e: Error) => e)
+        expect((error as Error).message).toMatch(/"systemOne" is REQUIRED/)
+        // The path is named — fail fast points at the offending config.
+        expect((error as Error).message).toContain(file)
+        expect((error as Error).message).toContain('regenerate via behavioral init')
+      })
+    })
+
+    test('a null systemOne rejects the same — null omits nothing anymore', async () => {
+      await withConfig(`export default { systemOne: null, actuators: [] }`, async (file) => {
+        await expect(loadConfig(file)).rejects.toThrow(/"systemOne" is REQUIRED.*behavioral init/s)
+      })
+    })
+
+    test('a valid rest endpoint loads — and a webgpu one too', async () => {
+      await withConfig(`export default { ${ONE} }`, async (file) => {
+        const config = await loadConfig(file)
+        expect(config.systemOne).toEqual({ url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' })
+      })
+      await withConfig(
+        `export default { systemOne: { transport: 'webgpu', model: 'clef-flash-ternary' } }`,
+        async (file) => {
+          const config = await loadConfig(file)
+          expect(config.systemOne).toEqual({ transport: 'webgpu', model: 'clef-flash-ternary' })
+        },
+      )
     })
   })
 })

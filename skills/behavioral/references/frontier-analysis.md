@@ -34,6 +34,17 @@ et al., `src/faculties/frontier/faculty.ts`); the wire event shape itself —
 `frontier_request { id, op, input }` / `frontier_request_result { id, result }`
 — is homed in `src/faculties/faculties.types.ts`, the wire's one home.
 
+**The admission policy rides the mint, never the caller's claim** (the
+2026-10-03 orchestration ruling): the composition's proposal carry composes
+the full `add_thread` request — `progress` is the derived `*_result`
+vocabulary (unspoofable) and `maxDepth` defaults to 20 000, the requester's
+override clamped to 100 000, in the dispatch jq. The op's own validation is
+the boundary for anything else: `maxDepth` is REQUIRED (a request without
+it fails validation — the error envelope), and an omitted `progress` skips
+livelock detection (deadlock-only). The semantic judgment layer (when a
+systemOne endpoint is wired) reviews only what the structural analysis
+passed — TIGHTEN-only, never loosening a structural reject.
+
 ## The `progress` spec
 
 The `progress` distinction matters when diagnosing results:
