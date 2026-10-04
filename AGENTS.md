@@ -369,6 +369,26 @@ command supports `--schema <input|output>`, `--dry-run`, `--help`.
 **Run:** choose tests by affected surface. Do not run unrelated areas just to satisfy a blanket rule.
 Expand test coverage when the impact is broad, shared, or uncertain.
 
+**Spec home isolation (the three-layer standard):** the suite never touches the developer's real
+`~/.behavioral`, and home-state debris never crosses contexts.
+
+1. **LAUNCH** — `bun run test` sets `BEHAVIORAL_HOME` to a fresh per-run temp dir at launch (the
+   only layer that covers in-process reads, every spawned child, and every future `--parallel`
+   worker, for free). Always run the suite through it, never bare `bun test`.
+2. **WORKER** — specs boot against `specHome()` (`src/tests-util/spec-home.ts` — the per-worker
+   `worker-<BUN_TEST_WORKER_ID ?? 1>` subdir under the launch home) or per-test temp homes threaded
+   through explicit spawn `env` overrides. Runtime `process.env` mutations never reach `Bun.spawn`
+   children (default inheritance is the parent's STARTUP-environment snapshot — the explicit merge
+   `env: { ...process.env, KEY: value }` is the only spawn-time form).
+3. **CONVENTION** — real usage keeps `~/.behavioral`; the suite always runs against a per-run temp
+   home; every automated/remote execution (CI shards, Blackwell autoresearch, Daytona-class
+   sandboxes) sets an explicit `BEHAVIORAL_HOME` per run at launch
+   (`ssh blackwell 'BEHAVIORAL_HOME=~/runs/<id> …'`).
+
+The enforcement proof is `scripts/spec-home-canary.sh`: it quarantines the real home, runs the full
+suite, asserts no new `~/.behavioral` appeared, and restores. Run it before relying on isolation on
+any new machine.
+
 # Accuracy
 
 **95% confidence threshold** — report uncertainty rather than guess.
