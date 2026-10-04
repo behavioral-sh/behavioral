@@ -12,9 +12,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject, Thread } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { hashString } from '../../utils.ts'
 import {
@@ -22,33 +20,22 @@ import {
   PLUGIN_THREADS_EVENT_TYPES,
   pluginThreadsThreads,
 } from '../plugin-threads.threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-const runProgram = (events: BPEvent[]): Selected[] => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  program.useTrace((trace: Trace) => {
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection) {
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-    }
-  })
-  for (const thread of pluginThreadsThreads) program.addThread(thread)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: `Producer once-thread re-emitting ${event.type}.`,
-      once: true,
-      rules: [{ request: event }],
-    })
-  // addThread is inert — trigger admits one ingress event and runs one
-  // super-step; the second pump cascades transform re-entries.
-  program.trigger({ type: 'plugin_threads_pump', detail: {} })
-  program.trigger({ type: 'plugin_threads_pump', detail: {} })
-  return selected
+const runProgram = async (events: BPEvent[]): Promise<Selected[]> => {
+  // Mint semantics (the transform-faculty ruling): the pack's transform
+  // listeners complete only through the fixed fourth faculty — the drive is
+  // async and settles on quiescence. Zero thread edits.
+  const drive = driveComposition({ threads: pluginThreadsThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle()
+    return drive.selected
+  } finally {
+    drive.terminate()
+  }
 }
 
 const proposal = (over: Partial<BPEvent> = {}): BPEvent => ({
@@ -58,8 +45,8 @@ const proposal = (over: Partial<BPEvent> = {}): BPEvent => ({
 })
 
 describe('plugin threads — import issue', () => {
-  test('a proposal issues the plugin-threads import shell_request: run op, label, env-carried target, ctx echo', () => {
-    const selected = runProgram([proposal()])
+  test('a proposal issues the plugin-threads import shell_request: run op, label, env-carried target, ctx echo', async () => {
+    const selected = await runProgram([proposal()])
     const call = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === 'p1-import')
     expect(call).toBeDefined()
     expect(call?.detail?.label).toBe('plugin-threads')
@@ -75,8 +62,8 @@ describe('plugin threads — import issue', () => {
     expect(ctx?.echo).toMatchObject({ source: 'p1', plugin: '/plugins/alpha', file: 't.ts' })
   })
 
-  test('a proposal with a target space carries it on the echo', () => {
-    const selected = runProgram([
+  test('a proposal with a target space carries it on the echo', async () => {
+    const selected = await runProgram([
       proposal({ detail: { id: 'p2', input: { plugin: '/plugins/alpha', file: 't.ts', space: 's1' } } }),
     ])
     const call = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === 'p2-import')
@@ -84,8 +71,8 @@ describe('plugin threads — import issue', () => {
     expect(ctx?.echo).toMatchObject({ source: 'p2', space: 's1' })
   })
 
-  test('a malformed proposal (missing plugin) never issues an import', () => {
-    const selected = runProgram([
+  test('a malformed proposal (missing plugin) never issues an import', async () => {
+    const selected = await runProgram([
       { type: PLUGIN_THREADS_EVENT_TYPES.proposal, detail: { id: 'p3', input: { file: 't.ts' } } },
     ])
     expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === 'p3-import')).toBe(
@@ -129,8 +116,8 @@ describe('plugin threads — the join and the candidates', () => {
       },
     }) as unknown as BPEvent
 
-  test('a validated import surfaces the batch and proposes one add_thread per thread', () => {
-    const selected = runProgram([
+  test('a validated import surfaces the batch and proposes one add_thread per thread', async () => {
+    const selected = await runProgram([
       proposal(),
       importResult([threadA, threadB], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
@@ -158,8 +145,8 @@ describe('plugin threads — the join and the candidates', () => {
     }
   })
 
-  test('a named target space stamps the proposed thread — the admission owns the mount scope', () => {
-    const selected = runProgram([
+  test('a named target space stamps the proposed thread — the admission owns the mount scope', async () => {
+    const selected = await runProgram([
       proposal({ detail: { id: 'p2', input: { plugin: '/p', file: 'f', space: 's1' } } }),
       importResult([threadA], { source: 'p2', plugin: '/p', file: 'f', space: 's1' }),
     ])
@@ -169,8 +156,8 @@ describe('plugin threads — the join and the candidates', () => {
     expect(input.thread?.name).toBe('greeter')
   })
 
-  test('a space-stamped proposal event reaches the root dispatcher — the declared space still stamps the target', () => {
-    const selected = runProgram([
+  test('a space-stamped proposal event reaches the root dispatcher — the declared space still stamps the target', async () => {
+    const selected = await runProgram([
       proposal({ space: 's1', detail: { id: 'p3', input: { plugin: '/plugins/alpha', file: 't.ts', space: 's1' } } }),
       importResult([threadA], { source: 'p3', plugin: '/plugins/alpha', file: 't.ts', space: 's1' }),
     ])
@@ -186,9 +173,9 @@ describe('plugin threads — the join and the candidates', () => {
     expect(input.thread?.name).toBe('greeter')
   })
 
-  test('a root target (no space) mounts with no space stamp — root-only, never omni', () => {
+  test('a root target (no space) mounts with no space stamp — root-only, never omni', async () => {
     const authored = { ...threadA, space: 'author-space' }
-    const selected = runProgram([
+    const selected = await runProgram([
       proposal(),
       importResult([authored], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
@@ -197,16 +184,16 @@ describe('plugin threads — the join and the candidates', () => {
     expect('space' in (input.thread ?? {})).toBe(false)
   })
 
-  test('an empty validated import proposes nothing — the batch carries only warnings', () => {
-    const selected = runProgram([
+  test('an empty validated import proposes nothing — the batch carries only warnings', async () => {
+    const selected = await runProgram([
       proposal(),
       importResult([], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
     expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)).toBe(false)
   })
 
-  test('a failed import surfaces the typed failure — never a crash', () => {
-    const selected = runProgram([
+  test('a failed import surfaces the typed failure — never a crash', async () => {
+    const selected = await runProgram([
       proposal({ detail: { id: 'p9', input: { plugin: '/p', file: 'broken.ts' } } }),
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
@@ -230,8 +217,8 @@ describe('plugin threads — the join and the candidates', () => {
     expect(selected.some((s) => s.type === PLUGIN_THREADS_EVENT_TYPES.candidate)).toBe(false)
   })
 
-  test('a shell-level failure (timeout) surfaces the typed failure too', () => {
-    const selected = runProgram([
+  test('a shell-level failure (timeout) surfaces the typed failure too', async () => {
+    const selected = await runProgram([
       proposal({ detail: { id: 'p8', input: { plugin: '/p', file: 'slow.ts' } } }),
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,

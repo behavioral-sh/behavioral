@@ -1,5 +1,5 @@
 import { uuid } from '../utils/uuid.ts'
-import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
+import { FRONTIER_STATUS, TRACE_MESSAGE_KINDS, TRANSFORM_REQUEST_EVENT } from './behavioral.constants.ts'
 import {
   type AddThread,
   type CandidateBid,
@@ -17,7 +17,6 @@ import {
 import {
   advanceRunningToPending,
   computeFrontier,
-  evaluateTransform,
   generateRulesFunctions,
   resumePendingThreadsForSelectedEvent,
   useThread,
@@ -353,38 +352,42 @@ export const behavioral = (options?: { sessionId?: string }) => {
       step: stepId,
     })
     if (transformers.length) {
+      // The mint: every matched listener's reshape contract rides to the fixed
+      // fourth faculty as a `transform_request` once-thread — the SAME re-entry
+      // mechanism as the old target mint. The engine gains ZERO continuation
+      // state: the composition parks the contract at the route leg (joining the
+      // trace's id) and mints the target at the result leg. Failures ride back
+      // as the ok:false result selection — fail-visible; the `transform_error`
+      // trace kind retired with the engine switch.
+      const withIds = transformers.map((transformer) => ({ ...transformer, id: uuid() }))
       sendTrace?.({
         kind: TRACE_MESSAGE_KINDS.transform,
         timestamp: Date.now(),
         step: stepId,
         instanceId,
         sessionId,
-        transformers,
+        transformers: withIds,
       })
-      for (const { query, target, thread, space } of transformers) {
-        const result = evaluateTransform(query, selectedEvent.detail)
-        if (result.ok) {
-          addThread({
-            space,
-            name: `Transform(${thread} => ${target})`,
-            description: `Transform re-entry: applies the ${thread} transform and re-emits as ${target}.`,
-            once: true,
-            rules: [{ request: { type: target, detail: result.value } }],
-          })
-        } else {
-          // Errors-as-data: the target never fires; the failure is traced.
-          sendTrace?.({
-            kind: TRACE_MESSAGE_KINDS.transform_error,
-            timestamp: Date.now(),
-            step: stepId,
-            instanceId,
-            sessionId,
-            transformer: { query, target, thread, space },
-            reason: result.reason,
-            ...(result.stderr !== undefined && { stderr: result.stderr }),
-            ...(result.exitCode !== undefined && { exitCode: result.exitCode }),
-          })
-        }
+      for (const { query, target, thread, space, id } of withIds) {
+        addThread({
+          space,
+          name: `TransformRequest(${thread} => ${target})`,
+          description: `Transform request: hands the ${thread} reshape contract to the transform faculty (target ${target}).`,
+          once: true,
+          rules: [
+            {
+              request: {
+                type: TRANSFORM_REQUEST_EVENT,
+                detail: {
+                  id,
+                  query,
+                  target,
+                  ...(selectedEvent.detail === undefined ? {} : { detail: selectedEvent.detail }),
+                },
+              },
+            },
+          ],
+        })
       }
     }
     sendTrace({

@@ -1,52 +1,41 @@
 /**
- * The skill-client thread library against the real engine — the ICL
+ * The skill-client thread library through the REAL composition — the ICL
  * replacement for the skill-discover tool: a boot thread requests the scan
  * recipe through the shell worker (the run op), and a transform
  * threads the result into a store put of the catalog. The recipe itself is
  * run for real against a fixture tree (read file → slice frontmatter fence →
  * YAML.parse the slice).
+ *
+ * Mint semantics (the transform-faculty ruling): the catalog transform
+ * completes only through the fixed fourth faculty — the drive is async and
+ * settles on quiescence. Zero thread edits: the pack mounts unchanged.
  */
 
 import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { SKILL_SCAN_CALL_ID, SKILL_SCAN_SCRIPT, skillThreads } from '../shell.threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-const runProgram = (events: BPEvent[]): Selected[] => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  program.useTrace((trace: Trace) => {
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of skillThreads) program.addThread(thread)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-  // addThread is inert — trigger admits one ingress event and runs one
-  // super-step; the second pump cascades transform re-entries.
-  program.trigger({ type: 'skill_gate_pump', detail: {} })
-  program.trigger({ type: 'skill_gate_pump', detail: {} })
-  return selected
+const runProgram = async (events: BPEvent[]): Promise<Selected[]> => {
+  const drive = driveComposition({ threads: skillThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle()
+    return drive.selected
+  } finally {
+    drive.terminate()
+  }
 }
 
 describe('skill threads — scan boot', () => {
-  test('boot requests the skill-scan shell_request: the run op carries the recipe, json format', () => {
-    const selected = runProgram([])
+  test('boot requests the skill-scan shell_request: the run op carries the recipe, json format', async () => {
+    const selected = await runProgram([])
     const call = selected.find(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === SKILL_SCAN_CALL_ID,
     )
@@ -61,8 +50,8 @@ describe('skill threads — scan boot', () => {
     expect(String(input.script).includes('---')).toBe(true)
   })
 
-  test('boot fires once — a second pump adds no duplicate call', () => {
-    const selected = runProgram([])
+  test('boot fires once — a second pump adds no duplicate call', async () => {
+    const selected = await runProgram([])
     const calls = selected.filter(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === SKILL_SCAN_CALL_ID,
     )
@@ -71,12 +60,12 @@ describe('skill threads — scan boot', () => {
 })
 
 describe('skill threads — catalog transform', () => {
-  test('a scan result with a skills catalog is put into the store as one value', () => {
+  test('a scan result with a skills catalog is put into the store as one value', async () => {
     const catalog = {
       skills: [{ name: 'alpha', description: 'does alpha things', location: '/x/SKILL.md' }],
       warnings: [],
     }
-    const selected = runProgram([
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: SKILL_SCAN_CALL_ID, result: { status: 'completed', jsonData: catalog } },
@@ -90,8 +79,8 @@ describe('skill threads — catalog transform', () => {
     expect(input.value).toEqual(catalog)
   })
 
-  test('a result without a catalog does not put', () => {
-    const selected = runProgram([
+  test('a result without a catalog does not put', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: 'other-call', result: { status: 'completed', lines: ['x'], totalLines: 1 } },
@@ -100,11 +89,11 @@ describe('skill threads — catalog transform', () => {
     expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.store_request)).toBe(false)
   })
 
-  test('a malformed catalog fails the detailSchema gate — fail-closed, never partial admission', () => {
+  test('a malformed catalog fails the detailSchema gate — fail-closed, never partial admission', async () => {
     // `skills` is present (the jq filter passes) but not an array of records —
     // the envelope schema must reject the whole put, not admit the bad value.
     const malformed = { skills: 'not-an-array', warnings: [] }
-    const selected = runProgram([
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: SKILL_SCAN_CALL_ID, result: { status: 'completed', jsonData: malformed } },

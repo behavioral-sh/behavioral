@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { TRACE_MESSAGE_KINDS } from '../behavioral.constants.ts'
 import { behavioral } from '../behavioral.ts'
-import type { AddThreadError, Thread, ThreadAddedTrace, ThreadRemovedTrace } from '../behavioral.types.ts'
+import type {
+  AddThreadError,
+  SelectionTrace,
+  Thread,
+  ThreadAddedTrace,
+  ThreadRemovedTrace,
+} from '../behavioral.types.ts'
 import { selections, traceCollector } from './helpers.ts'
 
 describe('removeThread', () => {
@@ -100,16 +106,19 @@ describe('removeThread', () => {
       ],
     })
     program.trigger({ type: 'arrives', detail: { v: 1 } })
-    // The transform matched: the engine minted the Transform re-entry
-    // once-thread (an ephemeral identity). Remove the shaper; the re-entry
-    // STAYS and still requests its target.
+    // Mint semantics (the transform-faculty ruling): the engine minted the
+    // transform_request once-thread (an ephemeral identity). Remove the
+    // shaper; the request STAYS and still selects — the composition's result
+    // leg is what mints the target.
     program.removeThread({ instanceHash: 7 })
+    const requestsBefore = requestSelections(traces).length
+    expect(requestsBefore).toBeGreaterThanOrEqual(1)
     program.trigger({ type: 'pump' })
-    expect(selections(traces).some((s) => s.selected.type === 'reshaped')).toBe(true)
-    // The shaper itself no longer matches: a second arrival transforms nothing.
+    expect(requestSelections(traces).length).toBe(requestsBefore)
+    // The shaper itself no longer matches: a second arrival mints nothing.
     program.trigger({ type: 'arrives', detail: { v: 2 } })
     program.trigger({ type: 'pump' })
-    expect(selections(traces).filter((s) => s.selected.type === 'reshaped')).toHaveLength(1)
+    expect(requestSelections(traces).length).toBe(requestsBefore)
   })
 
   test('a live same-identity add is rejected — never a silent replacement', () => {
@@ -134,3 +143,10 @@ describe('removeThread', () => {
     expect(added).toHaveLength(2)
   })
 })
+
+/** The transform_request selections — the engine's mint, the composition's route key. */
+const requestSelections = (traces: ReturnType<typeof traceCollector>['traces']): SelectionTrace[] =>
+  traces.filter(
+    (t): t is SelectionTrace =>
+      t.kind === TRACE_MESSAGE_KINDS.selection && (t as SelectionTrace).selected.type === 'transform_request',
+  )

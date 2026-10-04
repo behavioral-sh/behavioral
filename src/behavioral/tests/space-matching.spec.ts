@@ -118,7 +118,7 @@ describe('space matching — root authority: the unstamped listener sees every s
     expect(selectedTypes(traces)).not.toContain('after-boom')
   })
 
-  test('an unstamped transform matches a named-space event — the target re-enters in the source event space', () => {
+  test('an unstamped transform matches a named-space event — the re-entry stamp follows the source event space', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -131,10 +131,15 @@ describe('space matching — root authority: the unstamped listener sees every s
     })
     program.trigger({ type: 'order', space: 's1', detail: { order: { id: 'o-1' } } })
 
-    const selections = traces.filter((t): t is SelectionTrace => t.kind === TRACE_MESSAGE_KINDS.selection)
-    const ship = selections.find((s) => s.selected.type === 'ship')
-    expect(ship).toBeDefined()
-    expect(ship!.selected.space).toBe('s1')
+    // Mint semantics (the transform-faculty ruling): the engine mints the
+    // request; the re-entry stamp rides the contract — the composition mints
+    // the target at the result leg with the SAME space.
+    const requests = traces.filter(
+      (t): t is SelectionTrace =>
+        t.kind === TRACE_MESSAGE_KINDS.selection && (t as SelectionTrace).selected.type === 'transform_request',
+    )
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.selected.space).toBe('s1')
 
     const transformTraces = traces.filter((t): t is TransformTrace => t.kind === TRACE_MESSAGE_KINDS.transform)
     expect(transformTraces).toHaveLength(1)

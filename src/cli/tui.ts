@@ -49,7 +49,6 @@ export const TRACE_KIND_COLORS: Record<string, string> = {
   [TRACE_MESSAGE_KINDS.deadlock]: 'red',
   [TRACE_MESSAGE_KINDS.trigger_error]: 'red',
   [TRACE_MESSAGE_KINDS.add_thread_error]: 'red',
-  [TRACE_MESSAGE_KINDS.transform_error]: 'red',
   [TRACE_MESSAGE_KINDS.idle]: 'dimgray',
   [TRACE_MESSAGE_KINDS.selection]: 'cyan',
 }

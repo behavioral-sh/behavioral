@@ -13,7 +13,8 @@
  *
  * Faculty workers the composition spawns resolve to
  * `/faculties/*.faculty.ts` (the composition bundle sits at the root) and
- * are served as bundled CLASSIC-safe artifacts; the jq worker + wasm ride
+ * are served as bundled CLASSIC-safe artifacts; the transform faculty's
+ * bundle is self-contained (the wasm rides it base64-inlined)
  * the same rule. COOP/COEP on everything (the SAB + Atomics bridge needs
  * the isolation).
  */
@@ -30,7 +31,6 @@ import { validateStoreRequestEvent } from '../../../faculties/faculties.types.ts
 
 const FIXTURES_DIR = import.meta.dir
 const SRC_ROOT = `${FIXTURES_DIR}/../../..`
-const REPO_ROOT = `${FIXTURES_DIR}/../../../..`
 
 /** COOP/COEP on everything — the SAB + Atomics bridge needs the isolation. */
 const withIsolation = (response: Response): Response => {
@@ -114,31 +114,13 @@ export const startBridgeFixtureServer = async (port = 0): Promise<BridgeFixtureS
   // 2. The fixed three faculty workers — the composition bundle's literals
   //    resolve to `/faculties/<entry>.faculty.ts`. Bundled single-file
   //    (classic-safe) artifacts.
-  for (const faculty of ['system-one', 'system-two', 'frontier-analysis']) {
+  for (const faculty of ['system-one', 'system-two', 'frontier-analysis', 'transform']) {
     const entry = Bun.resolveSync(`./faculties/${faculty}.faculty.ts`, SRC_ROOT)
     route(`/faculties/${faculty}.faculty.ts`, async () => ({
       body: await bundleBrowser(`import ${JSON.stringify(entry)}`),
       contentType: 'text/javascript',
     }))
   }
-
-  // 3. The jq worker at the literal URL the engine bundle references —
-  //    `/jq.worker.ts` — plus the wasm (the URL rewrite mirrors the
-  //    composition fixture's classic-safe rule).
-  const jqWorkerEntry = Bun.resolveSync('./behavioral/jq.worker.ts', SRC_ROOT)
-  route('/jq.worker.ts', async () => {
-    let body = await bundleBrowser(`import ${JSON.stringify(jqWorkerEntry)}`)
-    body = body.replaceAll(
-      'new URL("./build/jq.wasm", import.meta.url)',
-      `new URL("/build/jq.wasm", "http://localhost/")`,
-    )
-    return { body, contentType: 'text/javascript' }
-  })
-  const wasmPath = Bun.resolveSync('./node_modules/jq-wasm/dist/build/jq.wasm', REPO_ROOT)
-  route('/build/jq.wasm', async () => ({
-    body: await Bun.file(wasmPath).bytes(),
-    contentType: 'application/wasm',
-  }))
 
   // 4. The page: the real composition worker over the WorkerTransport (the
   //    landed serving contract), a store trigger, and the taps.

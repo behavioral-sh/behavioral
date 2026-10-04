@@ -37,13 +37,10 @@ import { redactTrace } from './trace-redact.ts'
  * ruled nested-worker placement is only satisfiable in a dedicated worker).
  *
  * This is the level-1 worker: a MODULE script (it needs `import.meta` URLs —
- * the jq worker's, the faculty workers'). Every worker IT spawns is CLASSIC
+ * the faculty workers'). Every worker IT spawns is CLASSIC
  * (the nested module-worker failure is silent in the WebView's Chromium) —
- * the fixed three faculty workers spawn through `useWorker` with the
- * bundler-visible `new Worker` literals inside `b-program.ts`, and the
- * engine's jq pool is classic-safe (the boot-window rule: this worker idles
- * after boot because the host drives it via messages, so the nested boot
- * window passes before the first transform).
+ * the fixed FOUR faculty workers spawn through `useWorker` with the
+ * bundler-visible `new Worker` literals inside `b-program.ts`.
  *
  * The message protocol (`composition-port.ts`), over the worker's own
  * channel — the page's `WorkerTransport` is the other end:
@@ -178,9 +175,10 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
   const boot = (models: Parameters<typeof bProgram>[0]['models']): Runtime => {
     if (runtime !== undefined) return runtime
     // (The boot reconciliation pack does NOT mount here: its joins are jq
-    // transforms, and the jq SAB bridge is unavailable in browser realms —
-    // every transform would dead-letter at boot. The daemon's composition is
-    // the reconciliation's host until the jq-in-browser story lands.)
+    // transforms, and the transform faculty is not yet wired in the BUNDLED
+    // composition's serving seam — the pack mounts DAEMON-ONLY until the
+    // serving-side story lands. The transform faculty itself rides the
+    // bundle gate by construction.)
     const booted = bProgram({ threads, models, actuators: laneBuilders })
     // The registry's durable-write legs — over the default leg's socket-lane
     // store (queue-before-open covers the boot window; a fixture-provided

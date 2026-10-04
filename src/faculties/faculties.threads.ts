@@ -62,14 +62,16 @@ export const eventTypeOf = (schema: unknown): string => {
  * Extract guard entries from a faculty's three event schemas (the same object
  * `useFaculty` compiles): the `type` constant and the `detail` sub-schema.
  */
-export const eventGuardEntries = (schemas: { request: unknown; cancel: unknown; result: unknown }): GuardEntry[] =>
-  [schemas.request, schemas.cancel, schemas.result].map((schema) => ({
-    type: eventTypeOf(schema),
-    detailSchema:
-      ((schema as { properties?: Record<string, unknown> }).properties?.detail as
-        | Record<string, unknown>
-        | undefined) ?? {},
-  }))
+export const eventGuardEntries = (schemas: { request: unknown; cancel?: unknown; result: unknown }): GuardEntry[] =>
+  [schemas.request, schemas.cancel, schemas.result]
+    .filter((schema) => schema !== undefined)
+    .map((schema) => ({
+      type: eventTypeOf(schema),
+      detailSchema:
+        ((schema as { properties?: Record<string, unknown> }).properties?.detail as
+          | Record<string, unknown>
+          | undefined) ?? {},
+    }))
 
 const invalidControllerMessages: GuardEntry[] = Object.entries(CONTROLLER_DETAIL_SCHEMAS).map(
   ([type, detailSchema]) => ({ type, detailSchema: detailSchema as Record<string, unknown> }),

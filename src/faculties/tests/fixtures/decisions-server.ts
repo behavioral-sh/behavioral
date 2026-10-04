@@ -55,15 +55,26 @@ export const startDecisionsServer = async ({
   rateLimitFirst = 0,
   delayMs = 0,
   pickChoice,
+  hangAfter,
+  junkAnswer,
 }: {
   apiKey?: string
   rateLimitFirst?: number
   delayMs?: number
   /** Override the canned choice answer (e.g. `'reject'` for the judgment's rejection path). */
   pickChoice?: string
+  /**
+   * After this many ANSWERED decisions (post-rate-limit), hang forever — the
+   * in-flight-judgment pins (a second trip whose judgment never answers). The
+   * hang holds the connection open; `close()` force-stops the server.
+   */
+  hangAfter?: number
+  /** Answer every question with a non-conforming value — the malformed-answer path (the faculty's output schema rejects it). */
+  junkAnswer?: boolean
 } = {}): Promise<DecisionsFixture> => {
   const requests: RecordedDecisionRequest[] = []
   let rateLimited = 0
+  let answered = 0
 
   const server = Bun.serve({
     port: 0,
@@ -91,10 +102,19 @@ export const startDecisionsServer = async ({
         return Response.json({ error: { code: 'invalid_request', message: 'model is required' } }, { status: 422 })
       }
       if (delayMs > 0) await Bun.sleep(delayMs)
+      if (hangAfter !== undefined && answered >= hangAfter) {
+        // The in-flight judgment: never respond — the correlation stays open
+        // until the test terminates the runtime (the worker dies with it).
+        await new Promise(() => {})
+      }
+      answered += 1
 
       const questions = body.questions ?? {}
       const answers = Object.fromEntries(
-        Object.entries(questions).map(([id, question], index) => [id, answerFor(question, index, pickChoice)]),
+        Object.entries(questions).map(([id, question], index) => [
+          id,
+          junkAnswer === true ? 'junk' : answerFor(question, index, pickChoice),
+        ]),
       )
       return Response.json({
         model: DECISIONS_MODEL,

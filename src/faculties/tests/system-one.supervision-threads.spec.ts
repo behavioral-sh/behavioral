@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { type CompositionDrive, driveComposition } from '../../b-program/tests/composition-drive.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import { behavioral } from '../../behavioral/behavioral.ts'
 import type { JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
@@ -6,7 +7,6 @@ import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
 import {
   SUPERVISION_DEFAULT_THRESHOLD,
   SUPERVISION_EVENT_TYPES,
-  SUPERVISION_MAX_REISSUES,
   supervisionJudgmentThreads,
   supervisionRecoveryThreads,
   supervisionThreads,
@@ -14,7 +14,7 @@ import {
   validateSupervisionInput,
   validateSupervisionTripped,
 } from '../system-one.threads.ts'
-import { spawnFacultyWorker } from './faculty-harness.ts'
+import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-server.ts'
 
 /**
  * The supervision threads against the real engine — the runtime circuit
@@ -26,20 +26,24 @@ import { spawnFacultyWorker } from './faculty-harness.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-/** A live program with the selection log; threads mount through the real addThread. */
+/** A live program with the selection log; threads mount through the real addThread.
+ *
+ * The bare-engine program serves the NO-judge pins (the counting breaker — the
+ * trip is synchronous, no transform in the loop). The judge-interaction pins
+ * drive through the REAL composition (judgeDrive below): the supervision
+ * pack's transform listeners complete only through the fixed fourth faculty.
+ */
 const liveProgram = () => {
   const program = behavioral()
   const selected: Selected[] = []
-  const transformErrors: Trace[] = []
   program.useTrace((trace: Trace) => {
     if (trace.kind === TRACE_MESSAGE_KINDS.selection)
       selected.push({
         type: (trace as SelectionTrace).selected.type,
         detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
       })
-    if (trace.kind === TRACE_MESSAGE_KINDS.transform_error) transformErrors.push(trace)
   })
-  return { program, selected, transformErrors }
+  return { program, selected }
 }
 
 const mountAll = (program: ReturnType<typeof behavioral>, threads: Thread[]): void => {
@@ -53,37 +57,6 @@ const loopThread = (type: string): Thread => ({
   name: `loop(${type})`,
   description: 'The self-sustaining loop cascade under test.',
   rules: [{ request: { type, detail: {} } }],
-})
-
-/** Feed one ingress event through a once-producer and pump the cascade. */
-const feed = (
-  program: ReturnType<typeof behavioral>,
-  event: { type: string; detail?: unknown },
-  pump: string,
-): void => {
-  program.addThread({
-    name: `producer/${event.type}`,
-    description: `Producer once-thread re-emitting ${event.type}.`,
-    once: true,
-    rules: [{ request: event as never }],
-  })
-  program.trigger({ type: pump, detail: {} })
-}
-
-/** The correlated judge result — a choice answer on the `supervision` question. */
-const judgeChoiceResult = (watchedType: string, choice: string): { type: string; detail: unknown } => ({
-  type: FACULTY_MESSAGE_KINDS.system_one_request_result,
-  detail: {
-    id: `${watchedType}-supervision`,
-    ok: true,
-    result: { model: 'jev-1.13.0', answers: { supervision: { type: 'choice', choice } } },
-  },
-})
-
-/** The judge-unavailable result — the faculty's error branch, ok false. */
-const judgeErrorResult = (watchedType: string, message: string): { type: string; detail: unknown } => ({
-  type: FACULTY_MESSAGE_KINDS.system_one_request_result,
-  detail: { id: `${watchedType}-supervision`, ok: false, error: { code: 'error', message } },
 })
 
 describe('supervision threads — the counting breaker', () => {
@@ -187,290 +160,326 @@ describe('supervision threads — the counting breaker', () => {
   })
 })
 
+/**
+ * The judge-interaction drives — through the REAL composition (the
+ * transform-faculty ruling): the supervision pack's transform listeners (the
+ * judge-request mapping, the verdict division, the recovery re-issues)
+ * complete only through the fixed fourth faculty, and the judge itself is a
+ * REAL systemOne faculty over a fixture endpoint — the choreography is async
+ * and every hop polls. The probes ride as ingress triggers (the blocked kind
+ * stays unselected; a free type selects) — the composition has no mid-run
+ * addThread.
+ */
+const judgeDrive = async ({
+  watch,
+  threshold,
+  maxReissues,
+  recovery = false,
+  fixture,
+}: {
+  watch: string[]
+  threshold: number
+  maxReissues?: number
+  recovery?: boolean
+  fixture?: Parameters<typeof startDecisionsServer>[0]
+}): Promise<{ drive: CompositionDrive; server: Awaited<ReturnType<typeof startDecisionsServer>> }> => {
+  const server = await startDecisionsServer(fixture)
+  const drive = driveComposition({
+    threads: [
+      ...supervisionThreads({ watch, threshold }),
+      ...supervisionJudgmentThreads,
+      ...(recovery
+        ? supervisionRecoveryThreads({ watch, threshold, ...(maxReissues === undefined ? {} : { maxReissues }) })
+        : []),
+      loopThread('leaky'),
+    ],
+    models: { systemOne: { url: server.url, model: DECISIONS_MODEL } as unknown as JsonObject },
+  })
+  return { drive, server }
+}
+
+const judgeRequestCount = (selected: Selected[], watchedType: string): number =>
+  selected.filter(
+    (s) =>
+      s.type === FACULTY_MESSAGE_KINDS.system_one_request && (s.detail?.id as string) === `${watchedType}-supervision`,
+  ).length
+
+const judgeRequestDetail = (selected: Selected[], watchedType: string): Selected | undefined =>
+  selected.find(
+    (s) =>
+      s.type === FACULTY_MESSAGE_KINDS.system_one_request && (s.detail?.id as string) === `${watchedType}-supervision`,
+  )
+
+/** The declined transform results — the post-switch noise class (the retired transform_error kind). */
+const declined = (selected: Selected[]): Selected[] =>
+  selected.filter(
+    (s) => s.type === FACULTY_MESSAGE_KINDS.transform_request_result && (s.detail as { ok?: boolean })?.ok === false,
+  )
+
 describe('supervision threads — block-then-judge', () => {
-  test('approve: the judge lifts the block — the release fires, the counter resets, the loop resumes', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-    expect(count(selected, SUPERVISION_EVENT_TYPES.tripped)).toBe(1)
-
-    // The judge approves: the lift maps to a release for the watched type.
-    feed(program, judgeChoiceResult('leaky', 'lift'), 'pump2')
-    const release = selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.release)
-    expect(release).toBeDefined()
-    expect(release?.detail).toEqual({ type: 'leaky' })
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.halted)).toBe(false)
-
-    // The block lifted and the counter RESET: the loop resumed its cascade,
-    // counted a fresh threshold, and tripped again — the second judgment is
-    // in flight (unanswered), so the block holds once more.
-    expect(count(selected, 'leaky')).toBe(16)
-    expect(count(selected, SUPERVISION_EVENT_TYPES.tripped)).toBe(2)
-    const judgeRequests = selected.filter(
-      (s) => s.type === FACULTY_MESSAGE_KINDS.system_one_request && (s.detail?.id as string) === 'leaky-supervision',
-    )
-    expect(judgeRequests.length).toBe(2)
-    // The issued Decision input rides the one input home.
-    expect(validateSupervisionInput(judgeRequests[0]?.detail?.input)).toBe(true)
-    // The verdict division is total — no declining listener on any branch.
-    expect(transformErrors).toHaveLength(0)
+  test('approve: the judge lifts the block — the release fires, the counter resets, the loop resumes', async () => {
+    // The fixture answers the FIRST decision (lift) and hangs the rest — the
+    // second trip's judgment stays in flight, so the block holds at the end
+    // state (the old harness held it with an unanswered manual feed).
+    const { drive, server } = await judgeDrive({ watch: ['leaky'], threshold: 8, fixture: { hangAfter: 1 } })
+    try {
+      // The first trip: the block kills the loop at the threshold; the judge
+      // lifts; the loop resumes with a FRESH count and trips again at 16.
+      await drive.waitUntil((sel) => count(sel, 'leaky') >= 16)
+      expect(count(drive.selected, 'leaky')).toBe(16)
+      expect(count(drive.selected, SUPERVISION_EVENT_TYPES.tripped)).toBe(2)
+      const release = drive.selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.release)
+      expect(release?.detail).toEqual({ type: 'leaky' })
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.halted)).toBe(false)
+      // The second judgment in flight (the fixture hangs) — the block holds.
+      await drive.waitUntil((sel) => judgeRequestCount(sel, 'leaky') >= 2)
+      // The issued Decision input rides the one input home.
+      expect(validateSupervisionInput(judgeRequestDetail(drive.selected, 'leaky')?.detail?.input)).toBe(true)
+      // The verdict division is total — no declining listener on any branch.
+      expect(declined(drive.selected)).toHaveLength(0)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('reject: the halt holds the block — supervision_halted surfaces, the loop stays dead', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
+  test('reject: the halt holds the block — supervision_halted surfaces, the loop stays dead', async () => {
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      fixture: { pickChoice: 'halt', hangAfter: 1 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      const halted = drive.selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
+      expect(halted?.detail).toEqual({ type: 'leaky' })
+      expect(validateSupervisionHalted(halted?.detail)).toBe(true)
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+      expect(count(drive.selected, 'leaky')).toBe(8)
 
-    // The judge rejects: the halt surfaces (no reason — the choice answer
-    // carries no prose), the release never fires.
-    feed(program, judgeChoiceResult('leaky', 'halt'), 'pump2')
-    const halted = selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
-    expect(halted).toBeDefined()
-    expect(halted?.detail).toEqual({ type: 'leaky' })
-    expect(validateSupervisionHalted(halted?.detail)).toBe(true)
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-
-    // The block HOLDS: a later request for the watched type stays blocked,
-    // while a non-watched event still selects — the halt is surgical.
-    mountAll(program, [
-      {
-        name: 'probe-blocked',
-        description: 'Test thread.',
-        once: true,
-        rules: [{ request: { type: 'leaky', detail: {} } }],
-      },
-    ])
-    program.trigger({ type: 'pump3', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-    mountAll(program, [
-      {
-        name: 'probe-free',
-        description: 'Test thread.',
-        once: true,
-        rules: [{ request: { type: 'tick', detail: {} } }],
-      },
-    ])
-    program.trigger({ type: 'pump4', detail: {} })
-    expect(count(selected, 'tick')).toBe(1)
-    expect(transformErrors).toHaveLength(0)
+      // The block HOLDS: a later request for the watched type stays blocked
+      // (the ingress trigger stays unselected), while a non-watched event
+      // still selects — the halt is surgical.
+      drive.trigger({ type: 'leaky', detail: {} } as never)
+      await drive.settle()
+      expect(count(drive.selected, 'leaky')).toBe(8)
+      drive.trigger({ type: 'tick', detail: {} } as never)
+      await drive.waitUntil((sel) => count(sel, 'tick') >= 1)
+      expect(count(drive.selected, 'leaky')).toBe(8)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('fail-visible: an unavailable judge holds the block and surfaces the halt with the reason', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
+  test('fail-visible: an unavailable judge holds the block and surfaces the halt with the reason', async () => {
+    // The first decision rate-limits (429 — the faculty's error branch): the
+    // block HOLDS and the halt surfaces WITH the judge-failure reason.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      // The faculty RETRIES 429s (4 attempts) — every request must rate-limit
+      // for the judgment to fail through to the halt.
+      fixture: { rateLimitFirst: 99 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      const halted = drive.selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
+      expect((halted?.detail as { reason?: string })?.reason).toContain('HTTP 429')
+      expect(validateSupervisionHalted(halted?.detail)).toBe(true)
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
 
-    // The judge is unavailable (429-exhausted, timeout, crash — the faculty's
-    // error branch): the block HOLDS and the halt surfaces WITH the
-    // judge-failure reason — never silent continuation, never an invisible halt.
-    feed(program, judgeErrorResult('leaky', 'HTTP 429 — rate limited'), 'pump2')
-    const halted = selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
-    expect(halted).toBeDefined()
-    expect(halted?.detail).toEqual({ type: 'leaky', reason: 'HTTP 429 — rate limited' })
-    expect(validateSupervisionHalted(halted?.detail)).toBe(true)
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-
-    // The block holds — the loop stays dead.
-    mountAll(program, [
-      {
-        name: 'probe-blocked',
-        description: 'Test thread.',
-        once: true,
-        rules: [{ request: { type: 'leaky', detail: {} } }],
-      },
-    ])
-    program.trigger({ type: 'pump3', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-    expect(transformErrors).toHaveLength(0)
+      // The block holds — the loop stays dead.
+      drive.trigger({ type: 'leaky', detail: {} } as never)
+      await drive.settle()
+      expect(count(drive.selected, 'leaky')).toBe(8)
+      expect(declined(drive.selected)).toHaveLength(0)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('a malformed judge answer surfaces the halt — never an invisible hold', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-
-    // A hostile/junk answer is not a lift — the halt surfaces (fail-visible)
-    // and the block holds; the malformed payload never jq-errors.
-    feed(
-      program,
-      {
-        type: FACULTY_MESSAGE_KINDS.system_one_request_result,
-        detail: { id: 'leaky-supervision', ok: true, result: { model: 'm', answers: { supervision: 'junk' } } },
-      },
-      'pump2',
-    )
-    const halted = selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
-    expect(halted).toBeDefined()
-    expect(halted?.detail).toEqual({ type: 'leaky' })
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-    mountAll(program, [
-      {
-        name: 'probe-blocked',
-        description: 'Test thread.',
-        once: true,
-        rules: [{ request: { type: 'leaky', detail: {} } }],
-      },
-    ])
-    program.trigger({ type: 'pump3', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-    expect(transformErrors).toHaveLength(0)
+  test('a malformed judge answer surfaces the halt — never an invisible hold', async () => {
+    // The fixture answers junk: the systemOne faculty's OUTPUT SCHEMA rejects
+    // it (the answers envelope is strict) — the judge result comes back the
+    // typed error and the halt surfaces WITH the reason. The old harness fed
+    // the junk past the faculty (a bare-engine manual feed); through the
+    // composition the schema gate is the first line — the pin's intent (a
+    // malformed answer never passes silently) holds at the faculty boundary.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      fixture: { junkAnswer: true, hangAfter: 1 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      const halted = drive.selected.find((s) => s.type === SUPERVISION_EVENT_TYPES.halted)
+      expect((halted?.detail as { type?: string })?.type).toBe('leaky')
+      expect(typeof (halted?.detail as { reason?: string })?.reason).toBe('string')
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+      drive.trigger({ type: 'leaky', detail: {} } as never)
+      await drive.settle()
+      expect(count(drive.selected, 'leaky')).toBe(8)
+      expect(declined(drive.selected)).toHaveLength(0)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 })
 
 describe('supervision threads — recovery', () => {
-  /** The full pack — breaker + judgment + recovery — as the composition mounts it. */
-  const mountPack = (
-    program: ReturnType<typeof behavioral>,
-    watch: string[],
-    threshold: number,
-    maxReissues?: number,
-  ): void => {
-    mountAll(program, supervisionThreads({ watch, threshold }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(
-      program,
-      supervisionRecoveryThreads({ watch, threshold, ...(maxReissues === undefined ? {} : { maxReissues }) }),
-    )
-  }
+  test('judge-retry: an unjudged halt re-issues the Decision — a later lift lifts the block', async () => {
+    // The first decision 429s (the halt + the re-issue); the RE-ISSUE is the
+    // second ANSWERED decision (lift); the second trip's judgment hangs.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      recovery: true,
+      // The faculty RETRIES 429s (4 attempts): rate-limit the first FOUR
+      // requests so the FIRST decision fails through to the halt; the
+      // RE-ISSUE then answers (lift); the second trip's judgment hangs.
+      fixture: { rateLimitFirst: 4, hangAfter: 1 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, 'leaky') >= 8)
+      await drive.waitUntil((sel) => judgeRequestCount(sel, 'leaky') >= 1)
 
-  const judgeRequestCount = (selected: Selected[], watchedType: string): number =>
-    selected.filter(
-      (s) =>
-        s.type === FACULTY_MESSAGE_KINDS.system_one_request &&
-        (s.detail?.id as string) === `${watchedType}-supervision`,
-    ).length
+      // The judge was unavailable — the halt surfaced with the reason, and the
+      // retry thread re-issued the SAME Decision (bounded, re-armed on release).
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      await drive.waitUntil((sel) => judgeRequestCount(sel, 'leaky') >= 2)
 
-  test('judge-retry: an unjudged halt re-issues the Decision — a later lift lifts the block', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountPack(program, ['leaky'], 8)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
-    expect(judgeRequestCount(selected, 'leaky')).toBe(1)
-
-    // The judge is unavailable — the halt surfaces with the reason.
-    feed(program, judgeErrorResult('leaky', 'HTTP 429 — rate limited'), 'pump2')
-    expect(count(selected, SUPERVISION_EVENT_TYPES.halted)).toBe(1)
-
-    // The retry thread re-issued the SAME Decision (the attempt rode the
-    // thread's generator state — bounded, re-armed on release).
-    expect(judgeRequestCount(selected, 'leaky')).toBe(2)
-
-    // The re-ask succeeds: the lift releases the block, the loop resumes,
-    // and the fresh counter trips again — recovery proven end-to-end.
-    feed(program, judgeChoiceResult('leaky', 'lift'), 'pump3')
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(true)
-    expect(count(selected, 'leaky')).toBe(16)
-    expect(count(selected, SUPERVISION_EVENT_TYPES.tripped)).toBe(2)
-    expect(transformErrors).toHaveLength(0)
+      // The re-ask succeeds: the lift releases the block, the loop resumes,
+      // and the fresh counter trips again — recovery proven end-to-end.
+      await drive.waitUntil((sel) => sel.some((s) => s.type === SUPERVISION_EVENT_TYPES.release))
+      await drive.waitUntil((sel) => count(sel, 'leaky') >= 16)
+      expect(count(drive.selected, 'leaky')).toBe(16)
+      expect(count(drive.selected, SUPERVISION_EVENT_TYPES.tripped)).toBe(2)
+      expect(declined(drive.selected)).toHaveLength(0)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('judge-retry is bounded: repeated judge failures exhaust the re-issues — the halt stands', () => {
-    const { program, selected } = liveProgram()
-    mountPack(program, ['leaky'], 8, 2)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-
-    // Every judgment fails: the initial issue plus exactly MAX_REISSUES
-    // re-issues — then the standing halt gets no further re-ask. (Only the
-    // results correlated to actually-issued requests are fed; a spurious
-    // uncorrelated result could not exist on the wire.)
-    for (let i = 0; i < 1 + SUPERVISION_MAX_REISSUES; i++)
-      feed(program, judgeErrorResult('leaky', `failure ${i}`), `pump${i + 2}`)
-    expect(count(selected, SUPERVISION_EVENT_TYPES.halted)).toBe(1 + SUPERVISION_MAX_REISSUES)
-    expect(judgeRequestCount(selected, 'leaky')).toBe(1 + SUPERVISION_MAX_REISSUES)
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-    // The block holds — the loop stays dead.
-    mountAll(program, [
-      {
-        name: 'probe-blocked',
-        description: 'Test thread.',
-        once: true,
-        rules: [{ request: { type: 'leaky', detail: {} } }],
-      },
-    ])
-    program.trigger({ type: 'pump-final', detail: {} })
-    expect(count(selected, 'leaky')).toBe(8)
+  test('judge-retry is bounded: repeated judge failures exhaust the re-issues — the halt stands', async () => {
+    // Every decision rate-limits: the initial issue plus exactly MAX_REISSUES
+    // re-issues — then the standing halt gets no further re-ask.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      maxReissues: 2,
+      recovery: true,
+      fixture: { rateLimitFirst: 99 },
+    })
+    try {
+      await drive.waitUntil((sel) => judgeRequestCount(sel, 'leaky') >= 1 + 2)
+      await drive.settle()
+      expect(count(drive.selected, SUPERVISION_EVENT_TYPES.halted)).toBe(1 + 2)
+      expect(judgeRequestCount(drive.selected, 'leaky')).toBe(1 + 2)
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+      // The block holds — the loop stays dead.
+      drive.trigger({ type: 'leaky', detail: {} } as never)
+      await drive.settle()
+      expect(count(drive.selected, 'leaky')).toBe(8)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('a judged halt (no reason) never re-issues — the judge spoke', () => {
-    const { program, selected } = liveProgram()
-    mountPack(program, ['leaky'], 8)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-
-    feed(program, judgeChoiceResult('leaky', 'halt'), 'pump2')
-    expect(count(selected, SUPERVISION_EVENT_TYPES.halted)).toBe(1)
-    expect(judgeRequestCount(selected, 'leaky')).toBe(1)
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+  test('a judged halt (no reason) never re-issues — the judge spoke', async () => {
+    // The halt CHOICE carries no reason — the judged halt is the judge's
+    // answer; the retry listener's gate (reason required) never matches.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      recovery: true,
+      fixture: { pickChoice: 'halt', hangAfter: 1 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      await drive.settle()
+      expect(judgeRequestCount(drive.selected, 'leaky')).toBe(1)
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('override: the host ingress lifts the block immediately — the human decision path', () => {
-    const { program, selected, transformErrors } = liveProgram()
-    mountPack(program, ['leaky'], 8)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    feed(program, judgeErrorResult('leaky', 'judge down'), 'pump2')
-    expect(count(selected, SUPERVISION_EVENT_TYPES.halted)).toBe(1)
-
-    // The host supplies the override ingress — the block lifts immediately,
-    // the program continues (the loop resumes and re-trips on a fresh count).
-    feed(program, { type: SUPERVISION_EVENT_TYPES.override, detail: { type: 'leaky' } }, 'pump3')
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(true)
-    expect(count(selected, 'leaky')).toBe(16)
-    expect(transformErrors).toHaveLength(0)
+  test('override: the host ingress lifts the block immediately — the human decision path', async () => {
+    // The judge is down and the budget is zero (no re-issues): the standing
+    // halt waits for the host's override ingress — the block lifts, the loop
+    // resumes, and the fresh count trips again.
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      maxReissues: 0,
+      recovery: true,
+      fixture: { rateLimitFirst: 99 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
+      drive.trigger({ type: SUPERVISION_EVENT_TYPES.override, detail: { type: 'leaky' } } as never)
+      await drive.waitUntil((sel) => sel.some((s) => s.type === SUPERVISION_EVENT_TYPES.release))
+      await drive.waitUntil((sel) => count(sel, 'leaky') >= 16)
+      expect(count(drive.selected, 'leaky')).toBe(16)
+      expect(declined(drive.selected)).toHaveLength(0)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 
-  test('a malformed override never matches — the boundary is the schema', () => {
-    const { program, selected } = liveProgram()
-    mountPack(program, ['leaky'], 8)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    feed(program, judgeErrorResult('leaky', 'judge down'), 'pump2')
+  test('a malformed override never matches — the boundary is the schema', async () => {
+    const { drive, server } = await judgeDrive({
+      watch: ['leaky'],
+      threshold: 8,
+      maxReissues: 0,
+      recovery: true,
+      fixture: { rateLimitFirst: 99 },
+    })
+    try {
+      await drive.waitUntil((sel) => count(sel, SUPERVISION_EVENT_TYPES.halted) >= 1)
 
-    // Junk detail: the override listener's gate never matches, no release —
-    // the override boundary is the AJV schema at the listener.
-    feed(program, { type: SUPERVISION_EVENT_TYPES.override, detail: { type: 42 } }, 'pump3')
-    expect(selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
-    expect(count(selected, 'leaky')).toBe(8)
+      // Junk detail: the override listener's gate never matches, no release —
+      // the override boundary is the AJV schema at the listener.
+      drive.trigger({ type: SUPERVISION_EVENT_TYPES.override, detail: { type: 42 } } as never)
+      await drive.settle()
+      expect(drive.selected.some((s) => s.type === SUPERVISION_EVENT_TYPES.release)).toBe(false)
+      expect(count(drive.selected, 'leaky')).toBe(8)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 })
 
 describe('supervision threads — the Decision shapes', () => {
-  test('the issued judgment input validates against the input schema home', () => {
-    const { program, selected } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    const request = selected.find(
-      (s) => s.type === FACULTY_MESSAGE_KINDS.system_one_request && (s.detail?.id as string) === 'leaky-supervision',
-    )
-    expect(request).toBeDefined()
-    const input = request?.detail?.input as
-      | {
-          state?: { lane?: string; type?: string; count?: number; threshold?: number }
-          questions?: Record<string, { type?: string }>
-        }
-      | undefined
-    expect(input?.state?.lane).toBe('supervision')
-    expect(input?.state?.type).toBe('leaky')
-    expect(input?.state?.count).toBe(8)
-    expect(input?.state?.threshold).toBe(8)
-    expect(input?.questions?.supervision?.type).toBe('choice')
-    expect(validateSupervisionInput(request?.detail?.input)).toBe(true)
+  test('the issued judgment input validates against the input schema home', async () => {
+    const { drive, server } = await judgeDrive({ watch: ['leaky'], threshold: 8, fixture: { hangAfter: 1 } })
+    try {
+      await drive.waitUntil((sel) => judgeRequestCount(sel, 'leaky') >= 1)
+      const request = judgeRequestDetail(drive.selected, 'leaky')
+      const input = request?.detail?.input as
+        | {
+            state?: { lane?: string; type?: string; count?: number; threshold?: number }
+            questions?: Record<string, { type?: string }>
+          }
+        | undefined
+      expect(input?.state?.lane).toBe('supervision')
+      expect(input?.state?.type).toBe('leaky')
+      expect(input?.state?.count).toBe(8)
+      expect(input?.state?.threshold).toBe(8)
+      expect(input?.questions?.supervision?.type).toBe('choice')
+      expect(validateSupervisionInput(request?.detail?.input)).toBe(true)
+    } finally {
+      drive.terminate()
+      await server.close()
+    }
   })
 })
 
@@ -479,43 +488,35 @@ describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_K
   const liveTest = key === undefined ? test.skip : test
 
   liveTest('a real trip judges against the live endpoint — the answer maps through the verdict', async () => {
-    // The whole judgment lane against the LIVE endpoint: the trip issues the
-    // request (the threads' own output — not a hand-built body), the real
-    // faculty process speaks api.typesafe.ai, and the real answer maps back
-    // through the verdict. Whichever way the model calls it, exactly one of
-    // the two outcomes fires with a conforming shape — the branch is the
-    // judge's call, the mapping is the contract under test.
-    const { program, selected, transformErrors } = liveProgram()
-    mountAll(program, supervisionThreads({ watch: ['leaky'], threshold: 8 }))
-    mountAll(program, supervisionJudgmentThreads)
-    mountAll(program, [loopThread('leaky')])
-    program.trigger({ type: 'pump', detail: {} })
-    const request = selected.find(
-      (s) => s.type === FACULTY_MESSAGE_KINDS.system_one_request && (s.detail?.id as string) === 'leaky-supervision',
-    )
-    expect(request).toBeDefined()
-    expect(validateSupervisionInput(request?.detail?.input)).toBe(true)
-
-    const faculty = spawnFacultyWorker({
-      url: new URL('../system-one.faculty.ts', import.meta.url),
-      requestType: FACULTY_MESSAGE_KINDS.system_one_request,
-      resultType: FACULTY_MESSAGE_KINDS.system_one_request_result,
-      initData: {
-        url: 'https://api.typesafe.ai/v1/systemone',
-        apiKey: key as string,
-        model: 'jev-1.13.0',
+    // The whole judgment lane against the LIVE endpoint through the REAL
+    // composition: the trip issues the request (the threads' own output), the
+    // composition's systemOne faculty speaks api.typesafe.ai, and the real
+    // answer maps back through the verdict. Whichever way the model calls it,
+    // exactly one of the two outcomes fires with a conforming shape.
+    const drive = driveComposition({
+      threads: [
+        ...supervisionThreads({ watch: ['leaky'], threshold: 8 }),
+        ...supervisionJudgmentThreads,
+        loopThread('leaky'),
+      ],
+      models: {
+        systemOne: {
+          url: 'https://api.typesafe.ai/v1/systemone',
+          apiKey: key as string,
+          model: 'jev-1.13.0',
+        } as unknown as JsonObject,
       },
     })
     try {
-      // The real faculty speaks the live endpoint with the threads' issued input.
-      faculty.call(request?.detail as unknown as JsonObject)
-      const { detail: liveResult } = await faculty.resultFor('leaky-supervision')
-      expect((liveResult as { ok?: boolean }).ok).toBe(true)
-
-      // The live answer re-enters the engine as the judge result — the
-      // verdict maps it to a release or a halt, never both, never neither.
-      feed(program, { type: FACULTY_MESSAGE_KINDS.system_one_request_result, detail: liveResult }, 'pump2')
-      const outcomes = selected.filter(
+      await drive.waitUntil(
+        (sel) =>
+          sel.some((s) => s.type === SUPERVISION_EVENT_TYPES.release || s.type === SUPERVISION_EVENT_TYPES.halted),
+        60_000,
+      )
+      const judgeRequest = judgeRequestDetail(drive.selected, 'leaky')
+      expect(judgeRequest).toBeDefined()
+      expect(validateSupervisionInput(judgeRequest?.detail?.input)).toBe(true)
+      const outcomes = drive.selected.filter(
         (s) => s.type === SUPERVISION_EVENT_TYPES.release || s.type === SUPERVISION_EVENT_TYPES.halted,
       )
       expect(outcomes).toHaveLength(1)
@@ -526,9 +527,9 @@ describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_K
       } else {
         expect(validateSupervisionHalted(outcome?.detail)).toBe(true)
       }
-      expect(transformErrors).toHaveLength(0)
+      expect(declined(drive.selected)).toHaveLength(0)
     } finally {
-      faculty.terminate()
+      drive.terminate()
     }
   })
 })

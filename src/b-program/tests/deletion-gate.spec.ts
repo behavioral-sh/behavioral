@@ -41,6 +41,18 @@ describe('the deletion gate — the pre-rebuild tree is gone', () => {
     expect(offenders).toEqual([])
   })
 
+  test('the engine is worker-free — the jq pool and the SAB bridge are gone', async () => {
+    // The transform-faculty ruling: behavioral/ carries no worker entries.
+    // The jq pool (spawnJqWorker/timeoutJqWorker), the SAB layout, and
+    // evaluateTransform died with the engine switch.
+    expect(existsSync(`${SRC_ROOT}behavioral/jq.worker.ts`)).toBe(false)
+    const offenders = await grepFiles(
+      'evaluateTransform|spawnJqWorker|timeoutJqWorker|SharedArrayBuffer|Atomics\\.wait',
+      `${SRC_ROOT}behavioral`,
+    )
+    expect(offenders).toEqual([])
+  })
+
   test('the composition\u2019s only faculty construction is useWorker', async () => {
     // The lane construction seam: useWorker lives in the composition home;
     // the socket lane composes with it through the same LaneBuilder shape.
@@ -48,8 +60,10 @@ describe('the deletion gate — the pre-rebuild tree is gone', () => {
     // spec harness builds its own actuator lanes through the host's
     // useActuator — test files are excluded).
     const useWorkerSites = await grepFiles('\\buseWorker\\(', `${SRC_ROOT}b-program`)
-    // The composition constructs the fixed three here; use-worker.ts owns
-    // the definition (its call sites are the curried builder's internals).
+    // The composition constructs the fixed FOUR here (the transform faculty
+    // is the fourth fixed lane — the transform-faculty ruling);
+    // use-worker.ts owns the definition (its call sites are the curried
+    // builder's internals).
     expect(useWorkerSites).toEqual(['b-program/b-program.ts'])
     const retired = await grepFiles('\\b(useFaculty|useActuator)\\(', `${SRC_ROOT}b-program`)
     expect(retired).toEqual([])

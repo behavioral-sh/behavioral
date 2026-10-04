@@ -1,18 +1,20 @@
 /**
- * The plugin-client thread library against the real engine — the ICL
+ * The plugin-client thread library through the REAL composition — the ICL
  * replacement for the plugin-client tool: a boot thread requests the
  * manifest-scan recipe through the tools worker (`bun run -` on stdin), and
  * a transform threads the result into the store as the PLUGINS manifest
  * tenant. The recipe itself runs for real against fixture plugin trees
  * (plugin.json + mcp.json §11.3 posture, skills/ + sh.behavioral/threads/ discovery).
+ *
+ * Mint semantics (the transform-faculty ruling): the manifests transform
+ * completes only through the fixed fourth faculty — the drive is async and
+ * settles on quiescence. Zero thread edits: the pack mounts unchanged.
  */
 import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   PLUGIN_MANIFESTS_COLLECTION,
@@ -21,40 +23,27 @@ import {
   PLUGIN_SCAN_SCRIPT,
   pluginThreads,
 } from '../shell.threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-const runProgram = (events: BPEvent[]): Selected[] => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  program.useTrace((trace: Trace) => {
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of pluginThreads) program.addThread(thread)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-  // addThread is inert — trigger admits one ingress event and runs one
-  // super-step; the second pump cascades transform re-entries.
-  program.trigger({ type: 'plugin_gate_pump', detail: {} })
-  program.trigger({ type: 'plugin_gate_pump', detail: {} })
-  return selected
+const runProgram = async (events: BPEvent[]): Promise<Selected[]> => {
+  const drive = driveComposition({ threads: pluginThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle()
+    return drive.selected
+  } finally {
+    drive.terminate()
+  }
 }
 
 const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json'
 const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json'
 
 describe('plugin threads — scan boot', () => {
-  test('boot requests the plugin-scan shell_request: the run op carries the recipe, json format', () => {
-    const selected = runProgram([])
+  test('boot requests the plugin-scan shell_request: the run op carries the recipe, json format', async () => {
+    const selected = await runProgram([])
     const call = selected.find(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === PLUGIN_SCAN_CALL_ID,
     )
@@ -69,8 +58,8 @@ describe('plugin threads — scan boot', () => {
     expect(String(input.script).includes('mcp.json')).toBe(true)
   })
 
-  test('boot fires once — a second pump adds no duplicate call', () => {
-    const selected = runProgram([])
+  test('boot fires once — a second pump adds no duplicate call', async () => {
+    const selected = await runProgram([])
     const calls = selected.filter(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === PLUGIN_SCAN_CALL_ID,
     )
@@ -79,7 +68,7 @@ describe('plugin threads — scan boot', () => {
 })
 
 describe('plugin threads — manifests transform', () => {
-  test('a scan result with manifests is put into the store as one value', () => {
+  test('a scan result with manifests is put into the store as one value', async () => {
     const manifests = {
       plugins: [
         {
@@ -93,7 +82,7 @@ describe('plugin threads — manifests transform', () => {
       ],
       warnings: [],
     }
-    const selected = runProgram([
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: PLUGIN_SCAN_CALL_ID, result: { status: 'completed', jsonData: manifests } },
@@ -107,8 +96,8 @@ describe('plugin threads — manifests transform', () => {
     expect(input.value).toEqual(manifests)
   })
 
-  test('a result without manifests does not put', () => {
-    const selected = runProgram([
+  test('a result without manifests does not put', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: 'other-call', result: { status: 'completed', lines: ['x'], totalLines: 1 } },
@@ -117,11 +106,11 @@ describe('plugin threads — manifests transform', () => {
     expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.store_request)).toBe(false)
   })
 
-  test('a malformed manifest set fails the detailSchema gate — fail-closed, never partial admission', () => {
+  test('a malformed manifest set fails the detailSchema gate — fail-closed, never partial admission', async () => {
     // `plugins` is present (the jq filter passes) but not an array — the
     // envelope schema must reject the whole put, not admit the bad value.
     const malformed = { plugins: 'not-an-array', warnings: [] }
-    const selected = runProgram([
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: PLUGIN_SCAN_CALL_ID, result: { status: 'completed', jsonData: malformed } },

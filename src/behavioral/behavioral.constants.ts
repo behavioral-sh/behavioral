@@ -13,11 +13,10 @@ import { keyMirror } from '../utils.ts'
  * - `'step'` — a super-step began; `ingress: true` marks an externally
  *   initiated step
  * - `'interrupt'` — a b-thread was terminated by a matching interrupt listener
- * - `'transform'` — a b-thread's transform listener matched; the engine
- *   evaluates the listener's jq `query` over the selected event's detail and
- *   re-enters with the result as the `target` event (in-engine, 2026-09-18)
- * - `'transform_error'` — a transform contract failed (jq error, no detail,
- *   empty or non-object output); the target never fires
+ * - `'transform'` — a b-thread's transform listener matched; the engine mints
+ *   the `transform_request` once-thread (the reshape contract rides to the
+ *   fixed fourth faculty — the composition routes it and mints the target at
+ *   the result leg); targets select one super-step later
  * - `'trigger_error'` — event rejected at the `trigger` ingress boundary
  * - `'add_thread_error'` — invalid thread arguments passed to `useAddThread`
  * - `'thread_removed'` — a host-authority removal terminated a b-thread
@@ -38,7 +37,6 @@ export const TRACE_MESSAGE_KINDS = keyMirror(
   'thread_removed',
   'interrupt',
   'transform',
-  'transform_error',
   'step',
 )
 
@@ -55,3 +53,12 @@ export const TRACE_MESSAGE_KINDS = keyMirror(
 export const FRONTIER_STATUS = keyMirror('ready', 'deadlock', 'idle')
 
 export const IDIOMS = keyMirror('waitFor', 'interrupt', 'request', 'block', 'transform')
+
+/**
+ * The event type the engine mints for a transform match — the reshape
+ * contract riding to the fixed fourth faculty. TWO-HOME pairing: the wire
+ * home's kinds registry (`faculties.constants.ts`) carries the byte-identical
+ * key; the engine cannot import the faculties tree, so the minting side owns
+ * this copy (the same ruling as ROOT_SPACE's daemon copy).
+ */
+export const TRANSFORM_REQUEST_EVENT = 'transform_request'

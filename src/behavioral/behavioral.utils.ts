@@ -1,7 +1,3 @@
-// TEMPORARY reverse import on dying code (the transform-faculty ruling): the
-// evaluation types moved to the wire home; this bridge and its import die
-// together at the engine switch (slice 2).
-import { type TransformEvaluation, validateTransformEvaluation } from '../faculties/faculties.types.ts'
 import { deepEqual } from '../utils.ts'
 import { FRONTIER_STATUS, IDIOMS, TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 import type {
@@ -9,7 +5,6 @@ import type {
   CandidateBid,
   Frontier,
   Idioms,
-  JsonObject,
   PendingBid,
   RegisteredBPListener,
   RegisteredIdioms,
@@ -17,7 +12,7 @@ import type {
   RulesFunction,
   RunningBid,
   SendTrace,
-  Transformer,
+  TransformContract,
   UseThread,
 } from './behavioral.types.ts'
 import { ajv } from './behavioral.types.ts'
@@ -142,7 +137,7 @@ export const resumePendingThreadsForSelectedEvent = ({
   sessionId: string
   step: number
 }) => {
-  const transformers: Transformer[] = []
+  const transformers: TransformContract[] = []
   for (const bid of pending.values()) {
     const { waitFor, request, generator, interrupt, transform, name, key } = bid
     const isInterrupted = interrupt?.some(isListeningFor(selectedEvent))
@@ -263,103 +258,3 @@ export const useThread: UseThread = (rules: RulesFunction[], once?: true) =>
           }
         }
       }
-
-const JQ_STARTUP_TIMEOUT_MS = 30_000
-const JQ_EVAL_TIMEOUT_MS = 1000
-const JQ_RESULT_CAP = 64 * 1024
-const jqResultDecoder = new TextDecoder()
-
-// The warm pool of one. The worker and its shared buffer persist across
-// evaluations, so a transform pays worker boot + jq.wasm compile once per
-// process, not per eval. The worker is `unref`'d — it must never hold the
-// host process open (the runtime is `bun run`, which blocks on a live
-// worker). A timeout terminates the worker and the pool respawns lazily on
-// the next evaluation.
-/** The jq pool's worker — the DOM `Worker` plus Bun's optional `unref`. */
-type PoolWorker = Worker & { unref?: () => void }
-let jqWorker: PoolWorker | undefined
-let jqBuffer: SharedArrayBuffer | undefined
-let jqHeader: Int32Array | undefined
-
-/**
- * Whether the SAB bridge can exist in this host: a realm without
- * `SharedArrayBuffer` (not crossOriginIsolated — a non-COI browser worker or
- * an Android WebView) can neither construct the shared buffer nor park in
- * `Atomics.wait` against it. The pool stays down there and
- * `evaluateTransform` degrades to `jq_unavailable` errors-as-data — a
- * visible transform_error, never a crashed worker.
- */
-const jqBridgeAvailable = (): boolean => typeof SharedArrayBuffer !== 'undefined'
-
-const spawnJqWorker = () => {
-  jqBuffer = new SharedArrayBuffer(8 + JQ_RESULT_CAP)
-  jqHeader = new Int32Array(jqBuffer, 0, 2)
-  // The jq worker is CLASSIC-safe (no top-level await — a nested module
-  // worker fails silently in the WebView's Chromium); only `unref` is
-  // Bun-shaped (a browser worker holds nothing open), hence the optional
-  // call on the structural `PoolWorker` type.
-  const worker = new Worker(new URL('./jq.worker.ts', import.meta.url)) as PoolWorker
-  worker.unref?.()
-  jqWorker = worker
-}
-
-const timeoutJqWorker = (): TransformEvaluation => {
-  jqWorker?.terminate()
-  jqWorker = undefined
-  jqBuffer = undefined
-  jqHeader = undefined
-  // Respawn deferred to a task turn: a fresh nested worker's boot window
-  // (~10-50ms in the WebView's Chromium) must pass while THIS worker's event
-  // loop is alive, or the first postMessage never reaches the nested worker
-  // (the nested-boot deadlock finding). MINIMAL: two evaluateTransform calls
-  // inside ONE task after a timeout still spawn-park inside the boot window —
-  // the startup budget degrades that to a 30s timeout, not a hang; the
-  // upgrade is a ready-handshake + async bridge.
-  setTimeout(spawnJqWorker, 0)
-  return { ok: false, reason: 'jq_timeout' }
-}
-
-/**
- * The jq eval bridge — drives the persistent `jq.worker.ts` pool and blocks the
- * calling thread on `Atomics.wait` (a synchronous syscall, not an async yield —
- * the engine-never-awaits invariant holds). The result travels through the
- * shared buffer, never postMessage: a caller parked in `Atomics.wait` has a
- * frozen event loop and could not receive a message. Two waits bound the call:
- * a startup budget covers worker boot + wasm compile (status 0 → 1), then the
- * eval timeout covers evaluation (status 1 → 2). A never-terminating query is
- * killed by `terminate()` at the eval timeout — the only interrupt primitive
- * that exists for a spinning wasm program — and becomes `jq_timeout`
- * errors-as-data, like every other transform failure.
- */
-export const evaluateTransform = (query: string, detail: JsonObject | undefined): TransformEvaluation => {
-  if (detail === undefined || detail === null) return { ok: false, reason: 'no_detail' }
-  if (!jqBridgeAvailable()) return { ok: false, reason: 'jq_unavailable' }
-  if (!jqWorker) spawnJqWorker()
-  const worker = jqWorker!
-  const sab = jqBuffer!
-  const header = jqHeader!
-  Atomics.store(header, 0, 0) // idle — reset the slot for this round
-  worker.postMessage({ sab, query, detail })
-  // Boot + compile — a generous budget so a slow CI runner is not a jq timeout.
-  if (Atomics.load(header, 0) === 0) {
-    const booted = Atomics.wait(header, 0, 0, JQ_STARTUP_TIMEOUT_MS)
-    if (booted === 'timed-out') return timeoutJqWorker()
-  }
-  // Evaluation — the query itself is bounded here.
-  if (Atomics.load(header, 0) === 1) {
-    const evaluated = Atomics.wait(header, 0, 1, JQ_EVAL_TIMEOUT_MS)
-    if (evaluated === 'timed-out') return timeoutJqWorker()
-  }
-  const bytes = new Uint8Array(sab, 8, Atomics.load(header, 1))
-  try {
-    // JSON.parse proves syntax; validateTransformEvaluation proves shape —
-    // the two-guards pattern at the worker trust boundary.
-    const evaluation: unknown = JSON.parse(jqResultDecoder.decode(bytes))
-    if (!validateTransformEvaluation(evaluation)) {
-      return { ok: false, reason: 'jq_error', stderr: 'invalid evaluation frame from jq worker' }
-    }
-    return evaluation
-  } catch (err) {
-    return { ok: false, reason: 'jq_error', stderr: err instanceof Error ? err.message : String(err) }
-  }
-}

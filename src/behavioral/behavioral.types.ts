@@ -1,9 +1,5 @@
 import type { JSONSchemaType } from 'ajv'
 import Ajv2020 from 'ajv/dist/2020'
-// TEMPORARY reverse TYPE import on dying code (the transform-faculty ruling): the
-// evaluation types moved to the wire home; TransformErrorTrace retires at the
-// engine switch (slice 2) and this import dies with it.
-import type { TransformFailureReason } from '../faculties/faculties.types.ts'
 import { type FRONTIER_STATUS, IDIOMS, type TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 
 /**
@@ -595,7 +591,23 @@ export type InterruptTrace = TraceBase & {
   step: number
 }
 
-export type Transformer = { query: string; target: string; thread: string; space?: string }
+/**
+ * The matched reshape contract — the collection in
+ * `resumePendingThreadsForSelectedEvent` (Direction/R: `space` is the target's
+ * re-entry stamp). The id mints at the engine's transform leg (one uuid per
+ * matched listener, joining the trace and the request).
+ */
+export type TransformContract = {
+  query: string
+  target: string
+  thread: string
+  space?: string
+}
+
+export type Transformer = TransformContract & {
+  /** The minted `transform_request`'s correlation id — the composition's park key (the transform-faculty ruling: the trace gains the request id). */
+  id: string
+}
 
 export type TransformTrace = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.transform
@@ -607,20 +619,10 @@ export type TransformTrace = TraceBase & {
  * The transform evaluation types moved to the faculty wire home
  * (`src/faculties/faculties.types.ts`) — the transform-faculty ruling: the
  * evaluation vocabulary is the wire's, the engine keeps only the idiom's
- * listener types. This file keeps nothing of the evaluation shape.
+ * listener types. This file keeps nothing of the evaluation shape. The
+ * `transform_error` trace kind RETIRED with the engine switch (the failure
+ * surfaces as the ok:false result selection — fail-visible).
  */
-export type TransformErrorTrace = TraceBase & {
-  kind: typeof TRACE_MESSAGE_KINDS.transform_error
-  step: number
-  /** The failed reshape contract. */
-  transformer: Transformer
-  /** Machine-readable failure reason. */
-  reason: TransformFailureReason
-  /** jq stderr, present when reason is `'jq_error'`. */
-  stderr?: string
-  /** jq exit code, present when reason is `'jq_error'`. */
-  exitCode?: number
-}
 
 export type StepTrace = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.step
@@ -654,7 +656,6 @@ export type Trace =
   | PendingBidsTrace
   | InterruptTrace
   | TransformTrace
-  | TransformErrorTrace
   | StepTrace
 
 /**

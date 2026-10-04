@@ -12,9 +12,7 @@ import { describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import {
   LINKS_EXTRACT_RECIPE_KEY,
@@ -23,35 +21,29 @@ import {
   SKILL_VALIDATE_LINKS_SCRIPT,
   skillLinksThreads,
 } from '../shell.threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-const runProgram = (events: BPEvent[]): Selected[] => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  program.useTrace((trace: Trace) => {
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of skillLinksThreads) program.addThread(thread)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-  program.trigger({ type: 'links_gate_pump', detail: {} })
-  program.trigger({ type: 'links_gate_pump', detail: {} })
-  return selected
+/**
+ * Mint semantics (the transform-faculty ruling): the dispatchers' transform
+ * listeners complete only through the fixed fourth faculty — the drive is
+ * async and settles on quiescence. Zero thread edits.
+ */
+const runProgram = async (events: BPEvent[]): Promise<Selected[]> => {
+  const drive = driveComposition({ threads: skillLinksThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle()
+    return drive.selected
+  } finally {
+    drive.terminate()
+  }
 }
 
 describe('skill-links threads — recipe seeding', () => {
-  test('boot seeds both recipes into the store (recipes-as-tenant)', () => {
-    const selected = runProgram([])
+  test('boot seeds both recipes into the store (recipes-as-tenant)', async () => {
+    const selected = await runProgram([])
     const puts = selected.filter((s) => s.type === FACULTY_MESSAGE_KINDS.store_request && s.detail?.op === 'put')
     const keys = puts.map((p) => (p.detail?.input as JsonObject)?.key).sort()
     expect(keys).toEqual(['extract-links', 'validate-links'])
@@ -62,16 +54,16 @@ describe('skill-links threads — recipe seeding', () => {
     expect((validate?.detail?.input as JsonObject)?.value).toBe(SKILL_VALIDATE_LINKS_SCRIPT)
   })
 
-  test('seeding fires once per key — a second pump adds no duplicate puts', () => {
-    const selected = runProgram([])
+  test('seeding fires once per key — a second pump adds no duplicate puts', async () => {
+    const selected = await runProgram([])
     const puts = selected.filter((s) => s.type === FACULTY_MESSAGE_KINDS.store_request && s.detail?.op === 'put')
     expect(puts).toHaveLength(2)
   })
 })
 
 describe('skill-links threads — dispatchers', () => {
-  test('an extract links_request becomes the extract shell_request: recipe static on the run op, markdown via env', () => {
-    const selected = runProgram([
+  test('an extract links_request becomes the extract shell_request: recipe static on the run op, markdown via env', async () => {
+    const selected = await runProgram([
       {
         type: 'links_request',
         detail: {
@@ -92,8 +84,8 @@ describe('skill-links threads — dispatchers', () => {
     expect((input.env as JsonObject)?.LINKS_INPUT).toBe('See [a](scripts/a.ts)')
   })
 
-  test('a validate links_request becomes the validate shell_request: rootRelative rides env', () => {
-    const selected = runProgram([
+  test('a validate links_request becomes the validate shell_request: rootRelative rides env', async () => {
+    const selected = await runProgram([
       {
         type: 'links_request',
         detail: {
@@ -111,8 +103,8 @@ describe('skill-links threads — dispatchers', () => {
     expect((input.env as JsonObject)?.LINKS_ROOT_RELATIVE).toBe('1')
   })
 
-  test('a request for an unknown recipe dispatches nothing', () => {
-    const selected = runProgram([
+  test('a request for an unknown recipe dispatches nothing', async () => {
+    const selected = await runProgram([
       {
         type: 'links_request',
         detail: { id: 'l3', recipe: 'nope', input: { markdown: 'x' } },

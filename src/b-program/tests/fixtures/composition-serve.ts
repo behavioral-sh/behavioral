@@ -23,7 +23,6 @@
 
 const FIXTURES_DIR = import.meta.dir
 const SRC_ROOT = `${FIXTURES_DIR}/../../..`
-const REPO_ROOT = `${FIXTURES_DIR}/../../../..`
 
 /** COOP/COEP on everything — the SAB + Atomics bridge needs the isolation. */
 const withIsolation = (response: Response): Response => {
@@ -94,32 +93,15 @@ export const startCompositionServer = async (port = 0) => {
   // 3. The fixed three faculty workers — the composition bundle's literals
   //    resolve to `/faculties/<entry>.faculty.ts` (the bundle sits at the
   //    root). Each served as a bundled single-file (classic-safe) artifact.
-  for (const faculty of ['system-one', 'system-two', 'frontier-analysis']) {
+  //    The transform faculty's bundle is SELF-CONTAINED (the wasm rides it
+  //    base64-inlined via jq-wasm/inline) — no external asset route.
+  for (const faculty of ['system-one', 'system-two', 'frontier-analysis', 'transform']) {
     const entry = Bun.resolveSync(`./faculties/${faculty}.faculty.ts`, SRC_ROOT)
     route(`/faculties/${faculty}.faculty.ts`, async () => ({
       body: await bundleBrowser(`import ${JSON.stringify(entry)}`),
       contentType: 'text/javascript',
     }))
   }
-
-  // 4. The jq worker at the literal URL the engine bundle references —
-  //    `/jq.worker.ts`. Classic-safe: the jq-wasm browser build's
-  //    `new URL('./build/jq.wasm', import.meta.url)` is rewritten to the
-  //    absolute origin-relative path.
-  const jqWorkerEntry = Bun.resolveSync('./behavioral/jq.worker.ts', SRC_ROOT)
-  route('/jq.worker.ts', async () => {
-    let body = await bundleBrowser(`import ${JSON.stringify(jqWorkerEntry)}`)
-    body = body.replaceAll(
-      'new URL("./build/jq.wasm", import.meta.url)',
-      `new URL("/build/jq.wasm", "http://localhost/")`,
-    )
-    return { body, contentType: 'text/javascript' }
-  })
-  const wasmPath = Bun.resolveSync('./node_modules/jq-wasm/dist/build/jq.wasm', REPO_ROOT)
-  route('/build/jq.wasm', async () => ({
-    body: await Bun.file(wasmPath).bytes(),
-    contentType: 'application/wasm',
-  }))
 
   // 5. The Open Responses stub — the systemTwo round-trip's endpoint,
   //    same-origin (the faculty reaches it THROUGH the inference proxy —

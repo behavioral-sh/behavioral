@@ -242,17 +242,23 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  test('a clean boot is trace-clean — successful shell results fire no transform_error noise', async () => {
+  test('a clean boot is trace-clean — successful shell results fire no declined transform noise', async () => {
     const { runtime, traces } = startRuntime()
     try {
       // The boot runs successful shell ops (the skill scan, the plugin
       // manifests) through a composition whose failure-path listeners
       // (rpc-auth, remote-mcp) are mounted. Their gates match only
       // failure-shaped details, so the successes they used to match (then
-      // decline into empty-output transform_errors — 8 per boot) never fire.
+      // decline — 8 per boot in the retired transform_error era) never fire.
+      // Mint semantics: the declined outcome is the ok:false RESULT selection
+      // (the transform_error trace kind retired with the engine switch).
       await waitForTraces(traces, (s) => storeRequest(s, 'put', 'skills') !== undefined)
-      const errors = traces.filter((t) => t.kind === TRACE_MESSAGE_KINDS.transform_error)
-      expect(errors).toHaveLength(0)
+      const declined = selectionsOf(traces).filter(
+        (t) =>
+          t.selected.type === FACULTY_MESSAGE_KINDS.transform_request_result &&
+          (t.selected.detail as { ok?: boolean })?.ok === false,
+      )
+      expect(declined).toHaveLength(0)
     } finally {
       runtime.terminate()
     }
@@ -445,12 +451,26 @@ describe('bProgram — the runtime composition', () => {
         expect(detail?.ok).toBe(true)
         expect(detail?.result?.ok).toBe(true)
 
-        const added = traces.find(
-          (t) =>
-            t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-            (t as { thread?: { name?: string } }).thread?.name === 'greeter',
+        // Mint semantics (the transform-faculty ruling): the admitted leg
+        // trails the result selection by the async verdict chain — the
+        // provision is polled, never read synchronously after the result.
+        await waitForTraces(
+          traces,
+          (s) =>
+            selectionsOf(s).length >= 0 &&
+            traces.some(
+              (t) =>
+                t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+                (t as { thread?: { name?: string } }).thread?.name === 'greeter',
+            ),
         )
-        expect(added).toBeDefined()
+        expect(
+          traces.find(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'greeter',
+          ),
+        ).toBeDefined()
       } finally {
         runtime.terminate()
       }
@@ -505,6 +525,15 @@ describe('bProgram — the runtime composition', () => {
         )
         const at3Detail = resultDetailFor(traces, 'at3')
         expect(at3Detail?.result?.ok).toBe(true)
+        // Mint semantics: the admitted mount trails the result selection by
+        // the async verdict chain — wait for the provision before the release.
+        await waitForTraces(traces, () =>
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'worker',
+          ),
+        )
         // The candidate→live transition: admission re-enters (addThread + step),
         // and the thread participates — released by an external trigger, it
         // selects its request, then keeps participating: the loop wraps and
@@ -595,12 +624,22 @@ describe('bProgram — the runtime composition', () => {
         )
         const detail = resultDetailFor(traces, 'lk2')
         expect(detail?.result?.ok).toBe(true)
-        const added = traces.find(
-          (t) =>
-            t.kind === TRACE_MESSAGE_KINDS.thread_added &&
-            (t as { thread?: { name?: string } }).thread?.name === 'progress-looper',
+        // Mint semantics: the provision trails the result — polled, never read
+        // synchronously after the result wait.
+        await waitForTraces(traces, () =>
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'progress-looper',
+          ),
         )
-        expect(added).toBeDefined()
+        expect(
+          traces.find(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'progress-looper',
+          ),
+        ).toBeDefined()
       } finally {
         runtime.terminate()
       }
@@ -637,13 +676,15 @@ describe('bProgram — the runtime composition', () => {
         )
         const detail = resultDetailFor(traces, 'md1')
         expect(detail?.result?.ok).toBe(true)
-        expect(
+        // Mint semantics: the provision trails the result — polled, never read
+        // synchronously after the result wait.
+        await waitForTraces(traces, () =>
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
               (t as { thread?: { name?: string } }).thread?.name === 'deferred-budget',
           ),
-        ).toBe(true)
+        )
       } finally {
         runtime.terminate()
       }

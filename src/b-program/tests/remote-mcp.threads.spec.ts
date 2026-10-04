@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
-import type { BPEvent, JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
+import type { BPEvent, JsonObject } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
 import { hashString } from '../../utils.ts'
 import {
@@ -11,43 +9,33 @@ import {
   REMOTE_MCP_STORE_COLLECTION,
   remoteMcpThreads,
 } from '../remote-mcp.threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 /**
- * The remote-mcp threads against the real engine — the MCP layering over
+ * The remote-mcp threads through the REAL composition — the MCP layering over
  * the generic `rpc` op: request stamping (`_meta` envelope + the
  * MCP-Protocol-Version header), discovery (server/discover + tools/list →
  * the store registry), execution (tools/call), the multi-round-trip
  * elicitation loop (input_required → host → retry), and the bounded retry
  * on retryable remote failures.
+ *
+ * Mint semantics (the transform-faculty ruling): the packs' transform
+ * listeners complete only through the fixed fourth faculty — the drive is
+ * async and settles on quiescence. Zero thread edits: the pack mounts
+ * unchanged.
  */
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
-const runProgram = (events: BPEvent[]): Selected[] => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  program.useTrace((trace: Trace) => {
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of remoteMcpThreads) program.addThread(thread)
-  for (const event of events) {
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-    // addThread is inert — trigger admits one ingress event and runs one
-    // super-step; the second pump cascades transform re-entries.
-    program.trigger({ type: 'rmcp_pump', detail: {} })
-    program.trigger({ type: 'rmcp_pump', detail: {} })
-    program.trigger({ type: 'rmcp_pump', detail: {} })
+const runProgram = async (events: BPEvent[]): Promise<Selected[]> => {
+  const drive = driveComposition({ threads: remoteMcpThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle()
+    return drive.selected
+  } finally {
+    drive.terminate()
   }
-  return selected
 }
 
 const URL = 'https://mcp.example.com/mcp'
@@ -75,8 +63,10 @@ const registerResult = (id: string, source: string, output: JsonObject): BPEvent
 })
 
 describe('remote-mcp threads — discovery', () => {
-  test('a discover event issues a stamped server/discover rpc op', () => {
-    const selected = runProgram([{ type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r1', input: { url: URL } } }])
+  test('a discover event issues a stamped server/discover rpc op', async () => {
+    const selected = await runProgram([
+      { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r1', input: { url: URL } } },
+    ])
     const request = selected.find(
       (s) =>
         s.type === FACULTY_MESSAGE_KINDS.shell_request &&
@@ -103,8 +93,8 @@ describe('remote-mcp threads — discovery', () => {
     expect(detail.input?.params?._meta?.['io.modelcontextprotocol/protocolVersion']).toBe(REMOTE_MCP_PROTOCOL_VERSION)
   })
 
-  test('the discover result chains tools/list; the tools register in the store and surface', () => {
-    const selected = runProgram([
+  test('the discover result chains tools/list; the tools register in the store and surface', async () => {
+    const selected = await runProgram([
       { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r1', input: { url: URL } } },
       rpcResult(
         'r1-discover',
@@ -147,8 +137,8 @@ describe('remote-mcp threads — discovery', () => {
 })
 
 describe('remote-mcp threads — execution', () => {
-  test('a call event issues a stamped tools/call rpc op; the result surfaces', () => {
-    const selected = runProgram([
+  test('a call event issues a stamped tools/call rpc op; the result surfaces', async () => {
+    const selected = await runProgram([
       {
         type: REMOTE_MCP_EVENT_TYPES.call,
         detail: { id: 'c1', input: { url: URL, tool: 'echo', args: { message: 'hi' } } },
@@ -181,8 +171,8 @@ describe('remote-mcp threads — execution', () => {
     expect(d?.ok).toBe(true)
   })
 
-  test('an input_required result surfaces the elicitation; the response retries with the answers', () => {
-    const selected = runProgram([
+  test('an input_required result surfaces the elicitation; the response retries with the answers', async () => {
+    const selected = await runProgram([
       {
         type: REMOTE_MCP_EVENT_TYPES.call,
         detail: { id: 'c2', input: { url: URL, tool: 'deploy', args: { env: 'prod' } } },
@@ -260,8 +250,8 @@ describe('remote-mcp threads — execution', () => {
     expect(d?.ok).toBe(true)
   })
 
-  test('the MRTR round cap exhausts as a typed round_cap error', () => {
-    const selected = runProgram([
+  test('the MRTR round cap exhausts as a typed round_cap error', async () => {
+    const selected = await runProgram([
       {
         type: REMOTE_MCP_EVENT_TYPES.elicitationResponse,
         detail: {
@@ -279,8 +269,8 @@ describe('remote-mcp threads — execution', () => {
 })
 
 describe('remote-mcp threads — retry', () => {
-  test('a retryable remote failure re-requests the op with the attempt advanced', () => {
-    const selected = runProgram([
+  test('a retryable remote failure re-requests the op with the attempt advanced', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: {
@@ -303,8 +293,8 @@ describe('remote-mcp threads — retry', () => {
     expect(detail.input?.method).toBe('tools/call')
   })
 
-  test('the attempt bound exhausts; the failure surfaces to the caller', () => {
-    const selected = runProgram([
+  test('the attempt bound exhausts; the failure surfaces to the caller', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: {
@@ -323,8 +313,8 @@ describe('remote-mcp threads — retry', () => {
     expect(d?.error?.remoteCode).toBe(503)
   })
 
-  test('a non-retryable failure surfaces without a retry', () => {
-    const selected = runProgram([
+  test('a non-retryable failure surfaces without a retry', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: {
@@ -339,8 +329,8 @@ describe('remote-mcp threads — retry', () => {
     expect(selected.some((s) => s.type === REMOTE_MCP_EVENT_TYPES.callResult)).toBe(true)
   })
 
-  test('a failed vend echoes the request ctx — the threads surface the absent credential', () => {
-    const selected = runProgram([
+  test('a failed vend echoes the request ctx — the threads surface the absent credential', async () => {
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.credential_result,
         detail: {
@@ -364,10 +354,10 @@ describe('remote-mcp threads — retry', () => {
     expect(d?.error?.message).toContain('no credential')
   })
 
-  test('a failed vend for a non-remote-mcp caller never surfaces a remote-mcp result', () => {
+  test('a failed vend for a non-remote-mcp caller never surfaces a remote-mcp result', async () => {
     // A direct (declarative) rpc caller's vend failure carries no remote-mcp ctx —
     // the derived leg is not "call", so no remote-mcp result fires.
-    const selected = runProgram([
+    const selected = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.credential_result,
         detail: {
@@ -384,38 +374,37 @@ describe('remote-mcp threads — retry', () => {
 
 describe('remote-mcp threads — trace cleanliness', () => {
   /** Mount the threads and drive one producer event, collecting selections and transform_error traces. */
-  const traceRunFor = (event: BPEvent): { selected: Selected[]; transformErrors: Trace[] } => {
-    const program = behavioral()
-    const selected: Selected[] = []
-    const transformErrors: Trace[] = []
-    program.useTrace((trace: Trace) => {
-      if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-        selected.push({
-          type: (trace as SelectionTrace).selected.type,
-          detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-        })
-      if (trace.kind === TRACE_MESSAGE_KINDS.transform_error) transformErrors.push(trace)
-    })
-    for (const thread of remoteMcpThreads) program.addThread(thread)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: `Producer once-thread re-emitting ${event.type}.`,
-      once: true,
-      rules: [{ request: event }],
-    })
-    program.trigger({ type: 'rmcp_pump', detail: {} })
-    program.trigger({ type: 'rmcp_pump', detail: {} })
-    program.trigger({ type: 'rmcp_pump', detail: {} })
-    return { selected, transformErrors }
+  /**
+   * The trace-cleanliness drive through the REAL composition: the packs'
+   * transform listeners complete only through the fixed fourth faculty, so
+   * the post-switch noise class is the DECLINED result — a matched-but-
+   * declining listener answers `ok:false` (a result selection, fail-visible;
+   * the `transform_error` trace kind retired with the engine switch). The
+   * clean pins: zero declined results on clean operation.
+   */
+  const declinedResults = (selected: Selected[]): Selected[] =>
+    selected.filter(
+      (s) => s.type === FACULTY_MESSAGE_KINDS.transform_request_result && (s.detail as { ok?: boolean })?.ok === false,
+    )
+
+  const traceRunFor = async (event: BPEvent): Promise<Selected[]> => {
+    const drive = driveComposition({ threads: remoteMcpThreads })
+    try {
+      drive.trigger(event)
+      await drive.settle()
+      return drive.selected
+    } finally {
+      drive.terminate()
+    }
   }
 
-  test('a successful call result is trace-clean — the failure listeners never match successes', () => {
+  test('a successful call result is trace-clean — the failure listeners never match successes', async () => {
     // The failure-path listeners (retry, call-failure, discover-failure) must
     // match only failure-shaped details: a genuine success — ctx echo, call
     // leg, a call-shaped output — is the common case, and a matched listener
-    // whose jq declines is an empty-output transform_error, stray noise on
+    // whose jq declines would answer a declined result — stray noise on
     // every clean op (8 fired on every composition boot before this pin).
-    const { transformErrors: errors } = traceRunFor(
+    const selected = await traceRunFor(
       rpcResult(
         'tc1-call',
         'tc1',
@@ -426,16 +415,15 @@ describe('remote-mcp threads — trace cleanliness', () => {
         },
       ),
     )
-    expect(errors).toHaveLength(0)
+    expect(declinedResults(selected)).toHaveLength(0)
   })
 
-  test('a direct caller’s failed vend is trace-clean — the vend-failure gate matches only the remote-mcp echo chain', () => {
+  test('a direct caller’s failed vend is trace-clean — the vend-failure gate matches only the remote-mcp echo chain', async () => {
     // The vend-failure listener must match only vends whose ctx echo chain
     // marks them remote-mcp calls: a direct (declarative) rpc caller’s failed
-    // vend never even matches, so its decline is not an empty-output
-    // transform_error. (The surface outcome itself is pinned above: no
-    // remote-mcp result fires.)
-    const { transformErrors: errors } = traceRunFor({
+    // vend never even matches, so its decline never answers a result. (The
+    // surface outcome itself is pinned above: no remote-mcp result fires.)
+    const selected = await traceRunFor({
       type: FACULTY_MESSAGE_KINDS.credential_result,
       detail: {
         id: 'direct-2-cred',
@@ -444,16 +432,16 @@ describe('remote-mcp threads — trace cleanliness', () => {
         error: { code: 'error', message: 'no credential available' },
       },
     })
-    expect(errors).toHaveLength(0)
+    expect(declinedResults(selected)).toHaveLength(0)
   })
 
-  test('a genuine retryable failure is trace-clean — the siblings divide on the schema field', () => {
+  test('a genuine retryable failure is trace-clean — the siblings divide on the schema field', async () => {
     // A real 503 at attempt 0 (the op stamps `retryable: true` — the rpc op
     // spec pins the computation): the retry listener ACTS and the surface
     // listeners never even match. The division rides the schema field (a
-    // const), not a jq numeric check, so no declining sibling emits a
-    // transform_error per genuine failure.
-    const { selected, transformErrors } = traceRunFor({
+    // const), not a jq numeric check, so no declining sibling answers a
+    // declined result per genuine failure.
+    const selected = await traceRunFor({
       type: FACULTY_MESSAGE_KINDS.shell_request_result,
       detail: {
         id: 'tc3-call',
@@ -462,7 +450,7 @@ describe('remote-mcp threads — trace cleanliness', () => {
         error: { code: 'error', remoteCode: 503, message: 'HTTP 503', durationMs: 2, retryable: true },
       },
     })
-    expect(transformErrors).toHaveLength(0)
+    expect(declinedResults(selected)).toHaveLength(0)
     const retry = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request)
     expect(retry).toBeDefined()
     const detail = retry?.detail as { id?: string; ctx?: { echo?: { attempt?: number } } }
@@ -472,8 +460,8 @@ describe('remote-mcp threads — trace cleanliness', () => {
 })
 
 describe('remote-mcp threads — registration identity', () => {
-  test('the tools result issues the stamp run op — script, url + tools env, the register echo leg', () => {
-    const selected = runProgram([
+  test('the tools result issues the stamp run op — script, url + tools env, the register echo leg', async () => {
+    const selected = await runProgram([
       { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r9', input: { url: URL } } },
       rpcResult('r9-discover', 'r9', 'discover', {}, { supportedVersions: ['2026-07-28'], capabilities: {} }),
       rpcResult('r9-tools', 'r9', 'tools', {}, { tools: [{ name: 'echo', description: 'echoes' }] }),
@@ -494,9 +482,9 @@ describe('remote-mcp threads — registration identity', () => {
     expect(echo?.url).toBe(URL)
   })
 
-  test('the stamped register result puts the registry value and surfaces the discovery — tools carry handle + sourceHash', () => {
+  test('the stamped register result puts the registry value and surfaces the discovery — tools carry handle + sourceHash', async () => {
     const sourceHash = hashString(URL)
-    const selected = runProgram([
+    const selected = await runProgram([
       { type: REMOTE_MCP_EVENT_TYPES.discover, detail: { id: 'r10', input: { url: URL } } },
       rpcResult('r10-discover', 'r10', 'discover', {}, { supportedVersions: ['2026-07-28'], capabilities: {} }),
       rpcResult('r10-tools', 'r10', 'tools', {}, { tools: [{ name: 'echo', description: 'echoes' }] }),

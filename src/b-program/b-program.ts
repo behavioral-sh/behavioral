@@ -10,11 +10,14 @@ import {
   SystemTwoCancelEventSchema,
   SystemTwoRequestEventSchema,
   SystemTwoRequestResultEventSchema,
+  TransformRequestEventSchema,
+  TransformRequestResultEventSchema,
   validateFrontierAnalysisRequestEvent,
   validateSystemOneCancelEvent,
   validateSystemOneRequestEvent,
   validateSystemTwoCancelEvent,
   validateSystemTwoRequestEvent,
+  validateTransformRequestEvent,
 } from '../faculties/faculties.types.ts'
 import { admissionAnalysisInput, admissionReviewThreads } from '../faculties/frontier-analysis.threads.ts'
 import {
@@ -165,6 +168,20 @@ export const bProgram = ({
     ...(models.systemTwo === undefined ? {} : { initData: models.systemTwo }),
   })(facultyAddThreads)
 
+  // The transform faculty — the FIXED FOURTH lane: the engine's transform
+  // mints ride here. The init frame carries the faculty's OWN url (classic
+  // worker bundles cannot touch `import.meta`; the per-request nested eval
+  // worker re-executes the same artifact from it) — the bundler-visible
+  // literal lives at THIS call site, one home with the spawn factory.
+  const transformFacultyUrl = new URL('../faculties/transform.faculty.ts', import.meta.url)
+  const transform = useWorker({
+    name: 'transform',
+    worker: () => new Worker(transformFacultyUrl),
+    validateRequest: validateTransformRequestEvent,
+    resultKind: FACULTY_MESSAGE_KINDS.transform_request_result,
+    initData: { selfUrl: transformFacultyUrl.href },
+  })(facultyAddThreads)
+
   // The actuator lanes: the host's pre-built builders, invoked with OUR
   // addThreads — the composition owns every lane lifecycle it completes.
   const actuatorLanes = actuators.map((build) => build(facultyAddThreads))
@@ -200,6 +217,16 @@ export const bProgram = ({
       }),
     ),
   )
+  facultyAddThreads(
+    guardThreads(
+      'guard:transform-schema',
+      'Blocks every transform wire message whose detail fails its event schema.',
+      eventGuardEntries({
+        request: TransformRequestEventSchema,
+        result: TransformRequestResultEventSchema,
+      }),
+    ),
+  )
 
   // The host-minted policy packs.
   facultyAddThreads(hostThreads)
@@ -229,6 +256,16 @@ export const bProgram = ({
   const decidedKeys = new Map<string, { status: 'admitted' | 'rejected'; reason?: string }>()
 
   /**
+   * The transform parks: the minted request id → the reshape contract. The
+   * composition parks at the mint-time `transform` trace (the thread label's
+   * only carrier — the route leg's event carries id/query/target but not the
+   * source thread name the mint name needs), and joins at the result leg.
+   * A park entry is consumed by its result; an orphaned entry (a crashed
+   * lane, a stray id) stays — bounded by transform volume, never a hang.
+   */
+  const transformParks = new Map<string, { thread: string; target: string; space?: string }>()
+
+  /**
    * The mounted instance identities — the mount leg's idempotence floor: a
    * boot/reload reconciliation never double-mounts a live instance (the
    * engine's duplicate-identity guard stays a fail-visible backstop).
@@ -248,6 +285,10 @@ export const bProgram = ({
   route([FACULTY_MESSAGE_KINDS.system_two_request, FACULTY_MESSAGE_KINDS.system_two_cancel], {
     send: (event: BPEvent): void => systemTwo.send(event),
     gate: (event: BPEvent): boolean => systemTwo.invalidEventGate(event),
+  })
+  route([FACULTY_MESSAGE_KINDS.transform_request], {
+    send: (event: BPEvent): void => transform.send(event),
+    gate: (event: BPEvent): boolean => transform.invalidEventGate(event),
   })
   for (const lane of actuatorLanes) {
     const kinds = ACTUATOR_ROUTE[lane.name]
@@ -351,6 +392,19 @@ export const bProgram = ({
   // record rides the HOST ENTRY's trace subscription (the entry-side
   // watcher); the composition only mounts + skips.
   useTrace((trace: Trace) => {
+    // The transform park leg (the MINT-TIME trace — the thread label's only
+    // carrier): every minted request's contract parks by id. The result leg
+    // below joins by the same id.
+    if (trace.kind === TRACE_MESSAGE_KINDS.transform) {
+      for (const t of trace.transformers) {
+        transformParks.set(t.id, {
+          thread: t.thread,
+          target: t.target,
+          ...(t.space === undefined ? {} : { space: t.space }),
+        })
+      }
+      return
+    }
     if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
     const candidate = (trace as SelectionTrace).selected
     // The plugin-threads candidate record: the composition joins the proposal
@@ -496,6 +550,33 @@ export const bProgram = ({
     // precedent): the composition acts on the reconciliation's events; the
     // record writes ride the entry-side watcher (the carried/removed
     // selections reach it directly).
+    // The transform RESULT leg: the faculty's answer joins its parked
+    // contract. ok:true mints the target once-thread (`detail = result.value`,
+    // the re-entry law intact, the space carried per Direction/R); ok:false —
+    // and any malformed result — mints NOTHING: the failure surfaces as this
+    // result selection itself, fail-visible. An unknown id (a stray result
+    // this composition never routed) selects and matches nothing — the park
+    // is the authorization, the pluginAdmissions precedent.
+    if (candidate.type === FACULTY_MESSAGE_KINDS.transform_request_result) {
+      const detail = candidate.detail as { id?: string; ok?: boolean; value?: JsonObject } | undefined
+      const id = detail?.id
+      if (typeof id === 'string' && transformParks.has(id)) {
+        const park = transformParks.get(id)!
+        transformParks.delete(id)
+        if (detail?.ok === true && detail.value !== undefined) {
+          addThreads([
+            {
+              name: `Transform(${park.thread} => ${park.target})`,
+              description: `Transform re-entry: applies the ${park.thread} transform and re-emits as ${park.target}.`,
+              once: true,
+              rules: [{ request: { type: park.target, detail: detail.value } }],
+              ...(park.space === undefined ? {} : { space: park.space }),
+            },
+          ])
+        }
+      }
+      return
+    }
     if (candidate.type === RECONCILE_EVENT_TYPES.mount) {
       const thread = (candidate.detail as { input?: { thread?: unknown } } | undefined)?.input?.thread
       if (!validateThread(thread)) return
@@ -686,6 +767,7 @@ export const bProgram = ({
       frontierAnalysis.terminate()
       systemOne.terminate()
       systemTwo.terminate()
+      transform.terminate()
       for (const lane of actuatorLanes) lane.terminate()
     },
   }

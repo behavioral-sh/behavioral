@@ -29,7 +29,6 @@ import {
 } from '../../actuators/actuators.schemas.ts'
 import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
-import { behavioral } from '../../behavioral/behavioral.ts'
 import type { BPEvent, JsonObject, PendingBidsTrace, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
 import { createHost, dispatchToRuntime } from '../../cli/serve.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
@@ -45,35 +44,23 @@ import {
   uiPipelineThreads,
   uiThreads,
 } from '../ui-threads.ts'
+import { driveComposition } from './composition-drive.ts'
 
 type Selected = { type: string; detail: Record<string, unknown> | undefined }
 
 /** Drive the thread set through the real engine — the skill-client spec harness. */
-const runProgram = (events: BPEvent[]): { selected: Selected[]; traces: Trace[] } => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  const traces: Trace[] = []
-  program.useTrace((trace: Trace) => {
-    traces.push(trace)
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of uiThreads) program.addThread(thread)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-  // addThread is inert — trigger admits one ingress event and runs one
-  // super-step; the second pump cascades transform re-entries.
-  program.trigger({ type: 'ui_threads_pump', detail: {} })
-  program.trigger({ type: 'ui_threads_pump', detail: {} })
-  return { selected, traces }
+const runProgram = async (events: BPEvent[]): Promise<{ selected: Selected[]; traces: Trace[] }> => {
+  // Mint semantics (the transform-faculty ruling): the ui packs' transform
+  // listeners complete only through the fixed fourth faculty — the drive is
+  // async and settles on quiescence. Zero thread edits.
+  const drive = driveComposition({ threads: uiThreads })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle(250)
+    return { selected: drive.selected, traces: drive.traces }
+  } finally {
+    drive.terminate()
+  }
 }
 
 /** Run one scan recipe for real (bun-direct, the run-op contract) against a home. */
@@ -95,8 +82,8 @@ const runScan = async (env: Record<string, string>) => {
 // ─── Slice 1 — the design.md scan → store tenant ─────────────────────────────
 
 describe('ui threads — the design scan boot', () => {
-  test('boot requests the design-scan shell_request: the run op carries the recipe, json format', () => {
-    const { selected } = runProgram([])
+  test('boot requests the design-scan shell_request: the run op carries the recipe, json format', async () => {
+    const { selected } = await runProgram([])
     const call = selected.find(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === UI_DESIGN_SCAN_CALL_ID,
     )
@@ -108,8 +95,8 @@ describe('ui threads — the design scan boot', () => {
     expect(input.script).toBe(DESIGN_SCAN_SCRIPT)
   })
 
-  test('boot fires once — a second pump adds no duplicate call', () => {
-    const { selected } = runProgram([])
+  test('boot fires once — a second pump adds no duplicate call', async () => {
+    const { selected } = await runProgram([])
     const calls = selected.filter(
       (s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === UI_DESIGN_SCAN_CALL_ID,
     )
@@ -118,13 +105,13 @@ describe('ui threads — the design scan boot', () => {
 })
 
 describe('ui threads — the design tenant transform', () => {
-  test('a scan result with a design context is put into the store as the design tenant', () => {
+  test('a scan result with a design context is put into the store as the design tenant', async () => {
     const context = {
       tokens: { colors: { primary: '#101010' } },
       sections: { Overview: 'Matte surfaces.' },
       warnings: [],
     }
-    const { selected } = runProgram([
+    const { selected } = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: UI_DESIGN_SCAN_CALL_ID, result: { status: 'completed', jsonData: context } },
@@ -138,8 +125,8 @@ describe('ui threads — the design tenant transform', () => {
     expect(input.value).toEqual(context)
   })
 
-  test('a missing DESIGN.md (the empty scan shape) puts nothing — no tenant, no warning-spam', () => {
-    const { selected } = runProgram([
+  test('a missing DESIGN.md (the empty scan shape) puts nothing — no tenant, no warning-spam', async () => {
+    const { selected } = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: {
@@ -151,13 +138,13 @@ describe('ui threads — the design tenant transform', () => {
     expect(selected.some((s) => s.type === FACULTY_MESSAGE_KINDS.store_request)).toBe(false)
   })
 
-  test('a warnings-only scan result (the rejected file) still puts — the rejection rides the tenant', () => {
+  test('a warnings-only scan result (the rejected file) still puts — the rejection rides the tenant', async () => {
     const rejected = {
       tokens: null,
       sections: null,
       warnings: ['Duplicate section heading "## Colors": the file is rejected'],
     }
-    const { selected } = runProgram([
+    const { selected } = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: UI_DESIGN_SCAN_CALL_ID, result: { status: 'completed', jsonData: rejected } },
@@ -169,9 +156,9 @@ describe('ui threads — the design tenant transform', () => {
     expect(input.value).toEqual(rejected)
   })
 
-  test('a malformed scan result fails the detailSchema gate — fail-closed, never partial admission', () => {
+  test('a malformed scan result fails the detailSchema gate — fail-closed, never partial admission', async () => {
     const malformed = { tokens: 'not-an-object', sections: null, warnings: [] }
-    const { selected } = runProgram([
+    const { selected } = await runProgram([
       {
         type: FACULTY_MESSAGE_KINDS.shell_request_result,
         detail: { id: UI_DESIGN_SCAN_CALL_ID, result: { status: 'completed', jsonData: malformed } },
@@ -337,38 +324,22 @@ describe('ui threads — the design scan recipe (real run)', () => {
 // ─── The per-trigger pipeline once-threads (the dispatcher's mint) ────────────
 
 /**
- * Mount one minted per-trigger pipeline — what the composition's host leg
- * (b-program's pump) mints on a render ingress.
+ * Drive one minted pipeline through the REAL composition (standing set + the
+ * per-trigger legs + drive events). Mint semantics (the transform-faculty
+ * ruling): the legs' transform listeners complete only through the fixed
+ * fourth faculty — the drive is async and settles on quiescence. The legs
+ * mount as host threads composed with the trigger detail (the old direct
+ * mount), so the spec's fixed pipeline id is preserved.
  */
-const mountPipeline = (program: ReturnType<typeof behavioral>, id: string, detail: JsonObject): void => {
-  for (const thread of uiPipelineThreads({ id, detail })) program.addThread(thread)
-}
-
-/** Drive one minted pipeline through the real engine (standing set + the set + drive events). */
-const pipelineRun = (id: string, detail: JsonObject, events: BPEvent[]) => {
-  const program = behavioral()
-  const selected: Selected[] = []
-  const traces: Trace[] = []
-  program.useTrace((trace: Trace) => {
-    traces.push(trace)
-    if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-      selected.push({
-        type: (trace as SelectionTrace).selected.type,
-        detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-      })
-  })
-  for (const thread of uiThreads) program.addThread(thread)
-  mountPipeline(program, id, detail)
-  for (const event of events)
-    program.addThread({
-      name: `producer/${event.type}`,
-      description: 'Producer once-thread re-emitting the event.',
-      once: true,
-      rules: [{ request: event }],
-    })
-  program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-  program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-  return { selected, traces }
+const pipelineRun = async (id: string, detail: JsonObject, events: BPEvent[]) => {
+  const drive = driveComposition({ threads: [...uiThreads, ...uiPipelineThreads({ id, detail })] })
+  try {
+    for (const event of events) drive.trigger(event)
+    await drive.settle(250)
+    return { selected: drive.selected, traces: drive.traces }
+  } finally {
+    drive.terminate()
+  }
 }
 
 /** The browser's correlated scale reply for pipeline `id`. */
@@ -378,8 +349,8 @@ const scaleReply = (id: string, scale = 's3', target = 'body'): BPEvent => ({
 })
 
 describe('ui threads — the per-trigger pipeline', () => {
-  test('the set requests the scale check under its own id — and nothing generates before the reply', () => {
-    const { selected, traces } = pipelineRun('ui-x1', { message: 'a panel' }, [])
+  test('the set requests the scale check under its own id — and nothing generates before the reply', async () => {
+    const { selected, traces } = await pipelineRun('ui-x1', { message: 'a panel' }, [])
     const check = selected.find((s) => s.type === 'ui_scale_check')
     expect(check).toBeDefined()
     expect(check?.detail).toEqual({ id: 'ui-x1-scale', target: 'body', swap: 'innerHTML' })
@@ -398,14 +369,14 @@ describe('ui threads — the per-trigger pipeline', () => {
     ).toBe(true)
   })
 
-  test('a named target on the trigger detail rides the scale check', () => {
-    const { selected } = pipelineRun('ui-x2', { target: 'main' }, [])
+  test('a named target on the trigger detail rides the scale check', async () => {
+    const { selected } = await pipelineRun('ui-x2', { target: 'main' }, [])
     const check = selected.find((s) => s.type === 'ui_scale_check')
     expect(check?.detail).toEqual({ id: 'ui-x2-scale', target: 'main', swap: 'innerHTML' })
   })
 
-  test('the correlated reply stamps the generate request — scale+target via ctx, the trigger detail as the request', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [scaleReply('ui-x1')])
+  test('the correlated reply stamps the generate request — scale+target via ctx, the trigger detail as the request', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [scaleReply('ui-x1')])
     const generate = selected.find((s) => s.type === 'generate')
     expect(generate).toBeDefined()
     expect(generate?.detail).toEqual({
@@ -414,8 +385,8 @@ describe('ui threads — the per-trigger pipeline', () => {
     })
   })
 
-  test('a foreign reply joins nothing — the per-trigger id isolates the hold', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('a foreign reply joins nothing — the per-trigger id isolates the hold', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       {
         type: 'ui_scale_check_result',
         detail: { id: 'ui-other-scale', target: 'body', effectiveScale: 's2', timeStamp: 1 },
@@ -427,32 +398,26 @@ describe('ui threads — the per-trigger pipeline', () => {
     expect((generates[0]?.detail as { ctx?: { scale?: string } } | undefined)?.ctx?.scale).toBe('s5')
   })
 
-  test('two interleaved pipelines join independently — A’s reply never joins B’s hold', () => {
-    const program = behavioral()
-    const selected: Selected[] = []
-    program.useTrace((trace: Trace) => {
-      if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-        selected.push({
-          type: (trace as SelectionTrace).selected.type,
-          detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-        })
+  test('two interleaved pipelines join independently — A’s reply never joins B’s hold', async () => {
+    const drive = driveComposition({
+      threads: [
+        ...uiThreads,
+        ...uiPipelineThreads({ id: 'ui-a', detail: { message: 'view A' } }),
+        ...uiPipelineThreads({ id: 'ui-b', detail: { message: 'view B' } }),
+      ],
     })
-    for (const thread of uiThreads) program.addThread(thread)
-    mountPipeline(program, 'ui-a', { message: 'view A' })
-    mountPipeline(program, 'ui-b', { message: 'view B' })
-    program.addThread({
-      name: 'producer/a-reply',
-      description: 'Test thread.',
-      once: true,
-      rules: [{ request: scaleReply('ui-a') }],
-    })
-    program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-    program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-    const generates = selected.filter((s) => s.type === 'generate')
-    expect(generates).toHaveLength(1)
-    expect((generates[0]?.detail as { ctx?: { echo?: { pipeline?: string } } } | undefined)?.ctx?.echo?.pipeline).toBe(
-      'ui-a',
-    )
+    try {
+      drive.trigger(scaleReply('ui-a'))
+      await drive.settle(250)
+      const selected = drive.selected
+      const generates = selected.filter((s) => s.type === 'generate')
+      expect(generates).toHaveLength(1)
+      expect(
+        (generates[0]?.detail as { ctx?: { echo?: { pipeline?: string } } } | undefined)?.ctx?.echo?.pipeline,
+      ).toBe('ui-a')
+    } finally {
+      drive.terminate()
+    }
   })
 })
 
@@ -475,8 +440,8 @@ const tenantStoreResult = (pipeline: string, value: JsonObject | null): BPEvent 
 })
 
 describe('ui threads — the per-trigger generation lane', () => {
-  test('the generate fetches the design tenant — the whole generate detail rides the store ctx echo', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [scaleReply('ui-x1')])
+  test('the generate fetches the design tenant — the whole generate detail rides the store ctx echo', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [scaleReply('ui-x1')])
     const get = selected.find(
       (s) => s.type === 'store_request' && (s.detail as { op?: string } | undefined)?.op === 'get',
     )
@@ -494,8 +459,8 @@ describe('ui threads — the per-trigger generation lane', () => {
     })
   })
 
-  test('a tenant-bearing result composes the systemTwo request — the trigger detail in the user message, the vocabulary in the instructions', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('a tenant-bearing result composes the systemTwo request — the trigger detail in the user message, the vocabulary in the instructions', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', {
         tokens: {
@@ -523,8 +488,8 @@ describe('ui threads — the per-trigger generation lane', () => {
     expect(content).toContain('a panel')
   })
 
-  test('the attrs-issue leg composes ui_attrs style declarations from the tenant — bare declarations on the target', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('the attrs-issue leg composes ui_attrs style declarations from the tenant — bare declarations on the target', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', {
         tokens: { colors: { primary: 'light-dark(#755576, #E2BAE0)' } },
@@ -546,61 +511,49 @@ describe('ui threads — the per-trigger generation lane', () => {
     expect(style).not.toContain('{')
   })
 
-  test('plain degradation — a null tenant or tokenless tenant emits no ui_attrs style', () => {
-    const tokenless = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('plain degradation — a null tenant or tokenless tenant emits no ui_attrs style', async () => {
+    const tokenless = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', { tokens: null, sections: { Overview: 'x' }, warnings: [] }),
     ])
     expect(tokenless.selected.some((s) => s.type === 'ui_attrs')).toBe(false)
 
-    const tenantless = pipelineRun('ui-x2', { message: 'a panel' }, [
+    const tenantless = await pipelineRun('ui-x2', { message: 'a panel' }, [
       scaleReply('ui-x2'),
       tenantStoreResult('ui-x2', null),
     ])
     expect(tenantless.selected.some((s) => s.type === 'ui_attrs')).toBe(false)
   })
 
-  test('named provider/modelId reach the composed systemTwo request — the config seam', () => {
-    const program = behavioral()
-    const selected: Selected[] = []
-    program.useTrace((trace: Trace) => {
-      if (trace.kind === TRACE_MESSAGE_KINDS.selection)
-        selected.push({
-          type: (trace as SelectionTrace).selected.type,
-          detail: (trace as SelectionTrace).selected.detail as Record<string, unknown> | undefined,
-        })
+  test('named provider/modelId reach the composed systemTwo request — the config seam', async () => {
+    const drive = driveComposition({
+      threads: [
+        ...uiThreads,
+        ...uiPipelineThreads({
+          id: 'ui-x9',
+          detail: { message: 'a panel' },
+          provider: 'named',
+          modelId: 'named-model',
+        }),
+      ],
     })
-    for (const thread of uiThreads) program.addThread(thread)
-    for (const thread of uiPipelineThreads({
-      id: 'ui-x9',
-      detail: { message: 'a panel' },
-      provider: 'named',
-      modelId: 'named-model',
-    }))
-      program.addThread(thread)
-    program.addThread({
-      name: 'producer/reply',
-      description: 'Test thread.',
-      once: true,
-      rules: [{ request: scaleReply('ui-x9') }],
-    })
-    program.addThread({
-      name: 'producer/tenant',
-      description: 'Test thread.',
-      once: true,
-      rules: [{ request: tenantStoreResult('ui-x9', null) }],
-    })
-    program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-    program.trigger({ type: 'ui_pipeline_pump', detail: {} })
-    const request = selected.find((s) => s.type === 'system_two_request')
-    expect(request).toBeDefined()
-    const input = request?.detail?.input as { provider?: string; modelId?: string } | undefined
-    expect(input?.provider).toBe('named')
-    expect(input?.modelId).toBe('named-model')
+    try {
+      drive.trigger(scaleReply('ui-x9'))
+      drive.trigger(tenantStoreResult('ui-x9', null))
+      await drive.settle(250)
+      const selected = drive.selected
+      const request = selected.find((s) => s.type === 'system_two_request')
+      expect(request).toBeDefined()
+      const input = request?.detail?.input as { provider?: string; modelId?: string } | undefined
+      expect(input?.provider).toBe('named')
+      expect(input?.modelId).toBe('named-model')
+    } finally {
+      drive.terminate()
+    }
   })
 
-  test('a null tenant composes the plain request — no vocabulary, no prose, the content still rides', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('a null tenant composes the plain request — no vocabulary, no prose, the content still rides', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', null),
     ])
@@ -614,8 +567,8 @@ describe('ui threads — the per-trigger generation lane', () => {
     expect(content).toContain('a panel')
   })
 
-  test('the model reply composes the draft; the standing gate emits the render under the per-trigger id', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('the model reply composes the draft; the standing gate emits the render under the per-trigger id', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', null),
       {
@@ -654,8 +607,8 @@ describe('ui threads — the per-trigger generation lane', () => {
     })
   })
 
-  test('a non-conforming reply is held as data — the draft never becomes a render', () => {
-    const { selected } = pipelineRun('ui-x1', { message: 'a panel' }, [
+  test('a non-conforming reply is held as data — the draft never becomes a render', async () => {
+    const { selected } = await pipelineRun('ui-x1', { message: 'a panel' }, [
       scaleReply('ui-x1'),
       tenantStoreResult('ui-x1', null),
       {
@@ -678,13 +631,13 @@ describe('ui threads — the per-trigger generation lane', () => {
 })
 
 describe('ui threads — the custom-properties artifact', () => {
-  test('a tenant-bearing scan result compiles the artifact — the values pass through verbatim', () => {
+  test('a tenant-bearing scan result compiles the artifact — the values pass through verbatim', async () => {
     const context = {
       tokens: { colors: { primary: 'light-dark(#755576, #E2BAE0)' }, spacing: { md: '16px' } },
       sections: null,
       warnings: [],
     }
-    const { selected } = runProgram([
+    const { selected } = await runProgram([
       {
         type: 'shell_request_result',
         detail: { id: 'ui-design-scan', result: { status: 'completed', jsonData: context } },
@@ -701,9 +654,9 @@ describe('ui threads — the custom-properties artifact', () => {
     expect(css).toContain('--design-spacing-md: 16px;')
   })
 
-  test('a tenant without tokens compiles no artifact', () => {
+  test('a tenant without tokens compiles no artifact', async () => {
     const rejected = { tokens: null, sections: null, warnings: ['Duplicate section heading: the file is rejected'] }
-    const { selected } = runProgram([
+    const { selected } = await runProgram([
       {
         type: 'shell_request_result',
         detail: { id: 'ui-design-scan', result: { status: 'completed', jsonData: rejected } },
