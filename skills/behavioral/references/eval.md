@@ -41,8 +41,8 @@ which kinds to key on and what each carries:
 | `selection` | **What happened** — the chosen candidate | `step`, `selected` |
 | `thread_added` | **The provision record** — the full validated `Thread` at registration | `thread` |
 | `idle` | **Quiescence** — the settle signal; no further selections until a trigger | `step` |
-| `transform` | **Reshape activity** — the contract the engine applied | `step`, `transformers` |
-| `transform_error` | Reshape failure — the target never fired | `step`, `transformer`, `reason` |
+| `transform` | **Reshape activity** — the contract minted to the transform faculty | `step`, `transformers` (`id` = the park key) |
+| `transform_request_result` (a selection, not a trace) | **Reshape outcome** — ok evaluates; ok:false is the failure surface (the target never fired) | `id`, `ok`, `value?/reason` |
 | `deadlock` | **Health metric** — candidates existed but all were blocked | `step` |
 
 The remaining kinds (`step`, `pending_bids`, `frontier`, `interrupt`,

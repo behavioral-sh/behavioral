@@ -137,7 +137,7 @@ pattern. Shared modules sit at the top:
   browser target and boots the artifact through a real round-trip.
 The faculty entries sit flat beside the wire home — `system-one.faculty.ts`
 (+ `.types.ts`/`.schemas.ts`/`.threads.ts`), `system-two.faculty.ts`
-(+ types/schemas), `system-two.faculty.ts` (+ types/schemas), and
+(+ types/schemas), and
 `frontier-analysis.faculty.ts` (+ `.threads.ts`): each
 entry is a `respond` behind the top-level `createWorker` (system-one:
 TypeSafe/OpenRouter Decisions, 429/529 retry-after — ALWAYS LOCAL, no
@@ -148,6 +148,20 @@ daemon-side, never in a browser context), webgpu runs the local runtime
 (`system-two.webgpu.ts`, lazy-imported); frontierAnalysis: the reachability
 analyses (replay/explore/verify/add_thread over the `frontier_analysis`
 wire kinds) — synchronous, no cancel contract, no timeout).
+The FOURTH fixed faculty is `transform.faculty.ts` — the transform idiom's
+EVALUATION (jq-wasm via the base64-inlined `jq-wasm/inline` build; the
+classic bundle is SELF-CONTAINED, no external wasm asset). Its result
+envelope is the wire home's PINNED FLAT shape (`{ id, ok, value } |
+{ id, ok, reason, stderr?, exitCode? }` — derived from the moved
+`TransformEvaluation`), NOT createWorker's uniform WorkerResultDetail, so
+the entry wires its own top-level listener (reusing the exported
+`isWorkerScope`/`isInitFrame` gates and the init-frame mechanism). Each
+request evaluates in a PER-REQUEST NESTED eval worker — the same module
+re-executed from the init frame's `selfUrl` (classic bundles cannot touch
+`import.meta`) — raced against the re-homed 1s budget
+(`TRANSFORM_EVAL_TIMEOUT_MS`, the wire constants): a runaway query is
+TERMINATED and answers `jq_timeout`, the pool's only surviving primitive;
+the faculty worker never wedges. No cancel contract.
 Endpoints/config arrive as the init frame — the secret never enters a
 request message. `system-one.threads.ts` carries the
 admission judgment threads (the BP-native blocking judge over the Decisions
@@ -174,7 +188,9 @@ validation → one `add_thread` candidate per validated export) + recipes + stor
 taught by `skills/skill-conventions/`.
 **`src/faculties.ts`** — the faculties public surface (package export `./faculties`):
 the wire home — the event types + once-compiled validators
-(`faculties.types.ts`), the wire kinds, the model-identifier types riding the
+(`faculties.types.ts` — the transform evaluation types live here TOO: the
+evaluation vocabulary MOVED from the engine, one home), the wire kinds, the
+model-identifier types riding the
 init frame (`SystemOneEndpointConfig`, `SystemTwoEndpoints`), the `Actuator`
 trio, and `useWorker`. The faculty worker entries and the root guard threads
 are internal. What a `config.ts` composes with; the composition and the
@@ -188,8 +204,16 @@ supervision, ui_*; the root guard threads stay internal, always-mounted),
 `models` (the faculties' init-frame payloads + the ui generation target),
 and `actuators` (PRE-CONSTRUCTED four-key lanes — reachability is
 construction, never config; unknown lane names throw at wiring). The fixed
-three (frontierAnalysis, systemOne, systemTwo) mount through `useWorker` —
-never optional, never overrides. `use-worker.ts` — `useWorker({ name,
+FOUR (frontierAnalysis, systemOne, systemTwo, transform) mount through
+`useWorker` — never optional, never overrides. THE TRANSFORM LEGS: the
+engine's `transform_request` mints route to the transform faculty (the init
+frame carries the faculty's own `selfUrl` — the bundler-visible literal at
+the mount site); the composition PARKS the reshape contract at the
+mint-time `transform` trace (the source thread label's only carrier) and
+MINTS the target once-thread at the result leg (`Transform(${thread} =>
+${target})` — the ui-capture lineage parse rides the name); ok:false and
+unknown ids mint NOTHING — the result selection is the failure surface,
+fail-visible. `use-worker.ts` — `useWorker({ name,
 worker: () => new Worker(...), validateRequest, validateCancel, resultKind,
 initData })`, the worker construction a FACTORY at the call site (the
 literal stays bundler-visible AND respawn-after-crash re-invokes it — and
@@ -250,11 +274,14 @@ ephemeral ones); `removeThread({ instanceHash })` stages removal applied at the 
 the next `step()`, traced `thread_removed` — the addThread re-entry-law mirror; only
 instance-hash-keyed entries are removal-addressable, and THE THIRD HASH's one-line job:
 djb2(canonical plugin path + space + thread name) — content never enters identity, so
-removal addresses survive rewrites), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
-nothing outside behavioral/ speaks its wire). The jq SAB bridge is
-browser-shaped: the pool stays down where `SharedArrayBuffer` is absent
-(`jq_unavailable` errors-as-data), `unref` is the optional structural call,
-and the timeout respawn rides a task turn (the nested-boot-window finding).
+removal addresses survive rewrites), and NOTHING ELSE — the engine is
+worker-free (the transform-faculty ruling: transform EVALUATION left the
+engine for the fixed fourth faculty; the jq pool, the SAB bridge, and the
+`Atomics.wait` event-loop freeze are GONE — a transform match mints ONLY
+the `transform_request` once-thread, the composition parks the reshape
+contract and mints the target at the result leg; targets select ONE
+SUPER-STEP LATER, and failures surface as the ok:false result selection —
+the `transform_error` trace kind retired).
 Zero process entries that speak the faculty wire —
 dependency arrow is one-way: `src/faculties/` → `src/behavioral/`. The
 pure-runtime gate greps BOTH `'bun'` imports and bare `Bun.` global

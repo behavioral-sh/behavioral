@@ -156,7 +156,7 @@ output stays in the space it observed.
 ```ts
 const disconnect = useTrace((msg: Trace) => {
   // msg is the engine's closed Trace union — narrow by `kind`
-  // (12 kinds; the full table below).
+  // (11 kinds; the full table below).
 })
 ```
 
@@ -197,8 +197,8 @@ The contract:
 - Results re-enter by **adding a `once` thread that `request`s the event**,
   then pumping one super-step (the re-entry law above). The composition's
   `useFaculty` pump funnels every satellite's result threads through the same
-  seam, and engine-internal code (the transform executor) calls the internal
-  `step()` directly. The re-entry event therefore arrives as a
+  seam, and engine-internal code (the transform-request mint) calls the
+  internal `step()` directly. The re-entry event therefore arrives as a
   **request-origin** candidate (`ingress` absent), which is what lets
   `ingressMatch: false` listeners match internal results while
   `ingressMatch: true` listeners stay external-only.
@@ -213,13 +213,12 @@ removing a listener never changes which event the arbiter selects.
 
 ## The `transform` idiom — declarative pure-data reshape
 
-The fifth idiom is `transform`: a declarative, pure-data reshape that fires
-**inside** the super-step, complementary to the async action-listener pattern
-above (which does I/O outside it). A transform listener matches an event like
+The fifth idiom is `transform`: a declarative, pure-data reshape. A transform
+listener matches an event like
 `waitFor`/`block`/`interrupt` (same `type` + optional `detailSchema`/`detailMatch`,
 where `detailMatch: false` inverts the conformity test),
 but instead of pausing or forbidding, it declares a reshape contract the
-external host executes:
+**transform faculty** executes:
 
 ```ts
 addThread({
@@ -238,31 +237,39 @@ addThread({
 Shape (`TransformListener` in `behavioral.types.ts`): a `BPListener` plus
 `query` (string) and `target` (string). When a matching event is selected,
 the engine emits a `transform` trace carrying `transformers: { query, target,
-thread, space? }[]` **immediately before** the `selection` trace, then resumes
-the thread (a transform match wakes the thread like a `waitFor` match) and
-applies the contract itself: each `query` is evaluated over `selected.detail`
-by the engine's internal jq subprocess (`src/behavioral/jq.worker.ts`, driven
-by the `evaluateTransform` bridge in `behavioral.utils.ts`), and the result
-re-enters as a `once` thread requesting `{ type: target, detail: result.value }`
-stamped with the **source event's** space (a stamped contract's space equals
-the event's — stamped confinement; a root transformer's output stays in the
-space it observed) — the target stays request-origin. The
-engine does no arbitrary I/O; its only external dependency is the jq binary.
+thread, space?, id }[]` **immediately before** the `selection` trace (the `id`
+is the minted request's correlation id — the composition's park key), then
+mints a `transform_request` **once-thread** — the same re-entry mechanism as
+the old target mint. The engine evaluates NOTHING: the composition routes the
+request to the fixed fourth faculty (`src/faculties/transform.faculty.ts`,
+jq-wasm in a per-request nested eval worker, terminated at the 1s budget),
+which answers the correlated result; the composition mints the target as a
+`once` thread requesting `{ type: target, detail: result.value }` stamped with
+the **source event's** space (a stamped contract's space equals the event's —
+stamped confinement; a root transformer's output stays in the space it
+observed) — the target stays request-origin. **The target selects one
+super-step later** (the evaluation is an async faculty round-trip, not an
+in-engine synchronous call). The
+engine does no arbitrary I/O; its only transform dependency is the faculty
+wire.
 
 Failures are errors-as-data: a contract that fails (jq error, no detail,
-empty or non-object output) never fires its target — the failure surfaces as
-a `transform_error` trace carrying the `transformer` and a machine-readable
-`reason`.
+empty or non-object output, timeout) never fires its target — the failure
+surfaces as the **ok:false `transform_request_result` selection itself**
+(carrying a machine-readable `reason`), fail-visible on the wire; the retired
+`transform_error` trace kind no longer exists.
 
-The contract test is `src/behavioral/tests/transform.spec.ts`, and the
+The contract tests are `src/behavioral/tests/transform.spec.ts` (the mint),
+`src/b-program/tests/transform-legs.spec.ts` (the composition legs), and
+`src/faculties/tests/transform.faculty.spec.ts` (the evaluation), and the
 production consumer is real: the remote-mcp threads
-(`src/faculties/shell/remote-mcp.threads.ts`) drives its entire
+(`src/b-program/remote-mcp.threads.ts`) drives its entire
 discover/tools/call pipeline with transforms over the shell faculty's `rpc`
 op.
 
 ## The trace union
 
-`Trace` is a closed discriminated union (narrow by `kind`) — the 12 kinds of
+`Trace` is a closed discriminated union (narrow by `kind`) — the 11 kinds of
 `TRACE_MESSAGE_KINDS` (`src/behavioral/behavioral.constants.ts`):
 
 | `kind` | Carries | When |
@@ -275,8 +282,7 @@ op.
 | `deadlock` | `step` | Candidates exist but all are blocked |
 | `thread_added` | `thread` (the full validated `Thread`) | `addThread` registered a thread — the provision record; replay = `thread_added` payloads + ingress events in order |
 | `interrupt` | `selected`, `threadLabel`, `step` | A thread was terminated by an interrupt |
-| `transform` | `step`, `transformers` | A transform listener matched; the engine applies `query` → `target` in-engine |
-| `transform_error` | `step`, `transformer`, `reason`, `stderr?`, `exitCode?` | A transform contract failed (jq error, no detail, empty or non-object output); the target never fires |
+| `transform` | `step`, `transformers` (`query`, `target`, `thread`, `space?`, `id`) | A transform listener matched; the engine minted the `transform_request` (the id is the composition's park key). The target arrives one super-step later — the faculty evaluated it |
 | `add_thread_error` | `error` (AJV errors), `space?` | `addThread` rejected invalid args / un-compilable `detailSchema` |
 | `trigger_error` | `error` (AJV errors), `space?` | `trigger` rejected an invalid `BPEvent` |
 | `thread_removed` | `instanceHash`, `thread` | A staged `removeThread` applied at the top of a super-step — the thread's generator + pending bid tore down (traced even when the target was already displaced; replay = `thread_added` minus `thread_removed`) |
