@@ -46,7 +46,7 @@ describe('facultiesThreads — the root guard threads', () => {
     })
 
     test('lets a well-formed tui_command select', () => {
-      const { selections, frontiers } = runType(TUI_COMMAND, { line: '/space new docs' })
+      const { selections, frontiers } = runType(TUI_COMMAND, { line: '/umwelt new docs' })
       expect(selections.some((s) => s.selected.type === TUI_COMMAND)).toBe(true)
       expect(frontiers.some((frontier) => frontier.status === 'ready')).toBe(true)
     })

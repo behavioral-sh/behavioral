@@ -266,11 +266,11 @@ export const behavioral = (options?: { sessionId?: string }) => {
   }
 
   const addThread: AddThread = (args) => {
-    const attemptedSpace = args?.space
+    const attemptedUmwelt = args?.umwelt
     if (validateThread(args)) {
-      const { name, description, rules, once, space, instanceHash } = args
+      const { name, description, rules, once, umwelt, instanceHash } = args
       try {
-        const syncPoints = generateRulesFunctions(rules, space)
+        const syncPoints = generateRulesFunctions(rules, umwelt)
         const thread = useThread(syncPoints, once)
         const key = threadKey(instanceHash)
         // Identity integrity: a live same-identity thread is never silently
@@ -284,7 +284,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
             instanceId,
             sessionId,
             error: [`duplicate thread identity: instance hash ${instanceHash} is already mounted`],
-            space,
+            umwelt,
           })
           return
         }
@@ -313,7 +313,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
           instanceId,
           sessionId,
           error: [err instanceof Error ? err.message : String(err)],
-          space,
+          umwelt,
         })
       }
     } else {
@@ -323,7 +323,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
         instanceId,
         sessionId,
         error: validateThread.errors ?? [],
-        ...(typeof attemptedSpace === 'string' && { space: attemptedSpace }),
+        ...(typeof attemptedUmwelt === 'string' && { umwelt: attemptedUmwelt }),
       })
     }
   }
@@ -368,9 +368,9 @@ export const behavioral = (options?: { sessionId?: string }) => {
         sessionId,
         transformers: withIds,
       })
-      for (const { query, target, thread, space, id } of withIds) {
+      for (const { query, target, thread, umwelt, id } of withIds) {
         addThread({
-          space,
+          umwelt,
           name: `TransformRequest(${thread} => ${target})`,
           description: `Transform request: hands the ${thread} reshape contract to the transform faculty (target ${target}).`,
           once: true,
@@ -418,8 +418,8 @@ export const behavioral = (options?: { sessionId?: string }) => {
    */
   const trigger: Trigger = (event) => {
     // Read before validation: the Ajv type-guard narrows `event` to `never` in
-    // the failure branch, so the attempted space must be captured up front.
-    const attemptedSpace = event.space
+    // the failure branch, so the attempted umwelt must be captured up front.
+    const attemptedUmwelt = event.umwelt
     if (!validateBPEvent(event)) {
       return sendTrace({
         kind: TRACE_MESSAGE_KINDS.trigger_error,
@@ -427,7 +427,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
         instanceId,
         sessionId,
         error: validateBPEvent.errors ?? [],
-        ...(typeof attemptedSpace === 'string' ? { space: attemptedSpace } : {}),
+        ...(typeof attemptedUmwelt === 'string' ? { umwelt: attemptedUmwelt } : {}),
       })
     }
     const thread = function* () {
@@ -437,7 +437,7 @@ export const behavioral = (options?: { sessionId?: string }) => {
     }
     const key = threadKey()
     running.set(key, {
-      space: event.space,
+      umwelt: event.umwelt,
       priority: 0,
       generator: thread(),
       ingress: true,

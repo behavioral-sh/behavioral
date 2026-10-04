@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,7 +28,7 @@ type WireResult = {
   result?: unknown
   error?: Record<string, unknown>
   ctx?: unknown
-  space?: string
+  umwelt?: string
 }
 
 /** Spawn the store faculty PROCESS and expose the same wire harness API. */
@@ -39,12 +40,12 @@ const spawnStoreWorker = (dbPath = ':memory:') => {
     // Env vars cross Bun.spawn boundaries; worker-thread env-data does not.
     env: { [STORE_DB_PATH_KEY]: dbPath },
   })
-  const call = (id: string, op: StoreOp, input: unknown, space?: string, ctx?: JsonObject): void => {
-    faculty.call({ id, op, input, ...(ctx === undefined ? {} : { ctx }) } as JsonObject, space)
+  const call = (id: string, op: StoreOp, input: unknown, umwelt?: string, ctx?: JsonObject): void => {
+    faculty.call({ id, op, input, ...(ctx === undefined ? {} : { ctx }) } as JsonObject, umwelt)
   }
   const resultFor = async (id: string): Promise<WireResult> => {
     const raw = await faculty.resultFor(id)
-    return { ...raw.detail, id: raw.id, space: raw.space } as WireResult
+    return { ...raw.detail, id: raw.id, umwelt: raw.umwelt } as WireResult
   }
   return { call, resultFor, terminate: (): void => faculty.terminate() }
 }
@@ -89,12 +90,12 @@ describe('store worker — event wire', () => {
     }
   })
 
-  test('a request space is echoed on the result event', async () => {
+  test('a request umwelt is echoed on the result event', async () => {
     const store = spawnStoreWorker()
     try {
       store.call('s1', 'get', { collection: 'c', key: 'k' }, 's1')
-      const { space } = await store.resultFor('s1')
-      expect(space).toBe('s1')
+      const { umwelt } = await store.resultFor('s1')
+      expect(umwelt).toBe('s1')
     } finally {
       store.terminate()
     }
@@ -125,11 +126,11 @@ describe('store worker — event wire', () => {
     }
   })
 
-  test('a space key inside op input is rejected — space comes from the envelope, never the input', async () => {
+  test('a umwelt key inside op input is rejected — umwelt comes from the envelope, never the input', async () => {
     const store = spawnStoreWorker()
     try {
       // additionalProperties: false — the isolation floor at the boundary.
-      store.call('s1', 'put', { collection: 'c', key: 'k', value: {}, space: 'other-space' })
+      store.call('s1', 'put', { collection: 'c', key: 'k', value: {}, umwelt: 'other-umwelt' })
       const { ok, error } = await store.resultFor('s1')
       expect(ok).toBe(false)
       expect(String(error?.message)).toContain('invalid input')
@@ -260,29 +261,99 @@ describe('store worker — query', () => {
   })
 })
 
-describe('store worker — space scoping', () => {
-  test('rows are scoped to the request space; the root default sees only root rows', async () => {
+describe('store worker — umwelt scoping', () => {
+  test('rows are scoped to the request umwelt; the root default sees only root rows', async () => {
     const store = spawnStoreWorker()
     try {
-      store.call('s1', 'put', { collection: 'ledger', key: 'k', value: { n: 1 } }, 'space-1')
+      store.call('s1', 'put', { collection: 'ledger', key: 'k', value: { n: 1 } }, 'umwelt-1')
       await store.resultFor('s1')
-      // A root request cannot see space-1's row.
+      // A root request cannot see umwelt-1's row.
       store.call('s2', 'get', { collection: 'ledger', key: 'k' })
       const rootGet = await store.resultFor('s2')
       expect((rootGet.result as { value?: JsonObject | null }).value).toBeNull()
-      // The spaced request can.
-      store.call('s3', 'get', { collection: 'ledger', key: 'k' }, 'space-1')
-      const spacedGet = await store.resultFor('s3')
-      expect((spacedGet.result as { value?: JsonObject }).value).toEqual({ n: 1 })
+      // The stamped request can.
+      store.call('s3', 'get', { collection: 'ledger', key: 'k' }, 'umwelt-1')
+      const stampedGet = await store.resultFor('s3')
+      expect((stampedGet.result as { value?: JsonObject }).value).toEqual({ n: 1 })
       // Queries are scoped too.
-      store.call('s4', 'query', { collection: 'ledger' }, 'space-1')
-      const spacedQuery = await store.resultFor('s4')
-      expect((spacedQuery.result as { rows?: unknown[] }).rows).toHaveLength(1)
+      store.call('s4', 'query', { collection: 'ledger' }, 'umwelt-1')
+      const stampedQuery = await store.resultFor('s4')
+      expect((stampedQuery.result as { rows?: unknown[] }).rows).toHaveLength(1)
       store.call('s5', 'query', { collection: 'ledger' })
       const rootQuery = await store.resultFor('s5')
       expect((rootQuery.result as { rows?: unknown[] }).rows).toEqual([])
     } finally {
       store.terminate()
+    }
+  })
+})
+
+describe('store worker — the umwelt migration', () => {
+  // The old-schema fixture below carries the literal pre-rename column name —
+  // it IS the dev-era DB this migration exists to convert. That literal is a
+  // standing exception to the repo-wide `\bspace\b` proof (the migration
+  // spec is the only home where the old vocabulary must survive).
+  test('a dev-era db (space column, schema_version 1) migrates on boot — rows survive under the renamed dimension', async () => {
+    const dbFile = join(tmpdir(), `store-migration-${crypto.randomUUID()}.sqlite`)
+    // Seed the old schema exactly as the pre-rename binary wrote it.
+    const seed = new Database(dbFile)
+    seed.exec(`
+      CREATE TABLE store_entries (
+        space TEXT NOT NULL,
+        collection TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (space, collection, key)
+      )
+    `)
+    seed.exec('CREATE TABLE store_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    seed.query(`INSERT INTO store_meta (key, value) VALUES ('schema_version', '1')`).run()
+    seed
+      .query(`INSERT INTO store_entries (space, collection, key, value_json, updated_at) VALUES (?, ?, ?, ?, ?)`)
+      .run('s1', 'catalog', 'a', JSON.stringify({ kind: 'skill' }), 111)
+    seed
+      .query(`INSERT INTO store_entries (space, collection, key, value_json, updated_at) VALUES (?, ?, ?, ?, ?)`)
+      .run('root', 'catalog', 'b', JSON.stringify({ kind: 'tool' }), 222)
+    seed.close()
+
+    const store = spawnStoreWorker(dbFile)
+    try {
+      // The seeded rows answer under their original stamps.
+      store.call('m1', 'get', { collection: 'catalog', key: 'a' }, 's1')
+      const seeded = await store.resultFor('m1')
+      expect(seeded.ok).toBe(true)
+      expect((seeded.result as { value?: JsonObject }).value).toEqual({ kind: 'skill' })
+
+      // Fresh writes work under the new dimension and join the old rows.
+      store.call('m2', 'put', { collection: 'catalog', key: 'c', value: { kind: 'new' } }, 's1')
+      expect((await store.resultFor('m2')).ok).toBe(true)
+      store.call('m3', 'query', { collection: 'catalog' }, 's1')
+      const queried = await store.resultFor('m3')
+      expect((queried.result as { rows?: Array<{ key: string }> }).rows!.map((r) => r.key).sort()).toEqual(['a', 'c'])
+      store.call('m4', 'query', { collection: 'catalog' }, 'root')
+      const rootQueried = await store.resultFor('m4')
+      expect((rootQueried.result as { rows?: Array<{ key: string }> }).rows!.map((r) => r.key)).toEqual(['b'])
+    } finally {
+      store.terminate()
+    }
+
+    // The DB itself is under the new schema: umwelt column, no umwelt column,
+    // the version stamped forward.
+    const check = new Database(dbFile, { readonly: true })
+    try {
+      const columns = (check.query(`PRAGMA table_info(store_entries)`).all() as Array<{ name: string }>).map(
+        (c) => c.name,
+      )
+      expect(columns).toContain('umwelt')
+      expect(columns).not.toContain('space')
+      const version = check.query(`SELECT value FROM store_meta WHERE key = 'schema_version'`).get() as {
+        value: string
+      }
+      expect(version.value).toBe('2')
+    } finally {
+      check.close()
+      await Bun.$`rm -f ${dbFile}*`.nothrow().quiet()
     }
   })
 })

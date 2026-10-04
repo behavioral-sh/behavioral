@@ -1,6 +1,6 @@
 /**
  * Converts string to camelCase format.
- * Handles kebab-case, snake_case, spaces, and mixed separators.
+ * Handles kebab-case, snake_case, umwelts, and mixed separators.
  *
  * @param str - String to convert
  * @returns camelCase string.
@@ -14,7 +14,7 @@ export const camelCase = (str: string) => {
       /**
        * @internal
        * First pass: Find separator sequences and capitalize following character.
-       * - [\s_/-]+ matches any combination of space, underscore, slash, hyphen
+       * - [\s_/-]+ matches any combination of umwelt, underscore, slash, hyphen
        * - (.)? captures the optional character after separators
        * - Replacement removes separators and uppercases the following char
        */
@@ -35,7 +35,7 @@ export const camelCase = (str: string) => {
 
 /**
  * Converts string to kebab-case format.
- * Handles camelCase, snake_case, spaces, and mixed formats.
+ * Handles camelCase, snake_case, umwelts, and mixed formats.
  *
  * @param str - String to convert
  * @returns kebab-case string.

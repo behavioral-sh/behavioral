@@ -47,9 +47,9 @@ describe('createTui', () => {
 
   describe('prompt', () => {
     test('a line of input resolves to a tui_command ingress event', async () => {
-      const tui = createTui({ input: scriptInput(['/space new docs\n']), write: (text) => out.push(text) })
+      const tui = createTui({ input: scriptInput(['/umwelt new docs\n']), write: (text) => out.push(text) })
       const event = await tui.prompt('behavioral> ')
-      expect(event).toEqual({ type: TUI_COMMAND, detail: { line: '/space new docs' } })
+      expect(event).toEqual({ type: TUI_COMMAND, detail: { line: '/umwelt new docs' } })
       tui.close()
     })
 
@@ -78,10 +78,10 @@ describe('createTui', () => {
     test('a numbered choice resolves to a tui_select event for that option', async () => {
       const written: string[] = []
       const tui = createTui({ input: scriptInput(['2\n']), write: (text) => written.push(text) })
-      const event = await tui.select('pick a space', ['docs', 'harness', 'scratch'])
+      const event = await tui.select('pick a umwelt', ['docs', 'harness', 'scratch'])
       expect(event).toEqual({ type: TUI_SELECT, detail: { option: 'harness' } })
       // The question and the numbered options were rendered before the input.
-      expect(written.join('')).toContain('pick a space')
+      expect(written.join('')).toContain('pick a umwelt')
       expect(written.join('')).toContain('1. docs')
       expect(written.join('')).toContain('3. scratch')
       tui.close()
@@ -93,7 +93,7 @@ describe('createTui', () => {
         input: scriptInput(['9\n', 'not-a-number\n', '1\n']),
         write: (text) => written.push(text),
       })
-      const event = await tui.select('pick a space', ['docs', 'harness'])
+      const event = await tui.select('pick a umwelt', ['docs', 'harness'])
       expect(event).toEqual({ type: TUI_SELECT, detail: { option: 'docs' } })
       expect(written.join('')).toContain('invalid choice: 9')
       expect(written.join('')).toContain('invalid choice: not-a-number')

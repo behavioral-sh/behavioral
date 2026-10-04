@@ -1,19 +1,19 @@
 /**
- * Store worker — durable, space-scoped key-value persistence for data that
+ * Store worker — durable, umwelt-scoped key-value persistence for data that
  * must survive behavioral invocations: run counters, budget ledgers, the
  * discovery catalog.
  *
  * @remarks
  * Spawned by URL (never imported) and speaks the behavioral event wire:
  * `store_request` events in (dispatched by `detail.op`: put / get / delete /
- * query), one `store_request_result` out with the request `space` echoed.
+ * query), one `store_request_result` out with the request `umwelt` echoed.
  * No cancel: ops are short-lived (frontier rule).
  *
- * **Space isolation is the non-negotiable floor.** Space comes from the
- * event envelope (provisioner-stamped, thread-space-derived), never from op
+ * **Umwelt isolation is the non-negotiable floor.** Umwelt comes from the
+ * event envelope (provisioner-stamped, thread-umwelt-derived), never from op
  * input — every per-op schema is `additionalProperties: false`, so a
- * `space`/`path`/host key inside `input` is rejected at the boundary.
- * Spaceless requests stamp rows as the root space.
+ * `umwelt`/`path`/host key inside `input` is rejected at the boundary.
+ * Umweltless requests stamp rows as the root umwelt.
  *
  * **The sqlite schema is worker-internal.** Only JSON ops cross the wire —
  * no SQL, no expressions — so backings stay swappable per host (bun:sqlite
@@ -44,7 +44,7 @@ import type { StoreRequestEvent } from './actuators.types.ts'
 import { behavioralHome } from './behavioral-home.ts'
 import { emit, envData, wireInbound } from './process-lane.ts'
 import {
-  ROOT_SPACE,
+  ROOT_UMWELT,
   STORE_DB_PATH_KEY,
   type StoreDeleteInput,
   type StoreGetInput,
@@ -57,7 +57,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_DB_PATH = path.join(behavioralHome(), 'db.sqlite')
-const SCHEMA_VERSION = '1'
+const SCHEMA_VERSION = '2'
 
 const dbPath = (envData(STORE_DB_PATH_KEY) as string | undefined) ?? DEFAULT_DB_PATH
 if (dbPath !== ':memory:') {
@@ -75,19 +75,43 @@ const versionRow = db.query(`SELECT value FROM store_meta WHERE key = 'schema_ve
 if (versionRow === null || versionRow === undefined) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS store_entries (
-      space TEXT NOT NULL,
+      umwelt TEXT NOT NULL,
       collection TEXT NOT NULL,
       key TEXT NOT NULL,
       value_json TEXT NOT NULL,
       updated_at INTEGER NOT NULL,
-      PRIMARY KEY (space, collection, key)
+      PRIMARY KEY (umwelt, collection, key)
     )
   `)
   db.query(`INSERT INTO store_meta (key, value) VALUES ('schema_version', ?)`).run(SCHEMA_VERSION)
+} else if (versionRow.value === '1') {
+  // The schema-1 → schema-2 migration: the tenancy dimension RENAMES
+  // (space → umwelt vocabulary, the 2026-10-03 ruling). SQLite cannot rename
+  // a PRIMARY KEY column in place — CREATE-new + INSERT-SELECT + DROP +
+  // RENAME. The `space` references on the READ side below are LOAD-BEARING:
+  // they address the pre-rename DB exactly as earlier binaries wrote it (the
+  // same standing exception as the migration spec's old-schema fixture).
+  db.exec(`
+    CREATE TABLE store_entries_migrated (
+      umwelt TEXT NOT NULL,
+      collection TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (umwelt, collection, key)
+    )
+  `)
+  db.exec(`
+    INSERT INTO store_entries_migrated (umwelt, collection, key, value_json, updated_at)
+    SELECT space, collection, key, value_json, updated_at FROM store_entries
+  `)
+  db.exec('DROP TABLE store_entries')
+  db.exec('ALTER TABLE store_entries_migrated RENAME TO store_entries')
+  db.query(`UPDATE store_meta SET value = ? WHERE key = 'schema_version'`).run(SCHEMA_VERSION)
 }
 
 // ---------------------------------------------------------------------------
-// Input boundary — per-op schemas (space/host keys rejected by construction)
+// Input boundary — per-op schemas (umwelt/host keys rejected by construction)
 // ---------------------------------------------------------------------------
 
 const jsonObjectSchema = { type: 'object', required: [], additionalProperties: true } as const
@@ -145,12 +169,12 @@ const validateQuery = ajv.compile(QueryInputSchema)
 const postResult = ({
   id,
   result,
-  space,
+  umwelt,
   ctx,
 }: {
   id: string
   result: unknown
-  space?: string
+  umwelt?: string
   ctx?: JsonObject
 }): void => {
   emit({
@@ -173,38 +197,38 @@ const postResult = ({
       })()
       return ctx === undefined ? base : ({ ...base, ctx } as JsonObject & { id: string })
     })(),
-    ...(space === undefined ? {} : { space }),
+    ...(umwelt === undefined ? {} : { umwelt }),
   })
 }
 
 type OpRunner = {
   validate: (input: unknown) => boolean
   errors: () => string | null
-  run: (input: never, space: string) => unknown
+  run: (input: never, umwelt: string) => unknown
 }
 
 const OP_RUNNERS = {
   put: {
     validate: validatePut,
     errors: () => ajv.errorsText(validatePut.errors),
-    run: ({ collection, key, value }: StorePutInput, space): { ok: true } => {
+    run: ({ collection, key, value }: StorePutInput, umwelt): { ok: true } => {
       db.query(
-        `INSERT INTO store_entries (space, collection, key, value_json, updated_at)
+        `INSERT INTO store_entries (umwelt, collection, key, value_json, updated_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(space, collection, key) DO UPDATE SET
+         ON CONFLICT(umwelt, collection, key) DO UPDATE SET
            value_json = excluded.value_json, updated_at = excluded.updated_at`,
-      ).run(space, collection, key, JSON.stringify(value), Date.now())
+      ).run(umwelt, collection, key, JSON.stringify(value), Date.now())
       return { ok: true }
     },
   },
   get: {
     validate: validateGet,
     errors: () => ajv.errorsText(validateGet.errors),
-    run: ({ collection, key }: StoreGetInput, space): { value: JsonObject | null } => {
+    run: ({ collection, key }: StoreGetInput, umwelt): { value: JsonObject | null } => {
       // `.get()` returns null (not undefined) for no rows — check both.
       const row = db
-        .query(`SELECT value_json FROM store_entries WHERE space = ? AND collection = ? AND key = ?`)
-        .get(space, collection, key) as { value_json: string } | null | undefined
+        .query(`SELECT value_json FROM store_entries WHERE umwelt = ? AND collection = ? AND key = ?`)
+        .get(umwelt, collection, key) as { value_json: string } | null | undefined
       if (row === null || row === undefined) return { value: null }
       return { value: JSON.parse(row.value_json) as JsonObject }
     },
@@ -212,10 +236,10 @@ const OP_RUNNERS = {
   delete: {
     validate: validateDelete,
     errors: () => ajv.errorsText(validateDelete.errors),
-    run: ({ collection, key }: StoreDeleteInput, space): { deleted: boolean } => {
+    run: ({ collection, key }: StoreDeleteInput, umwelt): { deleted: boolean } => {
       const res = db
-        .query(`DELETE FROM store_entries WHERE space = ? AND collection = ? AND key = ?`)
-        .run(space, collection, key)
+        .query(`DELETE FROM store_entries WHERE umwelt = ? AND collection = ? AND key = ?`)
+        .run(umwelt, collection, key)
       return { deleted: res.changes > 0 }
     },
   },
@@ -224,15 +248,15 @@ const OP_RUNNERS = {
     errors: () => ajv.errorsText(validateQuery.errors),
     run: (
       { collection, filter }: StoreQueryInput,
-      space,
+      umwelt,
     ): { rows: Array<{ key: string; value: JsonObject; updated_at: number }> } => {
       const rows = db
         .query(
           `SELECT key, value_json, updated_at FROM store_entries
-           WHERE space = ? AND collection = ?
+           WHERE umwelt = ? AND collection = ?
            ORDER BY updated_at DESC, key ASC`,
         )
-        .all(space, collection) as Array<{ key: string; value_json: string; updated_at: number }>
+        .all(umwelt, collection) as Array<{ key: string; value_json: string; updated_at: number }>
       const parsed = rows.map((row) => ({
         key: row.key,
         value: JSON.parse(row.value_json) as JsonObject,
@@ -261,20 +285,25 @@ const handleInbound = (message: unknown): void => {
   const { id, op, input, ctx } = event.detail
   const runner = OP_RUNNERS[op]
   if (runner === undefined) {
-    postResult({ id, result: { isError: true, message: `unknown store operation: ${op}` }, space: event.space, ctx })
+    postResult({ id, result: { isError: true, message: `unknown store operation: ${op}` }, umwelt: event.umwelt, ctx })
     return
   }
   if (!runner.validate(input)) {
-    postResult({ id, result: { isError: true, message: `invalid input: ${runner.errors()}` }, space: event.space, ctx })
+    postResult({
+      id,
+      result: { isError: true, message: `invalid input: ${runner.errors()}` },
+      umwelt: event.umwelt,
+      ctx,
+    })
     return
   }
   try {
-    postResult({ id, result: runner.run(input as never, event.space ?? ROOT_SPACE), space: event.space, ctx })
+    postResult({ id, result: runner.run(input as never, event.umwelt ?? ROOT_UMWELT), umwelt: event.umwelt, ctx })
   } catch (err) {
     postResult({
       id,
       result: { isError: true, message: err instanceof Error ? err.message : String(err) },
-      space: event.space,
+      umwelt: event.umwelt,
       ctx,
     })
   }

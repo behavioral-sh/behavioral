@@ -395,13 +395,13 @@ describe('bProgram — the runtime composition', () => {
     }
   })
 
-  test('the root guard watches every space: a named-space malformed ui_* message is blocked', async () => {
+  test('the root guard watches every umwelt: a named-umwelt malformed ui_* message is blocked', async () => {
     const { runtime, traces } = startRuntime({ actuators: [] })
     try {
       // The same invalid ui_render, stamped into s1: the root guard's
-      // unstamped block matches every space (Direction/R) — the named-space
+      // unstamped block matches every umwelt (Direction/R) — the named-umwelt
       // validation gap is closed with zero new wiring.
-      runtime.trigger({ type: 'ui_render', space: 's1', detail: { id: 'r1', target: 'main', swap: 'innerHTML' } })
+      runtime.trigger({ type: 'ui_render', umwelt: 's1', detail: { id: 'r1', target: 'main', swap: 'innerHTML' } })
       await Bun.sleep(100)
       expect(selectionsOf(traces).some((t) => t.selected.type === 'ui_render')).toBe(false)
       expect(traces.some((t) => t.kind === TRACE_MESSAGE_KINDS.deadlock)).toBe(true)
@@ -695,7 +695,7 @@ describe('bProgram — the runtime composition', () => {
       try {
         // The pilot-confirmed tradeoff: the override is honored (the edge-case
         // escape hatch), and truncated never passes — a proposal whose state
-        // space cannot be explored within the supplied budget is rejected.
+        // umwelt cannot be explored within the supplied budget is rejected.
         // The two-rule thread needs more than one exploration level.
         runtime.trigger(
           addThreadRequest(
@@ -1502,7 +1502,7 @@ describe('bProgram — the runtime composition', () => {
             }>
             expect(entry?.status).toBe('admitted')
             expect(entry?.thread?.sourceHash).toBe(hashString(plugin))
-            // THE THIRD HASH: djb2(canonical plugin path + space + NAME) — the
+            // THE THIRD HASH: djb2(canonical plugin path + umwelt + NAME) — the
             // registry's OWN content hash stays the re-adjudication key; two
             // hashes, two jobs, plus the mount identity.
             expect(entry?.instanceHash).toBe(pluginThreadInstanceHash({ plugin, name: 'greeter' }))

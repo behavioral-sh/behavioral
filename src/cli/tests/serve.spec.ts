@@ -33,7 +33,7 @@ const fakeRuntime = () => {
   return { runtime, triggers, calls, emit }
 }
 
-const selectionOf = (selected: { type: string; detail?: JsonObject; space?: string }): SelectionTrace => ({
+const selectionOf = (selected: { type: string; detail?: JsonObject; umwelt?: string }): SelectionTrace => ({
   kind: TRACE_MESSAGE_KINDS.selection,
   timestamp: 0,
   instanceId: 'i',

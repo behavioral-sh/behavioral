@@ -20,7 +20,7 @@
  *   threads cannot loop, so the queue rides the events).
  * - **candidate-dispatch** — each candidate issues the `frontier_analysis_request
  *   { op: 'add_thread' }` proposal, the thread stamped with the proposal's
- *   target space (absent = root — Root/D; the admission's stamp governs the
+ *   target umwelt (absent = root — Root/D; the admission's stamp governs the
  *   mount, never the author's). From here the landed admission path owns
  *   everything: the structural review (livelock detection is part of adding
  *   threads), the judged admission when systemOne is wired, the write.
@@ -48,6 +48,13 @@ import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
+/**
+ * The registry entry version — an entry stamped with anything else quarantines
+ * as data. Lives HERE (the threads vocabulary home) so the reconcile jq's
+ * filter derives it — no version literal drift between the stamp and the walk.
+ */
+export const PLUGIN_THREADS_REGISTRY_VERSION = 2
+
 /** Thread-owned event types: the proposal is host ingress; imported/candidate/failed surface; pending is the carry. */
 export const PLUGIN_THREADS_EVENT_TYPES = {
   proposal: 'plugin_threads_proposal',
@@ -55,7 +62,7 @@ export const PLUGIN_THREADS_EVENT_TYPES = {
   candidate: 'plugin_threads_candidate',
   pending: 'plugin_threads_pending',
   failed: 'plugin_threads_failed',
-  /** The registry's skip surface — a decided (plugin, file, hash, space) key never re-adjudicates; the composition emits this. */
+  /** The registry's skip surface — a decided (plugin, file, hash, umwelt) key never re-adjudicates; the composition emits this. */
   skipped: 'plugin_threads_skipped',
 } as const
 
@@ -179,7 +186,7 @@ console.log(JSON.stringify({ threads, warnings, hash, sourceHash: hashString(roo
 
 /**
  * The proposal's shape — the ingress gate. `plugin` is the plugin root
- * path, `file` the filename under the namespace dir, `space` the optional
+ * path, `file` the filename under the namespace dir, `umwelt` the optional
  * mount target (absent = root — Root/D).
  */
 export const PLUGIN_THREADS_PROPOSAL_SCHEMA = {
@@ -191,7 +198,7 @@ export const PLUGIN_THREADS_PROPOSAL_SCHEMA = {
       properties: {
         plugin: { type: 'string', minLength: 1 },
         file: { type: 'string', minLength: 1 },
-        space: { type: 'string', minLength: 1 },
+        umwelt: { type: 'string', minLength: 1 },
       },
       required: ['plugin', 'file'],
       additionalProperties: false,
@@ -212,7 +219,7 @@ const importIssue: Thread = {
       transform: [
         {
           type: PLUGIN_THREADS_EVENT_TYPES.proposal,
-          query: `. as $d | { id: ($d.id + "-import"), label: "${PLUGIN_THREADS_LABEL}", ctx: { echo: ({ source: $d.id, plugin: $d.input.plugin, file: $d.input.file } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }, input: { op: "run", script: ${JSON.stringify(PLUGIN_THREAD_IMPORT_SCRIPT)}, format: "json", env: { ${PLUGIN_ROOT_ENV}: $d.input.plugin, ${PLUGIN_FILE_ENV}: $d.input.file } } }`,
+          query: `. as $d | { id: ($d.id + "-import"), label: "${PLUGIN_THREADS_LABEL}", ctx: { echo: ({ source: $d.id, plugin: $d.input.plugin, file: $d.input.file } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end)) }, input: { op: "run", script: ${JSON.stringify(PLUGIN_THREAD_IMPORT_SCRIPT)}, format: "json", env: { ${PLUGIN_ROOT_ENV}: $d.input.plugin, ${PLUGIN_FILE_ENV}: $d.input.file } } }`,
           target: FACULTY_MESSAGE_KINDS.shell_request,
           detailSchema: PLUGIN_THREADS_PROPOSAL_SCHEMA,
         },
@@ -235,7 +242,7 @@ const IMPORT_ECHO_SCHEMA = {
         source: { type: 'string', minLength: 1 },
         plugin: { type: 'string', minLength: 1 },
         file: { type: 'string', minLength: 1 },
-        space: { type: 'string', minLength: 1 },
+        umwelt: { type: 'string', minLength: 1 },
       },
       additionalProperties: false,
     },
@@ -320,7 +327,7 @@ const IMPORTED_SCHEMA = {
         sourceHash: { type: 'integer', minimum: 0 },
         threads: { type: 'array', items: { type: 'object' } },
         warnings: { type: 'array', items: { type: 'string' } },
-        space: { type: 'string', minLength: 1 },
+        umwelt: { type: 'string', minLength: 1 },
       },
       required: ['plugin', 'file', 'hash', 'threads', 'sourceHash'],
       additionalProperties: false,
@@ -359,7 +366,7 @@ const CANDIDATE_SCHEMA = {
         file: { type: 'string', minLength: 1 },
         hash: { type: 'string', minLength: 1 },
         sourceHash: { type: 'integer', minimum: 0 },
-        space: { type: 'string', minLength: 1 },
+        umwelt: { type: 'string', minLength: 1 },
       },
       required: ['thread', 'plugin', 'file', 'hash', 'sourceHash'],
       additionalProperties: false,
@@ -381,7 +388,7 @@ const importJoin: Thread = {
         {
           type: FACULTY_MESSAGE_KINDS.shell_request_result,
           query:
-            '. as $d | { id: $d.ctx.echo.source, input: ({ plugin: $d.ctx.echo.plugin, file: $d.ctx.echo.file, hash: $d.result.jsonData.hash, sourceHash: $d.result.jsonData.sourceHash, threads: $d.result.jsonData.threads, warnings: ($d.result.jsonData.warnings // []) } + (if $d.ctx.echo.space != null then { space: $d.ctx.echo.space } else {} end)) }',
+            '. as $d | { id: $d.ctx.echo.source, input: ({ plugin: $d.ctx.echo.plugin, file: $d.ctx.echo.file, hash: $d.result.jsonData.hash, sourceHash: $d.result.jsonData.sourceHash, threads: $d.result.jsonData.threads, warnings: ($d.result.jsonData.warnings // []) } + (if $d.ctx.echo.umwelt != null then { umwelt: $d.ctx.echo.umwelt } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.imported,
           detailSchema: IMPORT_SUCCESS_SCHEMA,
         },
@@ -407,14 +414,14 @@ const candidateIssue: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.imported,
           query:
-            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-0"), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-0"), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.candidate,
           detailSchema: IMPORTED_SCHEMA,
         },
         {
           type: PLUGIN_THREADS_EVENT_TYPES.imported,
           query:
-            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: 1 } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: 1 } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.pending,
           detailSchema: IMPORTED_SCHEMA,
         },
@@ -433,14 +440,14 @@ const pendingIssue: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.pending,
           query:
-            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-" + ($d.input.next | tostring)), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select($d.input.threads[0] != null) | { id: ($d.id + "-add-" + ($d.input.next | tostring)), input: ({ thread: $d.input.threads[0], plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.candidate,
           detailSchema: PENDING_SCHEMA,
         },
         {
           type: PLUGIN_THREADS_EVENT_TYPES.pending,
           query:
-            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: ($d.input.next + 1) } + (if $d.input.space != null then { space: $d.input.space } else {} end)) }',
+            '. as $d | select(($d.input.threads[1:] | length) > 0) | { id: $d.id, input: ({ plugin: $d.input.plugin, file: $d.input.file, hash: $d.input.hash, sourceHash: $d.input.sourceHash, threads: $d.input.threads[1:], next: ($d.input.next + 1) } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end)) }',
           target: PLUGIN_THREADS_EVENT_TYPES.pending,
           detailSchema: PENDING_SCHEMA,
         },
@@ -449,7 +456,7 @@ const pendingIssue: Thread = {
   ],
 }
 
-/** candidate-dispatch — one add_thread frontier proposal per candidate; the admission's space stamp governs the mount, never the author's. */
+/** candidate-dispatch — one add_thread frontier proposal per candidate; the admission's umwelt stamp governs the mount, never the author's. */
 const candidateDispatch: Thread = {
   name: 'plugin-threads/candidate-dispatch',
   description: 'Dispatches the validated plugin-thread candidate onto the admission lane.',
@@ -459,7 +466,7 @@ const candidateDispatch: Thread = {
         {
           type: PLUGIN_THREADS_EVENT_TYPES.candidate,
           query:
-            '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.space)) + ({ sourceHash: $d.input.sourceHash } + (if $d.input.space != null then { space: $d.input.space } else {} end))) } }',
+            '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.umwelt)) + ({ sourceHash: $d.input.sourceHash } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end))) } }',
           target: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
           detailSchema: CANDIDATE_SCHEMA,
         },

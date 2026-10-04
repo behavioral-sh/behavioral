@@ -117,16 +117,16 @@ describe('supervision threads — the counting breaker', () => {
     expect(SUPERVISION_DEFAULT_THRESHOLD).toBe(4096)
   })
 
-  test('a space-stamped loop trips the root breaker and the type blocks globally — accepted v1 bluntness', () => {
+  test('a umwelt-stamped loop trips the root breaker and the type blocks globally — accepted v1 bluntness', () => {
     const { program, selected } = liveProgram()
     mountAll(program, supervisionThreads({ watch: ['leaky-s1'], threshold: 4 }))
     // The runaway loop lives in s1; the supervisor is root-mounted — its
-    // unstamped listeners watch every space (Direction/R).
+    // unstamped listeners watch every umwelt (Direction/R).
     mountAll(program, [
       {
         name: 'loop',
         description: 'Test thread.',
-        space: 's1',
+        umwelt: 's1',
         rules: [{ request: { type: 'leaky-s1', detail: {} } }],
       },
     ])
@@ -139,8 +139,8 @@ describe('supervision threads — the counting breaker', () => {
     expect(validateSupervisionTripped(trip?.detail)).toBe(true)
 
     // The block is GLOBAL: the same type in ROOT is blocked too — one
-    // space's runaway loop halts the kind everywhere (v1 bluntness; a
-    // space-stamped supervisor set confines — expressible, not built).
+    // umwelt's runaway loop halts the kind everywhere (v1 bluntness; a
+    // umwelt-stamped supervisor set confines — expressible, not built).
     mountAll(program, [
       {
         name: 'root-loop',

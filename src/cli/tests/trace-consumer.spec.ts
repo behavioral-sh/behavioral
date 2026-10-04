@@ -6,13 +6,13 @@ import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { JsonObject, SelectionTrace, Trace } from '../../behavioral/behavioral.types.ts'
 import { collectSecretValues, createTraceConsumer, redactTrace, traceLogSink } from '../trace-consumer.ts'
 
-const selection = (detail: JsonObject, space?: string): SelectionTrace => ({
+const selection = (detail: JsonObject, umwelt?: string): SelectionTrace => ({
   kind: TRACE_MESSAGE_KINDS.selection,
   timestamp: 0,
   instanceId: 'i',
   sessionId: 'i',
   step: 1,
-  selected: { priority: 0, type: 'shell_request', detail, ...(space === undefined ? {} : { space }) },
+  selected: { priority: 0, type: 'shell_request', detail, ...(umwelt === undefined ? {} : { umwelt }) },
 })
 
 describe('redactTrace', () => {
@@ -102,14 +102,14 @@ describe('createTraceConsumer', () => {
 })
 
 describe('traceLogSink', () => {
-  test('appends one JSON line per trace under <root>/<space>/<date>.jsonl', async () => {
+  test('appends one JSON line per trace under <root>/<umwelt>/<date>.jsonl', async () => {
     const root = mkdtempSync(join(tmpdir(), 'behavioral-traces-'))
     try {
       const sink = traceLogSink({ root })
-      sink(selection({ op: 'echo' }, 'space-a'))
-      sink(selection({ op: 'echo' }, 'space-a'))
+      sink(selection({ op: 'echo' }, 'umwelt-a'))
+      sink(selection({ op: 'echo' }, 'umwelt-a'))
       const date = new Date().toISOString().slice(0, 10)
-      const lines = (await Bun.file(join(root, 'space-a', `${date}.jsonl`)).text()).trim().split('\n')
+      const lines = (await Bun.file(join(root, 'umwelt-a', `${date}.jsonl`)).text()).trim().split('\n')
       expect(lines).toHaveLength(2)
       const first = lines[0]
       if (first === undefined) throw new Error('no line written')
@@ -119,7 +119,7 @@ describe('traceLogSink', () => {
     }
   })
 
-  test('a trace with no space lands under the root space', async () => {
+  test('a trace with no umwelt lands under the root umwelt', async () => {
     const root = mkdtempSync(join(tmpdir(), 'behavioral-traces-'))
     try {
       traceLogSink({ root })(selection({ op: 'echo' }))
@@ -135,9 +135,9 @@ describe('traceLogSink', () => {
     const previous = process.env.BEHAVIORAL_HOME
     process.env.BEHAVIORAL_HOME = home
     try {
-      traceLogSink()(selection({ op: 'echo' }, 'space-a'))
+      traceLogSink()(selection({ op: 'echo' }, 'umwelt-a'))
       const date = new Date().toISOString().slice(0, 10)
-      expect(await Bun.file(join(home, 'traces', 'space-a', `${date}.jsonl`)).exists()).toBe(true)
+      expect(await Bun.file(join(home, 'traces', 'umwelt-a', `${date}.jsonl`)).exists()).toBe(true)
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
       else process.env.BEHAVIORAL_HOME = previous

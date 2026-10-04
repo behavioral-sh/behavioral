@@ -27,8 +27,8 @@ import { type FacultyResult, spawnFaculty } from './faculty-harness.ts'
 
 /** The envelope as posted: { id, ok: true, result } | { id, ok: false, error }. */
 type WireResult =
-  | { id: string; ok: true; result: ShellSuccess; space?: string }
-  | { id: string; ok: false; error: ShellError; space?: string }
+  | { id: string; ok: true; result: ShellSuccess; umwelt?: string }
+  | { id: string; ok: false; error: ShellError; umwelt?: string }
 
 /** Spawn the shell worker and expose an event-wire harness over it. */
 /** Spawn the shell faculty PROCESS and expose the same wire harness API. */
@@ -45,19 +45,19 @@ const spawnShellWorker = () => {
       id: raw.id,
       ok: d.ok,
       ...(d.ok ? { result: d.result } : { error: d.error }),
-      space: raw.space,
+      umwelt: raw.umwelt,
     } as WireResult)
   }
   // The harness's resultFor observes every result once; tests use the wrapper.
   const rawFor = faculty.resultFor
   void rawFor
-  const run = (id: string, script: string, extra?: Record<string, unknown>, space?: string): void => {
+  const run = (id: string, script: string, extra?: Record<string, unknown>, umwelt?: string): void => {
     void faculty
-    faculty.call({ id, label: 'test-run', input: { op: 'run', script, ...extra } } as JsonObject, space)
+    faculty.call({ id, label: 'test-run', input: { op: 'run', script, ...extra } } as JsonObject, umwelt)
   }
-  const sh = (id: string, command: string, extra?: Record<string, unknown>, space?: string): void => {
+  const sh = (id: string, command: string, extra?: Record<string, unknown>, umwelt?: string): void => {
     void faculty
-    faculty.call({ id, label: 'test-sh', input: { op: 'shell', command, ...extra } } as JsonObject, space)
+    faculty.call({ id, label: 'test-sh', input: { op: 'shell', command, ...extra } } as JsonObject, umwelt)
   }
   const cancel = (id: string): void => {
     faculty.post({ type: ACTUATOR_MESSAGE_KINDS.shell_cancel, detail: { id } } as never)
@@ -81,7 +81,7 @@ const spawnShellWorker = () => {
     if (found !== undefined) return found
     // Canceled/timeout results may have been observed already; also cover
     // results whose detail the pump dropped.
-    return { id: raw.id, ok: true, result: {} as ShellSuccess, space: raw.space }
+    return { id: raw.id, ok: true, result: {} as ShellSuccess, umwelt: raw.umwelt }
   }
   return { run, sh, cancel, resultFor, payloadFor, errorFor, terminate: (): void => faculty.terminate() }
 }
@@ -103,12 +103,12 @@ describe('shell worker — event wire', () => {
     }
   })
 
-  test('a request space is echoed on the result event', async () => {
+  test('a request umwelt is echoed on the result event', async () => {
     const shell = spawnShellWorker()
     try {
       shell.run('w2', 'console.log("spaced")', undefined, 'demo')
-      const { space } = await shell.resultFor('w2')
-      expect(space).toBe('demo')
+      const { umwelt } = await shell.resultFor('w2')
+      expect(umwelt).toBe('demo')
     } finally {
       shell.terminate()
     }

@@ -52,7 +52,7 @@ describe('trigger_error isolation — no error pooling across calls', () => {
     const program = behavioral()
     const { trigger } = program
 
-    const traces: Array<{ kind: string; error?: unknown[]; space?: string }> = []
+    const traces: Array<{ kind: string; error?: unknown[]; umwelt?: string }> = []
     program.useTrace((msg) => {
       if (msg.kind === 'trigger_error') traces.push(msg)
     })
@@ -61,9 +61,9 @@ describe('trigger_error isolation — no error pooling across calls', () => {
     //@ts-expect-error: test
     trigger({ type: 42 }) // wrong type field
     //@ts-expect-error: test
-    trigger({ space: 'no-type-here' }) // missing type
+    trigger({ umwelt: 'no-type-here' }) // missing type
     //@ts-expect-error: test
-    trigger({ type: 'x', space: 123 }) // space is a number
+    trigger({ type: 'x', umwelt: 123 }) // umwelt is a number
 
     expect(traces).toHaveLength(3)
 
@@ -85,15 +85,15 @@ describe('trigger_error isolation — no error pooling across calls', () => {
       .join(' ')
     expect(secondMsgs).toContain('required')
 
-    // Third: space is a number — error mentions space, not type
+    // Third: umwelt is a number — error mentions umwelt, not type
     expect(Array.isArray(third.error)).toBe(true)
     const thirdStr = JSON.stringify(third.error)
-    expect(thirdStr).toContain('space')
+    expect(thirdStr).toContain('umwelt')
 
     // Critical: the first trace's errors must NOT contain the second or third call's errors
     const firstStr = JSON.stringify(first.error)
     expect(firstStr).not.toContain('required')
-    expect(firstStr).not.toContain('space')
+    expect(firstStr).not.toContain('umwelt')
   })
 
   test('valid trigger between invalid ones does not leak stale errors into the next trace', () => {
@@ -117,7 +117,7 @@ describe('trigger_error isolation — no error pooling across calls', () => {
     trigger({ type: 42 })
     trigger({ type: 'valid_event' })
     //@ts-expect-error: test
-    trigger({ space: 'missing-type' })
+    trigger({ umwelt: 'missing-type' })
 
     // Two trigger_error traces (the valid one doesn't emit trigger_error)
     expect(triggerErrors).toHaveLength(2)
@@ -125,15 +125,15 @@ describe('trigger_error isolation — no error pooling across calls', () => {
     // The second invalid trigger's errors are fresh — not accumulated from the first
     const firstCount = (triggerErrors[0] as unknown[]).length
     const secondCount = (triggerErrors[1] as unknown[]).length
-    // First: type is 42 → 1 error; Second: space is number → 1 error
+    // First: type is 42 → 1 error; Second: umwelt is number → 1 error
     // If pooled, the second would have ≥2 errors
     expect(firstCount).toBe(1)
     expect(secondCount).toBe(1)
   })
 })
 
-describe('trigger — event-carried space', () => {
-  test('stamps the event space on the selected candidate', () => {
+describe('trigger — event-carried umwelt', () => {
+  test('stamps the event umwelt on the selected candidate', () => {
     const program = behavioral()
     const { addThread, trigger, useTrace } = program
     const selections: SelectionTrace[] = []
@@ -142,14 +142,14 @@ describe('trigger — event-carried space', () => {
     })
 
     addThread({ name: 'listener', description: 'Test thread.', rules: [{ waitFor: [onType('evt')] }], once: true })
-    trigger({ type: 'evt', space: 'space-1' })
+    trigger({ type: 'evt', umwelt: 'umwelt-1' })
 
     const selected = selections.find((trace) => trace.selected.type === 'evt')
     expect(selected).toBeDefined()
-    expect(selected!.selected.space).toBe('space-1')
+    expect(selected!.selected.umwelt).toBe('umwelt-1')
   })
 
-  test('absent space selects at root (no space stamp)', () => {
+  test('absent umwelt selects at root (no umwelt stamp)', () => {
     const program = behavioral()
     const { addThread, trigger, useTrace } = program
     const selections: SelectionTrace[] = []
@@ -162,27 +162,27 @@ describe('trigger — event-carried space', () => {
 
     const selected = selections.find((trace) => trace.selected.type === 'evt')
     expect(selected).toBeDefined()
-    expect(selected!.selected.space).toBeUndefined()
+    expect(selected!.selected.umwelt).toBeUndefined()
   })
 
-  test('an invalid trigger echoes the attempted space on the error trace', () => {
+  test('an invalid trigger echoes the attempted umwelt on the error trace', () => {
     const program = behavioral()
     const { trigger } = program
-    const triggerErrors: Array<{ space?: string }> = []
+    const triggerErrors: Array<{ umwelt?: string }> = []
     program.useTrace((msg) => {
       if (msg.kind === 'trigger_error') triggerErrors.push(msg)
     })
     //@ts-expect-error: test
-    trigger({ type: 42, space: 'space-err' })
+    trigger({ type: 42, umwelt: 'umwelt-err' })
 
     expect(triggerErrors).toHaveLength(1)
-    expect(triggerErrors[0]!.space).toBe('space-err')
+    expect(triggerErrors[0]!.umwelt).toBe('umwelt-err')
   })
 
-  test('an invalid trigger with no space omits the space on the error trace', () => {
+  test('an invalid trigger with no umwelt omits the umwelt on the error trace', () => {
     const program = behavioral()
     const { trigger } = program
-    const triggerErrors: Array<{ space?: string }> = []
+    const triggerErrors: Array<{ umwelt?: string }> = []
     program.useTrace((msg) => {
       if (msg.kind === 'trigger_error') triggerErrors.push(msg)
     })
@@ -190,6 +190,6 @@ describe('trigger — event-carried space', () => {
     trigger({ type: 42 })
 
     expect(triggerErrors).toHaveLength(1)
-    expect(triggerErrors[0]!.space).toBeUndefined()
+    expect(triggerErrors[0]!.umwelt).toBeUndefined()
   })
 })

@@ -14,7 +14,7 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  */
 
 /** Emit one wire event: a stdout JSON line. */
-export const emit = (event: { type: string; detail: JsonObject; space?: string }): void => {
+export const emit = (event: { type: string; detail: JsonObject; umwelt?: string }): void => {
   process.stdout.write(`${JSON.stringify(event)}\n`)
 }
 

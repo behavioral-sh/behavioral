@@ -27,8 +27,8 @@
  *    the JSON-RPC attach lane, never the faculty wire.
  *
  * Per-connection lanes: every attached composition gets its OWN trio
- * instances (the per-space process isolation — one process per wiring per
- * space), built from the host's pre-built lane builders at open, terminated
+ * instances (the per-umwelt process isolation — one process per wiring per
+ * umwelt), built from the host's pre-built lane builders at open, terminated
  * at close. The re-entry law runs inverted: the lanes' once-threads pump to
  * THIS connection's socket.
  *
@@ -69,7 +69,7 @@ export type FacultyBridge = {
     req: Request,
     upgrade: (req: Request, options: { data: FacultyBridgeSocketData }) => boolean,
   ) => Response | undefined
-  /** Build this connection's lanes (per-space process isolation) and arm the pump. */
+  /** Build this connection's lanes (per-umwelt process isolation) and arm the pump. */
   open: (ws: BridgeSocket) => void
   /** Parse one line per the shared framing; route or fail visibly (the connection stays). */
   message: (ws: BridgeSocket, line: string) => void
@@ -90,7 +90,7 @@ const failVisible = (ws: BridgeSocket, faculty: string, message: string): void =
 /**
  * The re-entry law, inverted: the lanes re-enter once-threads whose `request`
  * rule IS the wire event — the bridge unwraps and pumps it to this
- * connection's socket, space preserved (root stays root).
+ * connection's socket, umwelt preserved (root stays root).
  */
 const pumpFor =
   (send: (frame: FacultyWireFrame) => void) =>
@@ -101,7 +101,7 @@ const pumpFor =
       send({
         type: request.type,
         detail: request.detail as JsonObject,
-        ...(thread.space === undefined ? {} : { space: thread.space }),
+        ...(thread.umwelt === undefined ? {} : { umwelt: thread.umwelt }),
       })
     }
   }
@@ -143,7 +143,7 @@ export const createFacultyBridge = ({
   },
   open: (ws) => {
     // Per-connection lanes: this composition's own trio instances (the
-    // per-space process isolation), pumping results back to THIS socket.
+    // per-umwelt process isolation), pumping results back to THIS socket.
     const send = (frame: FacultyWireFrame): void => ws.send(JSON.stringify(frame))
     ws.data.lanes = laneBuilders.map((build) => build((threads: Thread[]) => pumpFor(send)(threads)))
     for (const lane of ws.data.lanes) {

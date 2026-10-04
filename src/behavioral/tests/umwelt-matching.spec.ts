@@ -1,13 +1,13 @@
 /**
- * Space matching — ROOT AUTHORITY: an unstamped (root) listener sees every
- * space. Visibility flows UP only: a root listener matches candidates in
- * every space (all four idioms — waitFor, block, interrupt, transform),
- * while a space-stamped listener stays confined to its own space, never
+ * Umwelt matching — ROOT AUTHORITY: an unstamped (root) listener sees every
+ * umwelt. Visibility flows UP only: a root listener matches candidates in
+ * every umwelt (all four idioms — waitFor, block, interrupt, transform),
+ * while a umwelt-stamped listener stays confined to its own umwelt, never
  * matching root events or siblings (Root/D: a thread governing several
- * spaces is admitted per space explicitly, each mount stamped). Root
+ * umwelts is admitted per umwelt explicitly, each mount stamped). Root
  * requests still bid only in root — emissions are not observations. The
  * transform target once-thread re-enters stamped with the SOURCE event's
- * space (Direction/R).
+ * umwelt (Direction/R).
  */
 import { describe, expect, test } from 'bun:test'
 import { TRACE_MESSAGE_KINDS } from '../behavioral.constants.ts'
@@ -17,7 +17,7 @@ import type { InterruptTrace, SelectionTrace, Trace, TransformTrace } from '../b
 const selectedTypes = (traces: Trace[]): string[] =>
   traces.filter((t): t is SelectionTrace => t.kind === TRACE_MESSAGE_KINDS.selection).map((t) => t.selected.type)
 
-describe('space matching — root authority: the unstamped listener sees every space', () => {
+describe('umwelt matching — root authority: the unstamped listener sees every umwelt', () => {
   test('an unstamped thread matches a root (unstamped) event', () => {
     const program = behavioral()
     const traces: Trace[] = []
@@ -33,7 +33,7 @@ describe('space matching — root authority: the unstamped listener sees every s
     expect(selectedTypes(traces)).toContain('pong')
   })
 
-  test('an unstamped thread matches a named-space event — root sees every space', () => {
+  test('an unstamped thread matches a named-umwelt event — root sees every umwelt', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -44,11 +44,11 @@ describe('space matching — root authority: the unstamped listener sees every s
       description: 'Test thread.',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
-    program.trigger({ type: 'ping', space: 'named', detail: {} })
+    program.trigger({ type: 'ping', umwelt: 'named', detail: {} })
     expect(selectedTypes(traces)).toContain('pong')
   })
 
-  test('a space-stamped thread matches an event in its space', () => {
+  test('a umwelt-stamped thread matches an event in its umwelt', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -57,14 +57,14 @@ describe('space matching — root authority: the unstamped listener sees every s
     program.addThread({
       name: 's1-watcher',
       description: 'Test thread.',
-      space: 's1',
+      umwelt: 's1',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
-    program.trigger({ type: 'ping', space: 's1', detail: {} })
+    program.trigger({ type: 'ping', umwelt: 's1', detail: {} })
     expect(selectedTypes(traces)).toContain('pong')
   })
 
-  test('a space-stamped thread does not match root events or other spaces', () => {
+  test('a umwelt-stamped thread does not match root events or other umwelts', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -73,16 +73,16 @@ describe('space matching — root authority: the unstamped listener sees every s
     program.addThread({
       name: 's1-watcher',
       description: 'Test thread.',
-      space: 's1',
+      umwelt: 's1',
       rules: [{ waitFor: [{ type: 'ping' }] }, { request: { type: 'pong' } }],
     })
     program.trigger({ type: 'ping', detail: {} })
     expect(selectedTypes(traces)).not.toContain('pong')
-    program.trigger({ type: 'ping', space: 's2', detail: {} })
+    program.trigger({ type: 'ping', umwelt: 's2', detail: {} })
     expect(selectedTypes(traces)).not.toContain('pong')
   })
 
-  test('an unstamped block blocks a named-space candidate — the selection never fires', () => {
+  test('an unstamped block blocks a named-umwelt candidate — the selection never fires', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -93,11 +93,11 @@ describe('space matching — root authority: the unstamped listener sees every s
       description: 'Test thread.',
       rules: [{ block: [{ type: 'go' }] }],
     })
-    program.trigger({ type: 'go', space: 's1', detail: {} })
+    program.trigger({ type: 'go', umwelt: 's1', detail: {} })
     expect(selectedTypes(traces)).not.toContain('go')
   })
 
-  test('an unstamped interrupt terminates a thread on a named-space event', () => {
+  test('an unstamped interrupt terminates a thread on a named-umwelt event', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -108,7 +108,7 @@ describe('space matching — root authority: the unstamped listener sees every s
       description: 'Test thread.',
       rules: [{ waitFor: [{ type: 'never' }], interrupt: [{ type: 'boom' }] }, { request: { type: 'after-boom' } }],
     })
-    program.trigger({ type: 'boom', space: 's1', detail: {} })
+    program.trigger({ type: 'boom', umwelt: 's1', detail: {} })
     // The terminated thread never advances — even when its wait becomes
     // satisfiable afterwards.
     program.trigger({ type: 'never', detail: {} })
@@ -118,7 +118,7 @@ describe('space matching — root authority: the unstamped listener sees every s
     expect(selectedTypes(traces)).not.toContain('after-boom')
   })
 
-  test('an unstamped transform matches a named-space event — the re-entry stamp follows the source event space', () => {
+  test('an unstamped transform matches a named-umwelt event — the re-entry stamp follows the source event umwelt', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -129,27 +129,27 @@ describe('space matching — root authority: the unstamped listener sees every s
       description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
     })
-    program.trigger({ type: 'order', space: 's1', detail: { order: { id: 'o-1' } } })
+    program.trigger({ type: 'order', umwelt: 's1', detail: { order: { id: 'o-1' } } })
 
     // Mint semantics (the transform-faculty ruling): the engine mints the
     // request; the re-entry stamp rides the contract — the composition mints
-    // the target at the result leg with the SAME space.
+    // the target at the result leg with the SAME umwelt.
     const requests = traces.filter(
       (t): t is SelectionTrace =>
         t.kind === TRACE_MESSAGE_KINDS.selection && (t as SelectionTrace).selected.type === 'transform_request',
     )
     expect(requests).toHaveLength(1)
-    expect(requests[0]!.selected.space).toBe('s1')
+    expect(requests[0]!.selected.umwelt).toBe('s1')
 
     const transformTraces = traces.filter((t): t is TransformTrace => t.kind === TRACE_MESSAGE_KINDS.transform)
     expect(transformTraces).toHaveLength(1)
-    // The Transformer record's space IS the target's re-entry stamp —
+    // The Transformer record's umwelt IS the target's re-entry stamp —
     // Direction/R: it follows the source event, so the root transformer's
-    // output stays in the space it observed.
-    expect(transformTraces[0]!.transformers[0]!.space).toBe('s1')
+    // output stays in the umwelt it observed.
+    expect(transformTraces[0]!.transformers[0]!.umwelt).toBe('s1')
   })
 
-  test('a root request bids only in root — a space-stamped selection does not grant a pending unstamped request', () => {
+  test('a root request bids only in root — a umwelt-stamped selection does not grant a pending unstamped request', () => {
     const program = behavioral()
     const traces: Trace[] = []
     program.useTrace((t) => {
@@ -161,13 +161,13 @@ describe('space matching — root authority: the unstamped listener sees every s
       once: true,
       rules: [{ request: { type: 'pong' } }, { request: { type: 'done-bidder' } }],
     })
-    program.trigger({ type: 'pong', space: 's1', detail: {} })
+    program.trigger({ type: 'pong', umwelt: 's1', detail: {} })
     const selections = traces.filter((t): t is SelectionTrace => t.kind === TRACE_MESSAGE_KINDS.selection)
     // The s1 ingress is selected first; it does NOT grant the bidder's pending
     // unstamped request (emissions are not observations) — the bidder's own
     // root bid is selected on its own merit afterwards. An omni grant would
     // yield [pong@s1, done-bidder@root] with no root pong selection.
-    expect(selections.map((s) => [s.selected.type, s.selected.space ?? 'root'])).toEqual([
+    expect(selections.map((s) => [s.selected.type, s.selected.umwelt ?? 'root'])).toEqual([
       ['pong', 's1'],
       ['pong', 'root'],
       ['done-bidder', 'root'],

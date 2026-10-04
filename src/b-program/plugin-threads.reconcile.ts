@@ -21,8 +21,8 @@
  *
  * The queue is the carry recursion (the imported-batch peel pattern): pure
  * data cannot loop, so the per-entry walk rides the events. Unknown-version
- * entries (v !== 1) and already-`removed` entries are filtered in the read —
- * quarantined-as-data never reconciles. Rejected entries reconcile TOO: a
+ * entries (v !== PLUGIN_THREADS_REGISTRY_VERSION) and already-`removed`
+ * entries are filtered in the read — quarantined-as-data never reconciles. Rejected entries reconcile TOO: a
  * cosmetic rewrite carries the rejection forward (re-arming a rejection
  * requires a semantic change).
  *
@@ -37,6 +37,7 @@ import {
   PLUGIN_THREAD_IMPORT_SCRIPT,
   PLUGIN_THREADS_DIR,
   PLUGIN_THREADS_EVENT_TYPES,
+  PLUGIN_THREADS_REGISTRY_VERSION,
 } from './plugin-threads.threads.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
@@ -254,8 +255,10 @@ const queueIssue: Thread = {
           query:
             '. as $d | ($d.result.value // {}) as $v | ($v.entries // {}) as $e' +
             ' | [ $e | to_entries[]' +
-            ' | (.key | fromjson) as $k | select(.value.v == 1 and .value.status != "removed")' +
-            ' | { key: .key, plugin: $k[0], file: $k[1], hash: $k[2], space: $k[3], status: .value.status, thread: .value.thread, reason: .value.reason, instanceHash: .value.instanceHash } ] as $entries' +
+            ' | (.key | fromjson) as $k | select(.value.v == ' +
+            `${PLUGIN_THREADS_REGISTRY_VERSION}` +
+            ' and .value.status != "removed")' +
+            ' | { key: .key, plugin: $k[0], file: $k[1], hash: $k[2], umwelt: $k[3], status: .value.status, thread: .value.thread, reason: .value.reason, instanceHash: .value.instanceHash } ] as $entries' +
             ' | if ($entries | length) > 0 then { id: ($d.id + "-queue"), input: { entries: $entries, next: 0 } } else { id: ($d.id + "-queue"), input: ' +
             JSON.stringify(WALK_DONE) +
             ' } end',
@@ -350,7 +353,7 @@ const STAT_RESULT_SCHEMA = {
                 plugin: { type: 'string', minLength: 1 },
                 file: { type: 'string', minLength: 1 },
                 hash: { type: 'string', minLength: 1 },
-                space: { type: 'string', nullable: true },
+                umwelt: { type: 'string', nullable: true },
                 status: { type: 'string', minLength: 1 },
                 thread: { type: 'object', nullable: true },
                 reason: { type: 'string', nullable: true },
@@ -439,7 +442,7 @@ const STAT_VERDICT_SCHEMA = (verdict: string) =>
               plugin: { type: 'string', minLength: 1 },
               file: { type: 'string', minLength: 1 },
               hash: { type: 'string', minLength: 1 },
-              space: { type: 'string', nullable: true },
+              umwelt: { type: 'string', nullable: true },
               status: { type: 'string', minLength: 1 },
               thread: { type: 'object', nullable: true },
               reason: { type: 'string', nullable: true },
@@ -475,7 +478,7 @@ const statFollowers: Thread[] = [
             type: RECONCILE_EVENT_TYPES.stat,
             query:
               '. as $d | $d.input.entry as $e' +
-              ' | { id: ($d.id + "-removed"), input: ({ plugin: $e.plugin, file: $e.file, hash: $e.hash, instanceHash: $e.instanceHash } + (if $e.space != null then { space: $e.space } else {} end)) }',
+              ' | { id: ($d.id + "-removed"), input: ({ plugin: $e.plugin, file: $e.file, hash: $e.hash, instanceHash: $e.instanceHash } + (if $e.umwelt != null then { umwelt: $e.umwelt } else {} end)) }',
             target: RECONCILE_EVENT_TYPES.removed,
             detailSchema: STAT_VERDICT_SCHEMA('removed'),
           },
@@ -550,7 +553,7 @@ const IMPORT_RESULT_SCHEMA = {
                 plugin: { type: 'string', minLength: 1 },
                 file: { type: 'string', minLength: 1 },
                 hash: { type: 'string', minLength: 1 },
-                space: { type: 'string', nullable: true },
+                umwelt: { type: 'string', nullable: true },
                 status: { type: 'string', minLength: 1 },
                 thread: { type: 'object', nullable: true },
                 reason: { type: 'string', nullable: true },
@@ -645,7 +648,7 @@ const importJoin: Thread = {
           type: 'shell_request_result',
           query:
             '. as $d | $d.ctx.echo.entry as $e' +
-            ' | { id: ($d.ctx.echo.source + "-diff-" + ($d.ctx.echo.index | tostring)), input: ({ plugin: $e.plugin, file: $e.file, hash: $d.result.jsonData.hash, carriedFrom: $e.hash, exports: $d.result.jsonData.threads, snapshot: { status: $e.status, thread: $e.thread, reason: $e.reason } } + (if $e.space != null then { space: $e.space } else {} end)) }',
+            ' | { id: ($d.ctx.echo.source + "-diff-" + ($d.ctx.echo.index | tostring)), input: ({ plugin: $e.plugin, file: $e.file, hash: $d.result.jsonData.hash, carriedFrom: $e.hash, exports: $d.result.jsonData.threads, snapshot: { status: $e.status, thread: $e.thread, reason: $e.reason } } + (if $e.umwelt != null then { umwelt: $e.umwelt } else {} end)) }',
           target: RECONCILE_EVENT_TYPES.importDiff,
           detailSchema: IMPORT_SUCCESS_SCHEMA,
         },

@@ -13,7 +13,7 @@ test('camelCase should convert slash separated string to camel case', () => {
   expect(camelCase('hello/world')).toBe('helloWorld')
 })
 
-test('camelCase should convert spaces separated string to camel case', () => {
+test('camelCase should convert umwelts separated string to camel case', () => {
   expect(camelCase('hello world')).toBe('helloWorld')
 })
 
@@ -40,7 +40,7 @@ test('kebabCase should convert slash separated string to kebab case', () => {
   expect(kebabCase('hello/world')).toBe('hello-world')
 })
 
-test('kebabCase should convert spaces separated string to kebab case', () => {
+test('kebabCase should convert umwelts separated string to kebab case', () => {
   expect(kebabCase('hello world')).toBe('hello-world')
 })
 
@@ -67,7 +67,7 @@ test('pascalCase should convert slash separated string to Pascal case', () => {
   expect(pascalCase('hello/world')).toBe('HelloWorld')
 })
 
-test('pascalCase should convert spaces separated string to Pascal case', () => {
+test('pascalCase should convert umwelts separated string to Pascal case', () => {
   expect(pascalCase('hello world')).toBe('HelloWorld')
 })
 

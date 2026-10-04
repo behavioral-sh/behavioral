@@ -21,7 +21,7 @@ export const traceCollector = (program: BehavioralApi): { traces: Trace[]; disco
 }
 
 /**
- * Subscribes a handler to Selection traces, optionally filtered by `space`.
+ * Subscribes a handler to Selection traces, optionally filtered by `umwelt`.
  *
  * Replaces the old `useAddHandler(type, handler)` pattern — the handler fires
  * when an event of the matching type is selected.
@@ -31,11 +31,11 @@ export const traceCollector = (program: BehavioralApi): { traces: Trace[]; disco
 export const onSelection = (
   program: BehavioralApi,
   handler: (selected: SelectionTrace['selected']) => void | Promise<void>,
-  space?: string,
+  umwelt?: string,
 ): Disconnect => {
   return program.useTrace((msg: Trace) => {
     if (msg.kind !== TRACE_MESSAGE_KINDS.selection) return
-    if (space !== undefined && msg.selected.space !== space) return
+    if (umwelt !== undefined && msg.selected.umwelt !== umwelt) return
     void handler(msg.selected)
   })
 }

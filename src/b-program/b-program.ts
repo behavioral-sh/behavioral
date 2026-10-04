@@ -68,8 +68,8 @@ export type { FacultyLane, LaneBuilder } from '../faculties/faculties.types.ts'
 import type { LaneBuilder } from '../faculties/faculties.types.ts'
 
 /** The in-run decided key — the registry key's dimensions joined (a separator the data can't contain). */
-const decidedKey = (meta: { plugin: string; file: string; hash: string; space?: string }): string =>
-  `${meta.plugin}\u0000${meta.file}\u0000${meta.hash}\u0000${meta.space ?? ''}`
+const decidedKey = (meta: { plugin: string; file: string; hash: string; umwelt?: string }): string =>
+  `${meta.plugin}\u0000${meta.file}\u0000${meta.hash}\u0000${meta.umwelt ?? ''}`
 
 /** The actuator names the composition routes (the trio) — the registry lives in the wire home. */
 import { ACTUATOR_ROUTE, FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
@@ -243,14 +243,14 @@ export const bProgram = ({
   }
 
   // The pending plugin-threads admissions: candidate id → the proposal key's
-  // dimensions (plugin, file, hash, space) + the captured failure reason.
+  // dimensions (plugin, file, hash, umwelt) + the captured failure reason.
   // The candidate events carry everything; the composition joins at the
   // outcome. A decided key never re-adjudicates WITHIN the run (the durable
   // record is the host entry's registry — its boot fold is the cross-run
   // half; the cross-run skip mechanism is the open rewire finding).
   const pluginAdmissions = new Map<
     string,
-    { plugin: string; file: string; hash: string; space?: string; reason?: string }
+    { plugin: string; file: string; hash: string; umwelt?: string; reason?: string }
   >()
   /** In-run decided keys — the skip leg's within-run half. */
   const decidedKeys = new Map<string, { status: 'admitted' | 'rejected'; reason?: string }>()
@@ -263,7 +263,7 @@ export const bProgram = ({
    * A park entry is consumed by its result; an orphaned entry (a crashed
    * lane, a stray id) stays — bounded by transform volume, never a hang.
    */
-  const transformParks = new Map<string, { thread: string; target: string; space?: string }>()
+  const transformParks = new Map<string, { thread: string; target: string; umwelt?: string }>()
 
   /**
    * The mounted instance identities — the mount leg's idempotence floor: a
@@ -323,7 +323,7 @@ export const bProgram = ({
       // write (the verdict leg, in the pump below).
       const detail = event.detail as { id?: string; op?: string; input?: { thread?: unknown } } | undefined
       if (detail?.op === 'add_thread' && typeof detail.id === 'string') {
-        // The in-run registry gate: a decided (plugin, file, hash, space) key
+        // The in-run registry gate: a decided (plugin, file, hash, umwelt) key
         // never re-adjudicates within the run — an admitted key is already
         // live (the boot fold mounted the snapshot; a live admission mounted
         // it this run), a rejected key stays out. The skip surfaces as its
@@ -349,7 +349,7 @@ export const bProgram = ({
                           plugin: pluginMeta.plugin,
                           file: pluginMeta.file,
                           hash: pluginMeta.hash,
-                          ...(pluginMeta.space === undefined ? {} : { space: pluginMeta.space }),
+                          ...(pluginMeta.umwelt === undefined ? {} : { umwelt: pluginMeta.umwelt }),
                           status: decided.status,
                           ...(decided.status === 'rejected' ? { reason: decided.reason } : {}),
                         },
@@ -400,7 +400,7 @@ export const bProgram = ({
         transformParks.set(t.id, {
           thread: t.thread,
           target: t.target,
-          ...(t.space === undefined ? {} : { space: t.space }),
+          ...(t.umwelt === undefined ? {} : { umwelt: t.umwelt }),
         })
       }
       return
@@ -411,7 +411,7 @@ export const bProgram = ({
     // key's dimensions to the add_thread id.
     if (candidate.type === PLUGIN_THREADS_EVENT_TYPES.candidate) {
       const detail = candidate.detail as
-        | { id?: string; input?: { plugin?: string; file?: string; hash?: string; space?: string } }
+        | { id?: string; input?: { plugin?: string; file?: string; hash?: string; umwelt?: string } }
         | undefined
       if (
         typeof detail?.id === 'string' &&
@@ -423,7 +423,7 @@ export const bProgram = ({
           plugin: detail.input.plugin,
           file: detail.input.file,
           hash: detail.input.hash,
-          ...(detail.input.space === undefined ? {} : { space: detail.input.space }),
+          ...(detail.input.umwelt === undefined ? {} : { umwelt: detail.input.umwelt }),
         })
       }
       return
@@ -453,7 +453,7 @@ export const bProgram = ({
                   ...thread,
                   instanceHash: pluginThreadInstanceHash({
                     plugin: pluginMetaForStamp.plugin,
-                    space: pluginMetaForStamp.space,
+                    umwelt: pluginMetaForStamp.umwelt,
                     name: thread.name,
                   }),
                 }
@@ -552,7 +552,7 @@ export const bProgram = ({
     // selections reach it directly).
     // The transform RESULT leg: the faculty's answer joins its parked
     // contract. ok:true mints the target once-thread (`detail = result.value`,
-    // the re-entry law intact, the space carried per Direction/R); ok:false —
+    // the re-entry law intact, the umwelt carried per Direction/R); ok:false —
     // and any malformed result — mints NOTHING: the failure surfaces as this
     // result selection itself, fail-visible. An unknown id (a stray result
     // this composition never routed) selects and matches nothing — the park
@@ -570,7 +570,7 @@ export const bProgram = ({
               description: `Transform re-entry: applies the ${park.thread} transform and re-emits as ${park.target}.`,
               once: true,
               rules: [{ request: { type: park.target, detail: detail.value } }],
-              ...(park.space === undefined ? {} : { space: park.space }),
+              ...(park.umwelt === undefined ? {} : { umwelt: park.umwelt }),
             },
           ])
         }
@@ -613,7 +613,7 @@ export const bProgram = ({
                 plugin?: string
                 file?: string
                 hash?: string
-                space?: string
+                umwelt?: string
                 carriedFrom?: string
                 exports?: Array<{ name?: string } & JsonObject>
                 snapshot?: { status?: string; thread?: Thread; reason?: string }
@@ -642,7 +642,7 @@ export const bProgram = ({
       const match = stripped === undefined ? undefined : input.exports.find((e) => e?.name === compare?.name)
       const carried =
         stripped !== undefined && match !== undefined && deepEqual(match as JsonObject, stripped as JsonObject)
-      const spaceFields = input.space === undefined ? {} : { space: input.space }
+      const umweltFields = input.umwelt === undefined ? {} : { umwelt: input.umwelt }
       if (carried) {
         // The verdict CARRIES forward — never silent: the watcher writes the
         // new record under the new file-hash key with carriedFrom provenance;
@@ -676,7 +676,7 @@ export const bProgram = ({
                     plugin: input.plugin,
                     file: input.file,
                     hash: input.hash,
-                    ...spaceFields,
+                    ...umweltFields,
                     status: snap.status === 'admitted' ? 'admitted' : 'rejected',
                     ...(compare !== undefined && compare !== null ? { thread: compare as unknown as JsonObject } : {}),
                     ...(snap.reason === undefined ? {} : { reason: snap.reason }),
@@ -703,7 +703,7 @@ export const bProgram = ({
                   type: PLUGIN_THREADS_EVENT_TYPES.proposal,
                   detail: {
                     id: `reconcile-${uuid()}`,
-                    input: { plugin: input.plugin, file: input.file, ...spaceFields },
+                    input: { plugin: input.plugin, file: input.file, ...umweltFields },
                   } as unknown as JsonObject,
                 },
               },
@@ -728,7 +728,7 @@ export const bProgram = ({
       )
       return
     }
-    const event = { type: candidate.type, detail: candidate.detail, space: candidate.space } as BPEvent
+    const event = { type: candidate.type, detail: candidate.detail, umwelt: candidate.umwelt } as BPEvent
     const faculty = lanes[event.type]
     if (faculty === undefined) return
     // The trust boundary for events crossing into faculty workers: only

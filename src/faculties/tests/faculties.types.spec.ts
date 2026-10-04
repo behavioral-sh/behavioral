@@ -29,11 +29,11 @@ describe('workers.types event vocabulary', () => {
       })
       expect(valid).toBe(true)
     })
-    test('accepts optional space', () => {
+    test('accepts optional umwelt', () => {
       const valid = validateSystemTwoRequestEvent({
         type: FACULTY_MESSAGE_KINDS.system_two_request,
         detail: { id: 'call_1', input: {} },
-        space: 'main',
+        umwelt: 'main',
       })
       expect(valid).toBe(true)
     })

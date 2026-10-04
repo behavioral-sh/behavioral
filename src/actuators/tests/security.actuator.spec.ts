@@ -21,7 +21,7 @@ type WireResult = {
   ok: boolean
   result?: { token?: string }
   error?: { code?: string; message?: string }
-  space?: string
+  umwelt?: string
 }
 
 /** A loopback token broker — the env-data leg of the vend, over real HTTP. */
@@ -154,11 +154,11 @@ describe('security faculty — credential vending over the wire', () => {
     expect(result.error?.message).toContain('invalid input')
   })
 
-  test('the request space is echoed on the result', async () => {
+  test('the request umwelt is echoed on the result', async () => {
     const worker = spawnSecurityWorker()
     workers.push(worker)
-    worker.call({ id: 'cred6', input: { serverUrl: SERVER_URL } } as JsonObject, 'space-9')
+    worker.call({ id: 'cred6', input: { serverUrl: SERVER_URL } } as JsonObject, 'umwelt-9')
     const raw = await worker.resultFor('cred6')
-    expect(raw.space).toBe('space-9')
+    expect(raw.umwelt).toBe('umwelt-9')
   })
 })

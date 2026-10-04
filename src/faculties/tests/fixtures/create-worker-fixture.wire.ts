@@ -21,13 +21,13 @@ export type FixtureDetail = { input: FixtureInput }
 export type FixtureRequestEvent = {
   type: 'fixture_request'
   detail: { id: string; input: FixtureInput; ctx?: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type FixtureCancelEvent = {
   type: 'fixture_cancel'
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 const inputSchema: JSONSchemaType<FixtureInput> = {
@@ -56,7 +56,7 @@ const requestSchema: JSONSchemaType<FixtureRequestEvent> = {
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -72,7 +72,7 @@ const cancelSchema: JSONSchemaType<FixtureCancelEvent> = {
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -98,21 +98,21 @@ export const fixtureRequestEvent = ({
   id,
   input,
   ctx,
-  space,
+  umwelt,
 }: {
   id: string
   input: FixtureInput
   ctx?: JsonObject
-  space?: string
+  umwelt?: string
 }): FixtureRequestEvent => ({
   type: 'fixture_request',
   detail: { id, input, ...(ctx === undefined ? {} : { ctx }) },
-  ...(space === undefined ? {} : { space }),
+  ...(umwelt === undefined ? {} : { umwelt }),
 })
 
 /** Cancel-event constructor for the lane specs. */
-export const fixtureCancelEvent = ({ id, space }: { id: string; space?: string }): FixtureCancelEvent => ({
+export const fixtureCancelEvent = ({ id, umwelt }: { id: string; umwelt?: string }): FixtureCancelEvent => ({
   type: 'fixture_cancel',
   detail: { id },
-  ...(space === undefined ? {} : { space }),
+  ...(umwelt === undefined ? {} : { umwelt }),
 })

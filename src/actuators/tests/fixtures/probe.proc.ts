@@ -29,7 +29,7 @@ for (;;) {
     const message = JSON.parse(trimmed) as {
       type: string
       detail: { id: string; input: { op: string } }
-      space?: string
+      umwelt?: string
     }
     if (message.detail.input.op === 'die') {
       process.exit(3)
@@ -45,7 +45,7 @@ for (;;) {
         ok: true,
         result: { echoed: message.detail.input.op, env: process.env.PROBE_ENV },
       },
-      ...(message.space === undefined ? {} : { space: message.space }),
+      ...(message.umwelt === undefined ? {} : { umwelt: message.umwelt }),
     })
   }
 }

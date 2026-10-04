@@ -8,7 +8,7 @@ import type { TransformEvaluation, TransformRequestEvent } from './faculties.typ
 /*
  * The transform faculty — the FIXED FOURTH lane: transform evaluation moved
  * out of the engine (the SAB-bridged jq pool) onto the standard worker lane.
- * The idiom is unchanged thread data (query/target/space — every existing
+ * The idiom is unchanged thread data (query/target/umwelt — every existing
  * thread runs unedited); only evaluation moved. The engine mints a
  * `transform_request` once-thread; the composition routes it here; the
  * faculty evaluates via jq-wasm and answers the flat evaluation result.
@@ -85,7 +85,7 @@ const runEvaluation = async (query: string, detail: JsonObject | undefined): Pro
 const postResult = (
   id: string,
   evaluation: TransformEvaluation,
-  request: { ctx?: JsonObject; space?: string },
+  request: { ctx?: JsonObject; umwelt?: string },
 ): void => {
   postMessage({
     type: FACULTY_MESSAGE_KINDS.transform_request_result,
@@ -94,7 +94,7 @@ const postResult = (
       ...evaluation,
       ...(request.ctx === undefined ? {} : { ctx: request.ctx }),
     },
-    ...(request.space === undefined ? {} : { space: request.space }),
+    ...(request.umwelt === undefined ? {} : { umwelt: request.umwelt }),
   })
 }
 
@@ -111,7 +111,7 @@ const handleRequest = (event: TransformRequestEvent, selfUrl: string | undefined
   const { id, query, detail, ctx } = event.detail
   const request = {
     ...(ctx === undefined ? {} : { ctx }),
-    ...(event.space === undefined ? {} : { space: event.space }),
+    ...(event.umwelt === undefined ? {} : { umwelt: event.umwelt }),
   }
   if (selfUrl === undefined) {
     postResult(

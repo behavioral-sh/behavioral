@@ -5,7 +5,7 @@
  * (the dedicated-Worker shape).
  *
  * Speaks the minimum composition port protocol: `attach` → `hello` (stub
- * identity, minted space), and echoes any raw ClientMessage back as a
+ * identity, minted umwelt), and echoes any raw ClientMessage back as a
  * `message` frame carrying a `ui_render` marker — so the probe pages can
  * observe the controller's full egress path (a `ui_error` report renders a
  * marker into the page). Also answers a raw `ping` with `pong` for the
@@ -17,7 +17,7 @@ const onFrame = (frame: unknown): unknown => {
   if (typeof frame !== 'object' || frame === null) return undefined
   const record = frame as Record<string, unknown>
   if (record.kind === 'attach') {
-    return { kind: 'hello', space: record.space ?? 'stub_space', identity: STUB_IDENTITY }
+    return { kind: 'hello', umwelt: record.umwelt ?? 'stub_umwelt', identity: STUB_IDENTITY }
   }
   if (record.kind === 'ping') return { kind: 'pong' }
   // A raw ClientMessage (e.g. the controller's ui_error report) echoes back

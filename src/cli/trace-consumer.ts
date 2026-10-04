@@ -24,7 +24,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import * as path from 'node:path'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
-import { ROOT_SPACE } from '../actuators/store.types.ts'
+import { ROOT_UMWELT } from '../actuators/store.types.ts'
 import { CREDENTIAL_RULES, type CredentialRule } from '../b-program/credential-patterns.ts'
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { Trace, TraceListener } from '../behavioral/behavioral.types.ts'
@@ -74,23 +74,23 @@ export const createTraceConsumer =
     }
   }
 
-/** Best-effort space for the log path: a top-level space, else the selection's, else root. */
-const traceSpace = (trace: Trace): string => {
-  const direct = (trace as { space?: unknown }).space
+/** Best-effort umwelt for the log path: a top-level umwelt, else the selection's, else root. */
+const traceUmwelt = (trace: Trace): string => {
+  const direct = (trace as { umwelt?: unknown }).umwelt
   if (typeof direct === 'string') return direct
   if (trace.kind === TRACE_MESSAGE_KINDS.selection || trace.kind === TRACE_MESSAGE_KINDS.interrupt) {
-    return trace.selected.space ?? ROOT_SPACE
+    return trace.selected.umwelt ?? ROOT_UMWELT
   }
   if (trace.kind === TRACE_MESSAGE_KINDS.thread_added || trace.kind === TRACE_MESSAGE_KINDS.thread_removed)
-    return trace.thread.space ?? ROOT_SPACE
-  return ROOT_SPACE
+    return trace.thread.umwelt ?? ROOT_UMWELT
+  return ROOT_UMWELT
 }
 
-const sanitizeSpace = (space: string): string => space.replace(/[^A-Za-z0-9._-]/g, '_')
+const sanitizeUmwelt = (umwelt: string): string => umwelt.replace(/[^A-Za-z0-9._-]/g, '_')
 
 /**
  * The JSONL trace log: append one JSON line per trace to
- * `<root>/<space>/<YYYY-MM-DD>.jsonl`. Synchronous by design — the trace
+ * `<root>/<umwelt>/<YYYY-MM-DD>.jsonl`. Synchronous by design — the trace
  * publisher fires listeners fire-and-forget, so an async appender can reorder
  * or drop lines on exit.
  */
@@ -98,7 +98,7 @@ export const traceLogSink =
   ({ root }: { root?: string } = {}): TraceSink =>
   (trace) => {
     const base = root ?? path.join(behavioralHome(), 'traces')
-    const dir = path.join(base, sanitizeSpace(traceSpace(trace)))
+    const dir = path.join(base, sanitizeUmwelt(traceUmwelt(trace)))
     mkdirSync(dir, { recursive: true })
     const date = new Date().toISOString().slice(0, 10)
     appendFileSync(path.join(dir, `${date}.jsonl`), `${JSON.stringify(trace)}\n`, 'utf8')

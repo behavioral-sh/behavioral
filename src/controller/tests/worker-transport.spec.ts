@@ -26,7 +26,7 @@ const inboundFrame = (port: MessagePort): Promise<Record<string, unknown>> =>
   })
 
 describe('WorkerTransport — the attach handshake', () => {
-  test('posts attach (minted space) and surfaces hello as the open status', async () => {
+  test('posts attach (minted umwelt) and surfaces hello as the open status', async () => {
     const channel = new MessageChannel()
     const hello = inboundFrame(channel.port2)
 
@@ -34,30 +34,30 @@ describe('WorkerTransport — the attach handshake', () => {
     const transport = new WorkerTransport({ worker: channel.port1 })
     transport.onStatus((event) => statusEvents.push(event))
 
-    const attach = (await hello) as { kind?: string; space?: string }
+    const attach = (await hello) as { kind?: string; umwelt?: string }
     expect(attach.kind).toBe(COMPOSITION_PORT_KINDS.attach)
-    expect(attach.space).toBeUndefined() // no claim — the worker mints the space
+    expect(attach.umwelt).toBeUndefined() // no claim — the worker mints the umwelt
 
     channel.port2.postMessage({
       kind: COMPOSITION_PORT_KINDS.hello,
-      space: 'tab_stub',
+      umwelt: 'tab_stub',
       identity: { instanceId: 'stub', sessionId: 'stub' },
     })
     await wait()
 
     expect(statusEvents).toEqual([{ type: 'open' }])
-    expect(transport.space).toBe('tab_stub')
+    expect(transport.umwelt).toBe('tab_stub')
   })
 
-  test('a claimed space rides the attach frame', async () => {
+  test('a claimed umwelt rides the attach frame', async () => {
     const channel = new MessageChannel()
     const hello = inboundFrame(channel.port2)
 
-    new WorkerTransport({ worker: channel.port1, space: 'tab_claimed' })
+    new WorkerTransport({ worker: channel.port1, umwelt: 'tab_claimed' })
 
-    const attach = (await hello) as { kind?: string; space?: string }
+    const attach = (await hello) as { kind?: string; umwelt?: string }
     expect(attach.kind).toBe(COMPOSITION_PORT_KINDS.attach)
-    expect(attach.space).toBe('tab_claimed')
+    expect(attach.umwelt).toBe('tab_claimed')
   })
 })
 
@@ -109,7 +109,7 @@ describe('WorkerTransport — egress and ingress', () => {
     channel.port2.postMessage('not an object')
     await wait()
     expect(traces).toEqual([{ kind: 'idle' }])
-    expect(transport.space).toBeUndefined() // no hello yet — unknown frames change nothing
+    expect(transport.umwelt).toBeUndefined() // no hello yet — unknown frames change nothing
   })
 })
 
@@ -122,13 +122,13 @@ describe('WorkerTransport — the dedicated-worker shape', () => {
     const hello = new Promise<unknown>((resolve) => {
       worker.addEventListener('message', (event: MessageEvent) => resolve(event.data), { once: true })
     })
-    const frame = (await hello) as { kind?: string; space?: string; identity?: unknown }
+    const frame = (await hello) as { kind?: string; umwelt?: string; identity?: unknown }
     expect(frame.kind).toBe(COMPOSITION_PORT_KINDS.hello)
-    expect(frame.space).toBe('stub_space')
+    expect(frame.umwelt).toBe('stub_umwelt')
     expect((frame.identity as { instanceId?: string }).instanceId).toBe('stub-b-program')
     await wait()
     expect(statusEvents).toEqual([{ type: 'open' }])
-    expect(transport.space).toBe('stub_space')
+    expect(transport.umwelt).toBe('stub_umwelt')
     worker.terminate()
   })
 })

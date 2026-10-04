@@ -42,7 +42,7 @@ import type { AddThreads } from '../faculties/faculties.types.ts'
 type WireMessage = {
   type: string
   detail: JsonObject & { id: string }
-  space?: string
+  umwelt?: string
 }
 
 export const useWorker = ({
@@ -76,11 +76,11 @@ export const useWorker = ({
     let terminated = false
     let crashed = false
 
-    /** Re-enter one event as a once-thread, space preserved (root stays root). */
+    /** Re-enter one event as a once-thread, umwelt preserved (root stays root). */
     const reenter = (message: WireMessage): void => {
       addThreads([
         {
-          ...(message.space === undefined ? {} : { space: message.space }),
+          ...(message.umwelt === undefined ? {} : { umwelt: message.umwelt }),
           name: `on_${message.type}_${message.detail.id}`,
           description: `Faculty re-entry — once-thread re-emitting the ${message.type} wire event.`,
           once: true,

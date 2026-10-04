@@ -27,37 +27,37 @@ export type SystemTwoRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_two_request
   /** `ctx` is the optional out-of-band join lane (the you.com MCP `_meta` pattern): orchestration state riding beside `input`, echoed verbatim on the result — never a model-facing field. */
   detail: { id: string; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type SystemTwoRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_two_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 export type SystemTwoCancelEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_two_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 export type SystemOneRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_one_request
   detail: { id: string; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type SystemOneRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_one_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 export type SystemOneCancelEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.system_one_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 export type ShellRequestEvent = {
@@ -65,19 +65,19 @@ export type ShellRequestEvent = {
   /** `label` is an optional trace annotation (logical names like 'skill-scan') — no routing weight. */
   /** `ctx` is the optional out-of-band join lane (the you.com MCP `_meta` pattern): orchestration state riding beside `input`, echoed verbatim on the result — never a model-facing field. */
   detail: { id: string; label?: string; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type ShellRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.shell_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 export type ShellCancelEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.shell_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 /**
@@ -112,7 +112,7 @@ export type WorkerResultDetail = WorkerResultOk | WorkerResultError
 export type FacultyErrorEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.faculty_error
   detail: { faculty: string; message: string }
-  space?: string
+  umwelt?: string
 }
 
 /** Frontier operations — its own worker faculty, like the responses client. */
@@ -122,16 +122,16 @@ export type FrontierAnalysisRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.frontier_analysis_request
   /** `op` selects the analysis; the worker shares no event types with the tools faculty. */
   detail: { id: string; op: FrontierAnalysisOp; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type FrontierAnalysisRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.frontier_analysis_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
-/** Store operations — durable, space-scoped persistence for data that must survive invocations. */
+/** Store operations — durable, umwelt-scoped persistence for data that must survive invocations. */
 export type StoreOp = 'put' | 'get' | 'delete' | 'query'
 
 export type StoreRequestEvent = {
@@ -139,14 +139,14 @@ export type StoreRequestEvent = {
   /** `op` selects the store operation; the backing schema lives inside the worker — schema churn never becomes protocol churn. */
   /** `ctx` is the optional out-of-band join lane (the you.com MCP `_meta` pattern): orchestration state riding beside `input`, echoed verbatim on the result — never a model-facing field. */
   detail: { id: string; op: StoreOp; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 // No store cancel: ops are short-lived (frontier rule).
 export type StoreRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.store_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 /** Security operations — credential vending for remote servers (broker first, keychain floor second). */
@@ -154,13 +154,13 @@ export type SecurityRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.credential_request
   /** `ctx` is the optional host-supplied binding (e.g. the resolved AS issuer) — out-of-band, never a model-facing input field. */
   detail: { id: string; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type SecurityRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.credential_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 // A vend is a quick broker/keychain read, but a down broker can hang — the
@@ -168,7 +168,7 @@ export type SecurityRequestResultEvent = {
 export type SecurityCancelEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.credential_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 /** Union of every event the router can move between ports. @public */
@@ -262,14 +262,14 @@ export type TransformRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.transform_request
   /** `detail` is the jq INPUT — the selected event's detail; absent means the event carried none (`no_detail`). `ctx` is the optional out-of-band join lane, echoed verbatim on the result. */
   detail: { id: string; query: string; target: string; ctx?: JsonObject; detail?: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type TransformRequestResultEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.transform_request_result
   /** The evaluation outcome joined to the correlation id — `TransformEvaluation` plus the optional `ctx` echo lane. */
   detail: { id: string; ctx?: JsonObject } & TransformEvaluation
-  space?: string
+  umwelt?: string
 }
 
 const transformResultOkBranch = {
@@ -318,7 +318,7 @@ export const TransformRequestEventSchema: JSONSchemaType<TransformRequestEvent> 
       required: ['id', 'query', 'target'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -332,7 +332,7 @@ export const TransformRequestResultEventSchema: JSONSchemaType<TransformRequestR
       type: 'object',
       oneOf: [transformResultOkBranch, transformResultFailureBranch],
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -408,11 +408,11 @@ const resultEventSchema = (typeConst: string) =>
     properties: {
       type: { type: 'string', const: typeConst },
       detail: { type: 'object', oneOf: [workerResultOkBranch, workerResultErrorBranch] },
-      space: { type: 'string', nullable: true },
+      umwelt: { type: 'string', nullable: true },
     },
     required: ['type', 'detail'],
     additionalProperties: false,
-  }) as unknown as import('ajv').JSONSchemaType<{ type: string; detail: WorkerResultDetail; space?: string }>
+  }) as unknown as import('ajv').JSONSchemaType<{ type: string; detail: WorkerResultDetail; umwelt?: string }>
 
 export const SystemTwoRequestEventSchema: JSONSchemaType<SystemTwoRequestEvent> = {
   type: 'object',
@@ -429,7 +429,7 @@ export const SystemTwoRequestEventSchema: JSONSchemaType<SystemTwoRequestEvent> 
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -447,7 +447,7 @@ export const SystemTwoCancelEventSchema: JSONSchemaType<SystemTwoCancelEvent> = 
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -463,7 +463,7 @@ export const SystemOneRequestEventSchema: JSONSchemaType<SystemOneRequestEvent> 
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -481,7 +481,7 @@ export const SystemOneCancelEventSchema: JSONSchemaType<SystemOneCancelEvent> = 
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -503,7 +503,7 @@ export const ShellRequestEventSchema: JSONSchemaType<ShellRequestEvent> = {
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -521,7 +521,7 @@ export const ShellCancelEventSchema: JSONSchemaType<ShellCancelEvent> = {
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -543,7 +543,7 @@ export const SecurityRequestEventSchema: JSONSchemaType<SecurityRequestEvent> = 
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -561,7 +561,7 @@ export const SecurityCancelEventSchema: JSONSchemaType<SecurityCancelEvent> = {
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -577,7 +577,7 @@ export const FacultyErrorEventSchema: JSONSchemaType<FacultyErrorEvent> = {
       required: ['faculty', 'message'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -611,7 +611,7 @@ export const FrontierAnalysisRequestEventSchema: JSONSchemaType<FrontierAnalysis
       required: ['id', 'op', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -638,7 +638,7 @@ export const StoreRequestEventSchema: JSONSchemaType<StoreRequestEvent> = {
       required: ['id', 'op', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -663,7 +663,7 @@ export type AddThreads = (newThreads: Thread[]) => void
 export type FacultyWireFrame = {
   type: string
   detail?: Record<string, unknown>
-  space?: string
+  umwelt?: string
 }
 
 /**

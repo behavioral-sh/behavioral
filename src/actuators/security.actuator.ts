@@ -6,7 +6,7 @@
  * @remarks
  * Spawned by URL (never imported) and speaks the behavioral event wire:
  * `credential_request` / `credential_cancel` in, `credential_result` out,
- * with any request `space` echoed on the result. `detail.input` is validated
+ * with any request `umwelt` echoed on the result. `detail.input` is validated
  * against the credential boundary (`security/types.ts`); per-call credentials
  * never ride the wire — auth binds at this module's scope from env-data.
  *
@@ -107,7 +107,7 @@ const postResult = ({
   token,
   echo,
   error,
-  space,
+  umwelt,
   ctx,
 }: {
   id: string
@@ -115,7 +115,7 @@ const postResult = ({
   /** The ctx echo — the caller's out-of-band join payload, round-tripped verbatim. */
   echo?: JsonObject
   error?: { code: string; message?: string }
-  space?: string
+  umwelt?: string
   ctx?: JsonObject
 }): void => {
   emit({
@@ -137,7 +137,7 @@ const postResult = ({
         }) as unknown as JsonObject & {
       id: string
     },
-    ...(space === undefined ? {} : { space }),
+    ...(umwelt === undefined ? {} : { umwelt }),
   })
 }
 
@@ -167,7 +167,7 @@ const handleInbound = async (message: unknown): Promise<void> => {
   if (!validate(input)) {
     postResult({
       id,
-      space: event.space,
+      umwelt: event.umwelt,
       error: { code: 'error', message: `invalid input: ${ajv.errorsText(validate.errors)}` },
       ctx,
     })
@@ -181,7 +181,7 @@ const handleInbound = async (message: unknown): Promise<void> => {
     if (!validateContext(ctx)) {
       postResult({
         id,
-        space: event.space,
+        umwelt: event.umwelt,
         error: { code: 'error', message: `invalid input: ${ajv.errorsText(validateContext.errors)}` },
         ctx,
       })
@@ -202,25 +202,25 @@ const handleInbound = async (message: unknown): Promise<void> => {
     // A stop wins over the outcome: the (possibly already-vended) credential
     // is discarded and the caller learns the request was canceled.
     if (vend.stopReason === 'canceled') {
-      postResult({ id, space: event.space, error: { code: 'canceled' } })
+      postResult({ id, umwelt: event.umwelt, error: { code: 'canceled' } })
       return
     }
     if (token === undefined) {
       postResult({
         id,
-        space: event.space,
+        umwelt: event.umwelt,
         error: { code: 'error', message: `no credential available for ${serverUrl}` },
         ctx,
       })
       return
     }
-    postResult({ id, space: event.space, token, echo, ctx })
+    postResult({ id, umwelt: event.umwelt, token, echo, ctx })
   } catch (err) {
     // The vend is fail-closed by construction; this is the last-resort guard
     // so no worker-side throw ever escapes as a crash.
     postResult({
       id,
-      space: event.space,
+      umwelt: event.umwelt,
       error: { code: 'error', message: err instanceof Error ? err.message : String(err) },
       ctx,
     })

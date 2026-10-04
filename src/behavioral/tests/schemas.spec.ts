@@ -62,7 +62,7 @@ describe('behavioral schemas', () => {
     // to the wire gate; only `rules` is overridden permissive.
     expect(SerializedThreadSchema.required).toBe(ThreadSchema.required)
     const properties = SerializedThreadSchema.properties as Record<string, Record<string, unknown>>
-    for (const key of ['space', 'name', 'description', 'once', 'sourceHash']) {
+    for (const key of ['umwelt', 'name', 'description', 'once', 'sourceHash']) {
       expect(properties[key]).toEqual(ThreadSchema.properties[key as keyof typeof ThreadSchema.properties])
     }
     expect(SerializedThreadSchema.additionalProperties).toBe(false)
@@ -77,8 +77,8 @@ describe('behavioral schemas', () => {
       }),
     ).toBe(true)
     expect(validate({ name: 'a', description: 'd', rules: [{ waitFor: [{ type: 'x', bogus: true }] }] })).toBe(true)
-    // the authored tuple's optional space stamp rides the wire shape
-    expect(validate({ name: 'a', description: 'd', rules: [], space: 's1' })).toBe(true)
+    // the authored tuple's optional umwelt stamp rides the wire shape
+    expect(validate({ name: 'a', description: 'd', rules: [], umwelt: 's1' })).toBe(true)
     expect(validate({ name: 'a', rules: [] })).toBe(false)
   })
 

@@ -5,7 +5,7 @@
  * composition is the browser's level-1 worker (the amended topology, pilot
  * ruling 2026-09-28). A real page attaches via the `WorkerTransport` (the
  * injectable Transport seam), the composition's engine identity arrives in
- * the port hello (the page's space minted at attach), the page's provider
+ * the port hello (the page's umwelt minted at attach), the page's provider
  * map rides the attach frame into the faculties' init-frame payloads (a real
  * systemTwo round-trips through its bundled worker + the fixture endpoint),
  * a fixture actuator lane built through the REAL `useWorker` primitive
@@ -67,7 +67,7 @@ afterAll(() => {
 })
 
 describe('composition worker: bProgram boots in a per-tab dedicated worker (the amended ruling)', () => {
-  test('a real page attaches over the WorkerTransport — the port hello carries the engine identity + minted space', async () => {
+  test('a real page attaches over the WorkerTransport — the port hello carries the engine identity + minted umwelt', async () => {
     await using view = await open('/composition.html')
     const hello = await waitFor(async () => {
       const state = await view.evaluate<Record<string, unknown> | undefined>('window.__hello')
@@ -77,8 +77,8 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
     expect(typeof hello.instanceId).toBe('string')
     expect((hello.instanceId as string).startsWith('bp_')).toBe(true)
     expect(typeof hello.sessionId).toBe('string')
-    // The space-per-tab mapping: the attach minted this composition's space.
-    expect((await view.evaluate<string>('window.__space')).startsWith('tab_')).toBe(true)
+    // The umwelt-per-tab mapping: the attach minted this composition's umwelt.
+    expect((await view.evaluate<string>('window.__umwelt')).startsWith('tab_')).toBe(true)
     // No worker-level failure surfaced during the boot.
     expect(await view.evaluate<unknown>('window.__workerError')).toBeNull()
   }, 30_000)
@@ -144,7 +144,7 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
     // no mounts, the boot completes).
     await using view = await open('/composition-reconcile.html')
     // No worker-level error: the composition (with the pack) booted clean.
-    await waitFor(async () => await view.evaluate<string | undefined>('window.__space'))
+    await waitFor(async () => await view.evaluate<string | undefined>('window.__umwelt'))
     expect(await view.evaluate<string | undefined>('window.__workerError')).toBeNull()
     // The reconcile's registry read selected — the pack's join transforms
     // ran through the bundled transform faculty (the read resolves, the
@@ -160,12 +160,12 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
     expect(read).toBeDefined()
   })
 
-  test('tab A and tab B are SEPARATE workers (the per-tab ruling): pinned spaces, own traces, no cross-leak', async () => {
-    await using viewA = await open('/iso.html?space=tab_a')
-    await using viewB = await open('/iso.html?space=tab_b')
-    // Each tab's composition pinned its space.
-    expect(await waitFor(async () => await viewA.evaluate<string | undefined>('window.__space'))).toBe('tab_a')
-    expect(await waitFor(async () => await viewB.evaluate<string | undefined>('window.__space'))).toBe('tab_b')
+  test('tab A and tab B are SEPARATE workers (the per-tab ruling): pinned umwelts, own traces, no cross-leak', async () => {
+    await using viewA = await open('/iso.html?umwelt=tab_a')
+    await using viewB = await open('/iso.html?umwelt=tab_b')
+    // Each tab's composition pinned its umwelt.
+    expect(await waitFor(async () => await viewA.evaluate<string | undefined>('window.__umwelt'))).toBe('tab_a')
+    expect(await waitFor(async () => await viewB.evaluate<string | undefined>('window.__umwelt'))).toBe('tab_b')
     // The per-tab ruling, pinned: two tabs = two ENGINES — different instance
     // ids, no shared composition.
     const idA = await waitFor(async () => {
@@ -178,7 +178,7 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
     })
     expect(idA).not.toBe(idB)
 
-    // Tab A triggers; tab A sees its own selection trace, space-stamped...
+    // Tab A triggers; tab A sees its own selection trace, umwelt-stamped...
     await viewA.evaluate<void>('window.__triggerStore("a_req", "a")')
     const aTrace = await waitFor(async () => {
       const seen = (await selections(viewA)).find(
@@ -186,14 +186,14 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
       )
       return seen
     })
-    expect((aTrace.selected as { space?: string }).space).toBe('tab_a')
+    expect((aTrace.selected as { umwelt?: string }).umwelt).toBe('tab_a')
 
     // ...tab B (a different worker) never sees it.
     expect(
       (await selections(viewB)).some((t) => (t.selected as { detail?: { id?: string } }).detail?.id === 'a_req'),
     ).toBe(false)
 
-    // Tab B triggers; tab B sees its own (space tab_b), tab A does not.
+    // Tab B triggers; tab B sees its own (umwelt tab_b), tab A does not.
     await viewB.evaluate<void>('window.__triggerStore("b_req", "b")')
     const bTrace = await waitFor(async () => {
       const seen = (await selections(viewB)).find(
@@ -201,7 +201,7 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
       )
       return seen
     })
-    expect((bTrace.selected as { space?: string }).space).toBe('tab_b')
+    expect((bTrace.selected as { umwelt?: string }).umwelt).toBe('tab_b')
     expect(
       (await selections(viewA)).some((t) => (t.selected as { detail?: { id?: string } }).detail?.id === 'b_req'),
     ).toBe(false)

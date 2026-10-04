@@ -23,7 +23,7 @@ type WireResult = {
     retryable?: boolean
     request?: { input?: { url?: string } }
   }
-  space?: string
+  umwelt?: string
 }
 
 /** One JSON-RPC endpoint on a random localhost port; records requests. */

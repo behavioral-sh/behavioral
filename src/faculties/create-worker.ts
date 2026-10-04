@@ -5,7 +5,7 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  * The in-worker bootstrap — `createWorker(respond)` is called at the TOP
  * LEVEL of each faculty entry file. It owns the generic plumbing deduped
  * from the faculty configs: inbound message routing, the ok/isError result
- * envelope, the cancel map, the request timeout, space + ctx echo.
+ * envelope, the cancel map, the request timeout, umwelt + ctx echo.
  *
  * The gate is SCOPE, not `import.meta.main` — `import.meta` is a syntax
  * error in classic worker bundles (the browser gets the same entries
@@ -106,14 +106,14 @@ export type FacultyRespond<I = JsonObject, D = JsonObject> = (
 type FacultyRequestEvent<I> = {
   type: string
   detail: { id: string; ctx?: JsonObject } & I
-  space?: string
+  umwelt?: string
 }
 
 /** The inbound cancel event's shape, structurally. */
 type FacultyCancelEvent = {
   type: string
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 type ActiveRequest = {
@@ -161,7 +161,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
   /** In-flight requests, keyed by correlation id. */
   const active = new Map<string, ActiveRequest>()
 
-  /** Post one result event to the composition, space + ctx echoed. */
+  /** Post one result event to the composition, umwelt + ctx echoed. */
   const postResult = (result: unknown, event: FacultyRequestEvent<I>): void => {
     const detail = ((): JsonObject & { id: string } => {
       if (typeof result === 'object' && result !== null && 'isError' in result) {
@@ -175,7 +175,7 @@ export const createWorker = <I = JsonObject, D = JsonObject>({
     postMessage({
       type: resultKind,
       detail: echoed,
-      ...(event.space === undefined ? {} : { space: event.space }),
+      ...(event.umwelt === undefined ? {} : { umwelt: event.umwelt }),
     })
   }
 

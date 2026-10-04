@@ -6,14 +6,14 @@ import type { AddThreads } from './actuators.types.ts'
 type WireMessage = {
   type: string
   detail: JsonObject & { id: string }
-  space?: string
+  umwelt?: string
 }
 
 /**
  * The spawn-based actuator wiring primitive — the process-composition ruling:
  * capability actuators run as Bun.spawn PROCESSES speaking the unchanged
  * behavioral wire over stdio lines (one JSON event per line), one process
- * instance per wiring (per space).
+ * instance per wiring (per umwelt).
  *
  * Slimmed contract (the actuators split): spawn + wire in/out + exit-code
  * crash synthesis + terminate. NO schema compilation happens here — the
@@ -23,17 +23,17 @@ type WireMessage = {
  *
  * @remarks
  * Why processes over Workers (the ruling's arithmetic): a shared Worker was
- * head-of-line blocking across spaces by construction; a process per space
+ * head-of-line blocking across umwelts by construction; a process per umwelt
  * isolates by OS construction, kills via the process tree, and tears down
  * without dead-port stragglers — killing a process closes its pipes.
  *
  * Curried like its Worker ancestor: the initial call captures the faculty's
  * command, wire name, validators, and an optional `env` override
  * (merged over the inherited environment); the returned function
- * — awaiting `(addThreads, space?)` — wires:
+ * — awaiting `(addThreads, umwelt?)` — wires:
  *
  * - **the line pump** — stdout lines parsed and re-entered as once-threads
- *   with `message.space` PRESERVED. The pump discards only what cannot be
+ *   with `message.umwelt` PRESERVED. The pump discards only what cannot be
  *   this lane's event (non-JSON lines, non-object payloads, any type other
  *   than the faculty's result kind — the lane stays sealed); schema validity
  *   of the detail is the faculty guard's job — a parsed-but-invalid result
@@ -43,7 +43,7 @@ type WireMessage = {
  *   cause) re-enters exactly ONE `faculty_error { faculty: name }` event;
  * - **respawn on demand** — the next outbound event spawns a fresh process
  *   after a death; one live process per faculty wiring at all times;
- * - **thread mounting** — stamped with the wiring space only when set.
+ * - **thread mounting** — stamped with the wiring umwelt only when set.
  *
  * `send(event)` is the faculty's outbound port: JSON line to the process's
  * stdin (spawning if dead). `invalidEventGate` is the routing-side boundary
@@ -80,11 +80,11 @@ export const useActuator = ({
     let pumping = false
     let carry = ''
 
-    /** Re-enter one event as a once-thread, space preserved (root stays root). */
+    /** Re-enter one event as a once-thread, umwelt preserved (root stays root). */
     const reenter = (message: WireMessage): void => {
       addThreads([
         {
-          ...(message.space === undefined ? {} : { space: message.space }),
+          ...(message.umwelt === undefined ? {} : { umwelt: message.umwelt }),
           name: `on_${message.type}_${message.detail.id}`,
           description: `Faculty re-entry — once-thread re-emitting the ${message.type} wire event.`,
           once: true,

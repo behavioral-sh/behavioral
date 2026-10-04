@@ -33,15 +33,15 @@ export const B_PROGRAM_WORKER_PATH = '/b-program.worker.ts'
 export type WorkerTransportOptions = {
   /** The dedicated Worker or a SharedWorker/MessageChannel MessagePort. */
   worker: Worker | MessagePort
-  /** Claim the page's space at attach; omitted = the worker mints one. */
-  space?: string
+  /** Claim the page's umwelt at attach; omitted = the worker mints one. */
+  umwelt?: string
   /** The page's provider map + model identifiers — the faculties' init-frame payloads. */
   models?: CompositionPortModels
   /** Trace kinds to subscribe to; omitted = all (full fidelity). */
   traceKinds?: string[]
   /** Tap for the redacted traces arriving on the port. */
   onTrace?: (trace: Trace) => void
-  /** Tap for the hello frame — the engine identity + this page's space. */
+  /** Tap for the hello frame — the engine identity + this page's umwelt. */
   onHello?: (frame: CompositionPortHelloFrame) => void
 }
 
@@ -50,7 +50,7 @@ export type WorkerTransportOptions = {
  * `Worker` or a `MessagePort` (the WebSocket twin's shape, mirrored): outgoing
  * ClientMessages post raw, incoming `message` frames forward as
  * ServerMessages, the `hello` frame opens the carrier (and names the page's
- * space), and the full-fidelity redacted trace stream taps `onTrace`.
+ * umwelt), and the full-fidelity redacted trace stream taps `onTrace`.
  *
  * Worker-level failures (script load, runtime errors) surface as `error`
  * status events — never thrown into the page.
@@ -66,9 +66,9 @@ export class WorkerTransport implements Transport {
   #statusHandlers = new Set<(event: TransportEvent) => void>()
   #onTrace: ((trace: Trace) => void) | undefined
   #onHello: ((frame: CompositionPortHelloFrame) => void) | undefined
-  #space: string | undefined
+  #umwelt: string | undefined
 
-  constructor({ worker, space, models, traceKinds, onTrace, onHello }: WorkerTransportOptions) {
+  constructor({ worker, umwelt, models, traceKinds, onTrace, onHello }: WorkerTransportOptions) {
     this.#worker = worker
     this.#onTrace = onTrace
     this.#onHello = onHello
@@ -79,7 +79,7 @@ export class WorkerTransport implements Transport {
     worker.addEventListener('error', (event: Event) => this.#onWorkerFailure(event))
     worker.postMessage({
       kind: COMPOSITION_PORT_KINDS.attach,
-      ...(space === undefined ? {} : { space }),
+      ...(umwelt === undefined ? {} : { umwelt }),
       ...(models === undefined ? {} : { models }),
     } satisfies CompositionPortAttachFrame)
     worker.postMessage({
@@ -88,9 +88,9 @@ export class WorkerTransport implements Transport {
     } satisfies CompositionPortTraceSubscribeFrame)
   }
 
-  /** The page's space (assigned by the worker at attach; set after hello). */
-  get space(): string | undefined {
-    return this.#space
+  /** The page's umwelt (assigned by the worker at attach; set after hello). */
+  get umwelt(): string | undefined {
+    return this.#umwelt
   }
 
   /** Send a ClientMessage to the composition worker — raw, no envelope. */
@@ -116,7 +116,7 @@ export class WorkerTransport implements Transport {
     if (typeof frame !== 'object' || frame === null) return
     const record = frame as Record<string, unknown>
     if (record.kind === COMPOSITION_PORT_KINDS.hello) {
-      this.#space = (record as CompositionPortHelloFrame).space
+      this.#umwelt = (record as CompositionPortHelloFrame).umwelt
       this.#onHello?.(record as CompositionPortHelloFrame)
       this.#emitStatus({ type: 'open' })
       return

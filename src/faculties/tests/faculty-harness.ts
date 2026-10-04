@@ -17,13 +17,13 @@ import { INIT_FRAME_KIND, type InitFrame } from '../create-worker.ts'
 export type FacultyResult = {
   id: string
   detail: Record<string, unknown>
-  space?: string
+  umwelt?: string
 }
 
 /** The worker-shape harness type. */
 type FacultyWorker = {
-  call: (detail: JsonObject, space?: string) => void
-  post: (event: { type: string; detail: JsonObject; space?: string }) => void
+  call: (detail: JsonObject, umwelt?: string) => void
+  post: (event: { type: string; detail: JsonObject; umwelt?: string }) => void
   resultFor: (id: string, timeoutMs?: number) => Promise<FacultyResult>
   terminate: () => void
 }
@@ -47,19 +47,19 @@ export const spawnFacultyWorker = ({
   worker.postMessage(init)
   const results: FacultyResult[] = []
   worker.addEventListener('message', (event: MessageEvent) => {
-    const message = event.data as { type: string; detail: { id: string } & JsonObject; space?: string } | null
+    const message = event.data as { type: string; detail: { id: string } & JsonObject; umwelt?: string } | null
     if (message === null || typeof message !== 'object' || message.type !== resultType) return
     results.push({
       id: message.detail.id,
       detail: message.detail as Record<string, unknown>,
-      space: message.space,
+      umwelt: message.umwelt,
     })
   })
   return {
-    call: (detail: JsonObject, space?: string): void => {
-      worker.postMessage({ type: requestType, detail, ...(space === undefined ? {} : { space }) })
+    call: (detail: JsonObject, umwelt?: string): void => {
+      worker.postMessage({ type: requestType, detail, ...(umwelt === undefined ? {} : { umwelt }) })
     },
-    post: (event: { type: string; detail: JsonObject; space?: string }): void => {
+    post: (event: { type: string; detail: JsonObject; umwelt?: string }): void => {
       worker.postMessage(event)
     },
     resultFor: async (id: string, timeoutMs = 10_000): Promise<FacultyResult> => {

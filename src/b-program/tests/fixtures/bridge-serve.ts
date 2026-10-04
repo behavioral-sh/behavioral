@@ -141,7 +141,7 @@ const transport = new WorkerTransport({
   worker,
   onHello: (frame) => {
     window.__hello = frame.identity
-    window.__space = frame.space
+    window.__umwelt = frame.umwelt
   },
   onTrace: (trace) => { window.__traces.push(trace) },
 })

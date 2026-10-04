@@ -10,7 +10,7 @@
  * per-trigger pipeline's minted id (parsed from the mint thread names,
  * the correlation ids, and the ctx lineage) opens, routes, and closes the
  * run — so interleaved pipelines attribute correctly and unrelated faculty
- * traffic (boot scans, other spaces' requests) stays out of the runs.
+ * traffic (boot scans, other umwelts' requests) stays out of the runs.
  *
  * The Thread set rides `thread_added` for free, in two lanes: the STANDING
  * threads (the policy set) and the run's once-thread RE-ENTRIES (the minted
@@ -53,7 +53,7 @@ export type UiReentry = { at: number; thread: Thread }
 
 /**
  * Drop undefined-valued own keys — the engine's transform re-entries carry an
- * explicit `space: undefined` (root) that the replay input schema's strict
+ * explicit `umwelt: undefined` (root) that the replay input schema's strict
  * thread shape rejects; absent means root, the same semantics.
  */
 const normalizeThread = (thread: Thread): Thread => {

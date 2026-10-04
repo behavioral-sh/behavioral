@@ -27,7 +27,7 @@ export const B_TARGET = 'b-target'
 /**
  * Constant representing the attribute name (`b-trigger`) used for declarative event binding,
  * connecting DOM events to BP events sent by a controller island. Serialized values contain
- * space-separated pairs of `event:action` (e.g., "click:doSomething focus:notify").
+ * umwelt-separated pairs of `event:action` (e.g., "click:doSomething focus:notify").
  */
 export const B_TRIGGER = 'b-trigger'
 

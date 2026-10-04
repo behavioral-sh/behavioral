@@ -83,12 +83,12 @@ const wiredFixture = (): {
 }
 
 describe('useWorker ↔ createWorker — the round-trip pin over a real Bun Worker', () => {
-  test('request out, result in as a once-thread, space preserved', async () => {
+  test('request out, result in as a once-thread, umwelt preserved', async () => {
     const { wiring, threads } = wiredFixture()
-    wiring.send(fixtureRequestEvent({ id: 'r1', input: { op: 'echo', message: 'hi' }, space: 'space-a' }) as BPEvent)
+    wiring.send(fixtureRequestEvent({ id: 'r1', input: { op: 'echo', message: 'hi' }, umwelt: 'umwelt-a' }) as BPEvent)
     const thread = await threadWhere(threads, (t) => t.name === 'on_fixture_request_result_r1')
     expect(thread).toEqual({
-      space: 'space-a',
+      umwelt: 'umwelt-a',
       name: 'on_fixture_request_result_r1',
       description: 'Faculty re-entry — once-thread re-emitting the fixture_request_result wire event.',
       once: true,

@@ -62,13 +62,13 @@ describe('plugin threads — import issue', () => {
     expect(ctx?.echo).toMatchObject({ source: 'p1', plugin: '/plugins/alpha', file: 't.ts' })
   })
 
-  test('a proposal with a target space carries it on the echo', async () => {
+  test('a proposal with a target umwelt carries it on the echo', async () => {
     const selected = await runProgram([
-      proposal({ detail: { id: 'p2', input: { plugin: '/plugins/alpha', file: 't.ts', space: 's1' } } }),
+      proposal({ detail: { id: 'p2', input: { plugin: '/plugins/alpha', file: 't.ts', umwelt: 's1' } } }),
     ])
     const call = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === 'p2-import')
     const ctx = call?.detail?.ctx as { echo?: Record<string, unknown> }
-    expect(ctx?.echo).toMatchObject({ source: 'p2', space: 's1' })
+    expect(ctx?.echo).toMatchObject({ source: 'p2', umwelt: 's1' })
   })
 
   test('a malformed proposal (missing plugin) never issues an import', async () => {
@@ -145,43 +145,43 @@ describe('plugin threads — the join and the candidates', () => {
     }
   })
 
-  test('a named target space stamps the proposed thread — the admission owns the mount scope', async () => {
+  test('a named target umwelt stamps the proposed thread — the admission owns the mount scope', async () => {
     const selected = await runProgram([
-      proposal({ detail: { id: 'p2', input: { plugin: '/p', file: 'f', space: 's1' } } }),
-      importResult([threadA], { source: 'p2', plugin: '/p', file: 'f', space: 's1' }),
+      proposal({ detail: { id: 'p2', input: { plugin: '/p', file: 'f', umwelt: 's1' } } }),
+      importResult([threadA], { source: 'p2', plugin: '/p', file: 'f', umwelt: 's1' }),
     ])
     const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
-    const input = add?.detail?.input as { thread?: { space?: string; name?: string } }
-    expect(input.thread?.space).toBe('s1')
+    const input = add?.detail?.input as { thread?: { umwelt?: string; name?: string } }
+    expect(input.thread?.umwelt).toBe('s1')
     expect(input.thread?.name).toBe('greeter')
   })
 
-  test('a space-stamped proposal event reaches the root dispatcher — the declared space still stamps the target', async () => {
+  test('a umwelt-stamped proposal event reaches the root dispatcher — the declared umwelt still stamps the target', async () => {
     const selected = await runProgram([
-      proposal({ space: 's1', detail: { id: 'p3', input: { plugin: '/plugins/alpha', file: 't.ts', space: 's1' } } }),
-      importResult([threadA], { source: 'p3', plugin: '/plugins/alpha', file: 't.ts', space: 's1' }),
+      proposal({ umwelt: 's1', detail: { id: 'p3', input: { plugin: '/plugins/alpha', file: 't.ts', umwelt: 's1' } } }),
+      importResult([threadA], { source: 'p3', plugin: '/plugins/alpha', file: 't.ts', umwelt: 's1' }),
     ])
     // The join: the root dispatcher's unstamped waitFor matches the
     // s1-stamped proposal event (Direction/R) — the import issues.
     const call = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.shell_request && s.detail?.id === 'p3-import')
     expect(call).toBeDefined()
-    // The flow-through: the proposal's declared space reaches the add_thread
-    // target stamp (the registry keys per space; admission owns the scope).
+    // The flow-through: the proposal's declared umwelt reaches the add_thread
+    // target stamp (the registry keys per umwelt; admission owns the scope).
     const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
-    const input = add?.detail?.input as { thread?: { space?: string; name?: string } }
-    expect(input.thread?.space).toBe('s1')
+    const input = add?.detail?.input as { thread?: { umwelt?: string; name?: string } }
+    expect(input.thread?.umwelt).toBe('s1')
     expect(input.thread?.name).toBe('greeter')
   })
 
-  test('a root target (no space) mounts with no space stamp — root-only, never omni', async () => {
-    const authored = { ...threadA, space: 'author-space' }
+  test('a root target (no umwelt) mounts with no umwelt stamp — root-only, never omni', async () => {
+    const authored = { ...threadA, umwelt: 'author-umwelt' }
     const selected = await runProgram([
       proposal(),
       importResult([authored], { source: 'p1', plugin: '/plugins/alpha', file: 't.ts' }),
     ])
     const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
     const input = add?.detail?.input as { thread?: Record<string, unknown> }
-    expect('space' in (input.thread ?? {})).toBe(false)
+    expect('umwelt' in (input.thread ?? {})).toBe(false)
   })
 
   test('an empty validated import proposes nothing — the batch carries only warnings', async () => {

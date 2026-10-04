@@ -59,6 +59,6 @@ export const IDIOMS = keyMirror('waitFor', 'interrupt', 'request', 'block', 'tra
  * contract riding to the fixed fourth faculty. TWO-HOME pairing: the wire
  * home's kinds registry (`faculties.constants.ts`) carries the byte-identical
  * key; the engine cannot import the faculties tree, so the minting side owns
- * this copy (the same ruling as ROOT_SPACE's daemon copy).
+ * this copy (the same ruling as ROOT_UMWELT's daemon copy).
  */
 export const TRANSFORM_REQUEST_EVENT = 'transform_request'

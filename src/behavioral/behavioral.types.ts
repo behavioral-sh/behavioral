@@ -35,14 +35,14 @@ export type JsonObject = { [key: string]: JsonValue }
  *
  * @property type - Event identifier; listeners match on this.
  * @property detail - JSON payload carried by the event.
- * @property space - Optional scope stamp; listeners only match events in the same space.
+ * @property umwelt - Optional scope stamp; listeners only match events in the same umwelt.
  *
  * @public
  */
 export type BPEvent = {
   type: string
   detail?: JsonObject
-  space?: string
+  umwelt?: string
 }
 
 export const BPEventSchema: JSONSchemaType<BPEvent> = {
@@ -56,7 +56,7 @@ export const BPEventSchema: JSONSchemaType<BPEvent> = {
       nullable: true,
       description: 'JSON payload carried by the event.',
     },
-    space: { type: 'string', nullable: true, description: 'Scope stamp; listeners match only same-space events.' },
+    umwelt: { type: 'string', nullable: true, description: 'Scope stamp; listeners match only same-umwelt events.' },
   },
   required: ['type'],
   additionalProperties: false,
@@ -151,23 +151,23 @@ const TransformListenerSchema: JSONSchemaType<TransformListener> = {
 }
 
 /**
- * Registered listener — a {@link BPListener} stamped with its thread's `space`
+ * Registered listener — a {@link BPListener} stamped with its thread's `umwelt`
  * at registration time in {@link generateRulesFunctions}.
  *
  * @public
  */
 export type RegisteredBPListener = BPListener & {
-  space?: string
+  umwelt?: string
 }
 
 /**
- * Registered transform listener — a {@link TransformListener} with space
+ * Registered transform listener — a {@link TransformListener} with umwelt
  * stamping, post-registration.
  *
  * @public
  */
 export type RegisteredTransformListener = TransformListener & {
-  space?: string
+  umwelt?: string
 }
 
 /**
@@ -289,7 +289,7 @@ export type RunningBid = {
   /** Internal iterator representing the thread's execution state. Holds the current position in the rule sequence. */
   generator: IterableIterator<RegisteredIdioms>
   ingress?: true
-  space?: string
+  umwelt?: string
   /** Where present, the thread's `description` (minted threads carry a default). */
   description?: string
   /**
@@ -328,7 +328,7 @@ export type CandidateBid = {
   detail?: BPEvent['detail']
 
   ingress?: true
-  space?: string
+  umwelt?: string
 }
 /**
  * A b-thread registration tuple.
@@ -338,14 +338,14 @@ export type CandidateBid = {
  * @property rules - The thread's synchronization statements, executed in order.
  * @property once - When `true`, the thread runs its rules once and completes.
  * @property sourceHash - Optional provenance: the djb2 hash of the plugin's local path or remote URI, stamped at the proposal path.
- * @property instanceHash - Optional instance identity: djb2(canonical plugin path + space + thread NAME) — stamped by the
+ * @property instanceHash - Optional instance identity: djb2(canonical plugin path + umwelt + thread NAME) — stamped by the
  *   admission/mount path post-sourceHash-stamp, never by the plugin author. Threads carrying one are
  *   removal-addressable (`removeThread`); all other threads are engine-minted ephemeral identity.
  *
  * @public
  */
 export type Thread = {
-  space?: string
+  umwelt?: string
   name: string
   description: string
   once?: true
@@ -364,10 +364,10 @@ export type Thread = {
 export const ThreadSchema: JSONSchemaType<Thread> = {
   type: 'object',
   properties: {
-    space: {
+    umwelt: {
       type: 'string',
       nullable: true,
-      description: 'Scope stamp; the thread matches only events in the same space.',
+      description: 'Scope stamp; the thread matches only events in the same umwelt.',
     },
     name: { type: 'string', minLength: 1, description: 'Human-readable thread name; appears in trace messages.' },
     description: {
@@ -394,7 +394,7 @@ export const ThreadSchema: JSONSchemaType<Thread> = {
       minimum: 0,
       nullable: true,
       description:
-        'Instance identity: djb2(canonical plugin path + space + thread NAME) — stamped by the admission/mount path, never the author; removal-addressable threads only.',
+        'Instance identity: djb2(canonical plugin path + umwelt + thread NAME) — stamped by the admission/mount path, never the author; removal-addressable threads only.',
     },
   },
   required: ['name', 'description', 'rules'],
@@ -527,7 +527,7 @@ export type IdleTrace = TraceBase & {
 export type AddThreadError = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.add_thread_error
   error: unknown[]
-  space?: string
+  umwelt?: string
 }
 
 /**
@@ -563,7 +563,7 @@ export type SerializedThread = {
   description?: string
   priority: number
   ingress?: true
-  space?: string
+  umwelt?: string
   request?: Pick<BPEvent, 'type' | 'detail'>
   waitFor?: RegisteredBPListener[]
   block?: RegisteredBPListener[]
@@ -580,8 +580,8 @@ export type PendingBidsTrace = TraceBase & {
 export type TriggerError = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.trigger_error
   error: unknown[]
-  /** The attempted event `space`, echoed for observability even when validation fails. */
-  space?: string
+  /** The attempted event `umwelt`, echoed for observability even when validation fails. */
+  umwelt?: string
 }
 
 export type InterruptTrace = TraceBase & {
@@ -593,7 +593,7 @@ export type InterruptTrace = TraceBase & {
 
 /**
  * The matched reshape contract — the collection in
- * `resumePendingThreadsForSelectedEvent` (Direction/R: `space` is the target's
+ * `resumePendingThreadsForSelectedEvent` (Direction/R: `umwelt` is the target's
  * re-entry stamp). The id mints at the engine's transform leg (one uuid per
  * matched listener, joining the trace and the request).
  */
@@ -601,7 +601,7 @@ export type TransformContract = {
   query: string
   target: string
   thread: string
-  space?: string
+  umwelt?: string
 }
 
 export type Transformer = TransformContract & {
@@ -758,8 +758,8 @@ export type RemoveThread = (args: { instanceHash?: number }) => void
  * Primary interface for external systems to communicate with the program.
  *
  * @param args - Event to trigger, including its `type`, optional `detail`, and
- *   optional `space` (absent = root). The event carries its own space; the
- *   external surface is not partially applied per space.
+ *   optional `umwelt` (absent = root). The event carries its own umwelt; the
+ *   external surface is not partially applied per umwelt.
  *
  * @remarks
  * - Triggered candidate events carry `ingress: true`, so listeners can require

@@ -4,14 +4,14 @@ import type { ServerWebSocket } from 'bun'
 import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { BunKeychain, type Keychain } from '../actuators/keychain-oauth-provider.ts'
 import { bundleBProgramWorker, connectSrcPolicy } from '../b-program/bundle-worker.ts'
-import { traceSpaceOf } from '../b-program/composition-port.ts'
+import { traceUmweltOf } from '../b-program/composition-port.ts'
 import { RECONCILE_EVENT_TYPES } from '../b-program/plugin-threads.reconcile.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import type { Trace } from '../behavioral/behavioral.types.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
 import { bundleController, CONNECT_BEHAVIORAL_ROUTE } from '../controller/bundle-controller.ts'
 import { B_PROGRAM_WORKER_PATH } from '../controller/worker-transport.ts'
-import { ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import { ROOT_UMWELT } from '../faculties/faculties.constants.ts'
 import {
   createFacultyBridge,
   DAEMON_BRIDGE_PATH,
@@ -134,20 +134,20 @@ export const createSocketHost = async ({
    * (unauthenticated) — it stays driver for ordinary traffic but never
    * regains privileged capabilities (the reload ingress).
    */
-  type ClientScope = { scope: 'composition' | 'driver'; space?: string; tainted?: boolean }
+  type ClientScope = { scope: 'composition' | 'driver'; umwelt?: string; tainted?: boolean }
   const clients = new Map<ServerWebSocket<unknown>, ClientScope>()
   const frame = (method: string, params: unknown): string => JSON.stringify({ jsonrpc: '2.0', method, params })
 
   /**
    * The scoped trace delivery (pin 3): a composition-scoped client receives
-   * ONLY its declared space's traces; a driver client receives ONLY the
-   * daemon's root-space traffic. The two streams are disjoint — a client's
+   * ONLY its declared umwelt's traces; a driver client receives ONLY the
+   * daemon's root-umwelt traffic. The two streams are disjoint — a client's
    * scope never widens what it receives. Default (no declaration): driver.
    */
   const emitTrace = (trace: unknown): void => {
-    const space = traceSpaceOf(trace as Trace)
+    const umwelt = traceUmweltOf(trace as Trace)
     for (const [ws, client] of clients) {
-      const deliver = client.scope === 'composition' ? space === client.space : space === ROOT_SPACE
+      const deliver = client.scope === 'composition' ? umwelt === client.umwelt : umwelt === ROOT_UMWELT
       if (deliver) ws.send(frame('trace', trace))
     }
   }
@@ -270,7 +270,7 @@ export const createSocketHost = async ({
             // session verdict was captured at upgrade (the bearer/cookie
             // presentation); driver declarations need no session and stay
             // silent-accepted.
-            const params = parsed.params as { scope?: string; space?: string } | undefined
+            const params = parsed.params as { scope?: string; umwelt?: string } | undefined
             const client = clients.get(ws)
             const sessioned = (ws.data as { sessioned?: boolean } | undefined)?.sessioned === true
             if (params?.scope === 'composition' && client !== undefined) {
@@ -282,11 +282,11 @@ export const createSocketHost = async ({
                 ws.send(frame('attach_scope_rejected', { reason: 'session_required' }))
                 return
               }
-              if (typeof params.space !== 'string') {
-                ws.send(frame('attach_scope_rejected', { reason: 'space_required' }))
+              if (typeof params.umwelt !== 'string') {
+                ws.send(frame('attach_scope_rejected', { reason: 'umwelt_required' }))
                 return
               }
-              clients.set(ws, { scope: 'composition', space: params.space })
+              clients.set(ws, { scope: 'composition', umwelt: params.umwelt })
             }
             return
           }

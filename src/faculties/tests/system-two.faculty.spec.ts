@@ -38,7 +38,7 @@ type WireResult = {
   result?: SystemTwoOutput
   error?: Record<string, unknown>
   ctx?: unknown
-  space?: string
+  umwelt?: string
 }
 
 /** Spawn the responses faculty WORKER and expose the same wire harness API. */
@@ -53,17 +53,17 @@ const spawnModelBehavior = (endpoints: SystemTwoEndpoints) => {
     resultType: FACULTY_MESSAGE_KINDS.system_two_request_result,
     initData: endpoints,
   })
-  const messages: { type?: string; detail?: unknown; space?: string }[] = []
-  const respond = (id: string, input: unknown, space?: string, ctx?: JsonObject): void => {
-    faculty.call({ id, input, ...(ctx === undefined ? {} : { ctx }) } as JsonObject, space)
+  const messages: { type?: string; detail?: unknown; umwelt?: string }[] = []
+  const respond = (id: string, input: unknown, umwelt?: string, ctx?: JsonObject): void => {
+    faculty.call({ id, input, ...(ctx === undefined ? {} : { ctx }) } as JsonObject, umwelt)
   }
   const cancel = (id: string): void => {
     faculty.post({ type: FACULTY_MESSAGE_KINDS.system_two_cancel, detail: { id } } as never)
   }
   const resultFor = async (id: string): Promise<WireResult> => {
     const raw = await faculty.resultFor(id)
-    messages.push({ type: FACULTY_MESSAGE_KINDS.system_two_request_result, detail: raw.detail, space: raw.space })
-    return { ...raw.detail, id: raw.id, space: raw.space } as WireResult
+    messages.push({ type: FACULTY_MESSAGE_KINDS.system_two_request_result, detail: raw.detail, umwelt: raw.umwelt })
+    return { ...raw.detail, id: raw.id, umwelt: raw.umwelt } as WireResult
   }
   return { respond, cancel, resultFor, messages, terminate: (): void => faculty.terminate() }
 }
@@ -272,23 +272,23 @@ describe('model faculty — cancellation', () => {
 })
 
 describe('model faculty — event wire', () => {
-  test('a request space is echoed on the result event', async () => {
+  test('a request umwelt is echoed on the result event', async () => {
     const model = spawnModelBehavior({})
     try {
       model.respond('call_1', { provider: 'nope', modelId: 'm', input: [] }, 's1')
-      const { space } = await model.resultFor('call_1')
-      expect(space).toBe('s1')
+      const { umwelt } = await model.resultFor('call_1')
+      expect(umwelt).toBe('s1')
     } finally {
       model.terminate()
     }
   })
 
-  test('a request without space returns a result without space', async () => {
+  test('a request without umwelt returns a result without umwelt', async () => {
     const model = spawnModelBehavior({})
     try {
       model.respond('call_1', { provider: 'nope', modelId: 'm', input: [] })
-      const { space } = await model.resultFor('call_1')
-      expect(space).toBeUndefined()
+      const { umwelt } = await model.resultFor('call_1')
+      expect(umwelt).toBeUndefined()
     } finally {
       model.terminate()
     }

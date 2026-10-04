@@ -24,8 +24,8 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  */
 export const STORE_DB_PATH_KEY = 'behavioral:store-db-path'
 
-/** The reserved unscoped space identity — the growth model's root space. */
-export const ROOT_SPACE = 'root'
+/** The reserved unscoped umwelt identity — the growth model's root umwelt. */
+export const ROOT_UMWELT = 'root'
 
 export type StorePutInput = {
   collection: string

@@ -36,10 +36,10 @@ const waitForTraces = async (
   }
 }
 
-const shaperThread = (space?: string): Thread => ({
+const shaperThread = (umwelt?: string): Thread => ({
   name: 'shaper',
   description: 'Test thread.',
-  ...(space === undefined ? {} : { space }),
+  ...(umwelt === undefined ? {} : { umwelt }),
   rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
 })
 
@@ -84,17 +84,17 @@ describe('the composition transform legs — park and mint over the fixed fourth
     runtime.terminate()
   })
 
-  test('the space carries per Direction/R — the target re-enters stamped', async () => {
+  test('the umwelt carries per Direction/R — the target re-enters stamped', async () => {
     const traces: Trace[] = []
     const runtime = bProgram({ threads: [shaperThread('s1')] })
     runtime.useTrace((t) => {
       traces.push(t)
     })
     runtime.start()
-    runtime.trigger({ type: 'order', space: 's1', detail: { order: { id: 'o-9' } } })
+    runtime.trigger({ type: 'order', umwelt: 's1', detail: { order: { id: 'o-9' } } })
     await waitForTraces(traces, (sel) => sel.some((s) => s.selected.type === 'ship'))
     const ship = selectionsOf(traces).find((s) => s.selected.type === 'ship')!
-    expect(ship.selected.space).toBe('s1')
+    expect(ship.selected.umwelt).toBe('s1')
     runtime.terminate()
   })
 

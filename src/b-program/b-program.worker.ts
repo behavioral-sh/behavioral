@@ -4,7 +4,7 @@ import {
   CONTROLLER_INCOMING_MESSAGE_TYPES,
   CONTROLLER_OUTGOING_MESSAGE_TYPES,
 } from '../controller/controller.constants.ts'
-import { FACULTY_MESSAGE_KINDS, ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import { FACULTY_MESSAGE_KINDS, ROOT_UMWELT } from '../faculties/faculties.constants.ts'
 import {
   validateSecurityCancelEvent,
   validateSecurityRequestEvent,
@@ -23,7 +23,7 @@ import {
   type CompositionPortOutbound,
   type CompositionPortTraceSubscribeFrame,
   CompositionPortTraceSubscribeFrameSchema,
-  traceSpaceOf,
+  traceUmweltOf,
 } from './composition-port.ts'
 import { watchPluginThreadRegistry } from './plugin-threads.registry.ts'
 import { validateHelloDetail } from './runtime-identity.ts'
@@ -44,20 +44,20 @@ import { redactTrace } from './trace-redact.ts'
  *
  * The message protocol (`composition-port.ts`), over the worker's own
  * channel — the page's `WorkerTransport` is the other end:
- *   - `attach` (with the page's space and — optionally — the provider map +
+ *   - `attach` (with the page's umwelt and — optionally — the provider map +
  *     model identifiers) BOOTS the composition: the models become the
  *     faculties' init-frame payloads (`initData`), the data must exist
  *     before the faculty workers spawn. The `hello` frame (the validated
- *     engine identity + the page's space) answers.
+ *     engine identity + the page's umwelt) answers.
  *   - ingress: the controller's ClientMessages ride raw (`ui_event` triggers
  *     its `detail.event`; every other `ui_*` type triggers as
  *     `{ type, detail }` — the dispatchToRuntime semantics) and are FORCIBLY
- *     stamped with the attached space (a tab cannot impersonate another
- *     space — structural in the dedicated-worker topology).
+ *     stamped with the attached umwelt (a tab cannot impersonate another
+ *     umwelt — structural in the dedicated-worker topology).
  *   - egress: ONE full-fidelity trace stream, REDACTED in-worker (the
  *     sanitize step IS the redaction pass), filterable by kind
- *     (`trace_subscribe`). Root-space traces always deliver; space-stamped
- *     traces deliver when they match the attached space. A `ui_*` selection
+ *     (`trace_subscribe`). Root-umwelt traces always deliver; umwelt-stamped
+ *     traces deliver when they match the attached umwelt. A `ui_*` selection
  *     additionally leaves as a `message` frame (a controller ServerMessage)
  *     — the egress-as-selection lane, mirrored from serve.ts.
  *
@@ -68,7 +68,7 @@ import { redactTrace } from './trace-redact.ts'
  *
  * MINIMAL: the redaction pass deep-clones every trace (no batching — the
  * amended ruling's no-batching point); upgrade path if it shows: a filter
- * before the clone (kind/space are knowable pre-redaction). Traces emitted
+ * before the clone (kind/umwelt are knowable pre-redaction). Traces emitted
  * before the page's `trace_subscribe` are not replayed — the stream starts
  * at subscription (the daemon-pipe slice re-points persistence, where the
  * full stream lives).
@@ -124,8 +124,8 @@ export type CompositionWorkerOptions = {
 
 type Runtime = ReturnType<typeof bProgram>
 
-/** The trace stream's per-worker subscription: attached (space) + kind filter. */
-type TraceSubscription = { space?: string; kinds?: Set<string> }
+/** The trace stream's per-worker subscription: attached (umwelt) + kind filter. */
+type TraceSubscription = { umwelt?: string; kinds?: Set<string> }
 
 /** The worker's own global message surface (DedicatedWorkerGlobalScope, typed minimally). */
 const workerSelf = self as unknown as {
@@ -191,11 +191,11 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
       // the persistence home — full fidelity, independent of the page's
       // subscription).
       pipe?.push(redactTrace(trace))
-      if (subscription.space === undefined) return // attach is the admission
+      if (subscription.umwelt === undefined) return // attach is the admission
       if (subscription.kinds !== undefined && !subscription.kinds.has(trace.kind)) return
       const redacted = redactTrace(trace)
-      const space = traceSpaceOf(redacted)
-      if (space !== ROOT_SPACE && space !== subscription.space) return
+      const umwelt = traceUmweltOf(redacted)
+      if (umwelt !== ROOT_UMWELT && umwelt !== subscription.umwelt) return
       post({ kind: COMPOSITION_PORT_KINDS.trace, trace: redacted })
       // Egress-as-selection: a `ui_*` selection is a controller ServerMessage.
       // (The ui threads produce conforming details; the relay is dumb — the
@@ -222,14 +222,14 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
     if (frame.kind === COMPOSITION_PORT_KINDS.attach) {
       if (!validateAttach(frame)) return // fail closed: a malformed attach gets no hello
       const attach = frame as CompositionPortAttachFrame
-      subscription.space = attach.space ?? `tab_${uuid()}`
+      subscription.umwelt = attach.umwelt ?? `tab_${uuid()}`
       const booted = boot(attach.models ?? {})
-      // The hello: the composition's engine identity + this page's space.
+      // The hello: the composition's engine identity + this page's umwelt.
       // Fail closed — the worker never sends an unvalidated identity frame.
       if (validateHelloDetail(booted.identity)) {
         post({
           kind: COMPOSITION_PORT_KINDS.hello,
-          space: subscription.space,
+          umwelt: subscription.umwelt,
           identity: booted.identity,
         })
       } else {
@@ -243,20 +243,20 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
       subscription.kinds = kinds === undefined ? undefined : new Set(kinds)
       return
     }
-    // The controller's ingress: ClientMessages ride raw. The attached space
-    // WINS — an attached tab cannot impersonate another space.
+    // The controller's ingress: ClientMessages ride raw. The attached umwelt
+    // WINS — an attached tab cannot impersonate another umwelt.
     const type = frame.type
     if (typeof type !== 'string' || !(Object.values(CONTROLLER_OUTGOING_MESSAGE_TYPES) as string[]).includes(type))
       return
-    if (subscription.space === undefined) return // never attached
+    if (subscription.umwelt === undefined) return // never attached
     if (type === CONTROLLER_OUTGOING_MESSAGE_TYPES.ui_event) {
       const detail = frame.detail as { event?: { type?: string } } | undefined
       const event = detail?.event
       if (typeof event?.type !== 'string') return
-      runtime?.trigger({ ...event, space: subscription.space } as never)
+      runtime?.trigger({ ...event, umwelt: subscription.umwelt } as never)
       return
     }
-    runtime?.trigger({ type, detail: frame.detail, space: subscription.space } as never)
+    runtime?.trigger({ type, detail: frame.detail, umwelt: subscription.umwelt } as never)
   }
 
   workerSelf.onmessage = (event: MessageEvent) => {

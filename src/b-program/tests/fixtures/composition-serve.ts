@@ -8,8 +8,8 @@
  *     composition worker and constructs the bundled controller with a
  *     `WorkerTransport` over it (the transport-seam pattern), then extension
  *     buttons trigger a real `store_request` / `system_two_request` ingress.
- *   - `/iso.html?space=…` — the space-per-tab pin: a per-tab composition with
- *     an explicit space; the page exposes `__triggerStore` for deterministic
+ *   - `/iso.html?umwelt=…` — the umwelt-per-tab pin: a per-tab composition with
+ *     an explicit umwelt; the page exposes `__triggerStore` for deterministic
  *     isolation assertions (two tabs = two workers, no shared engine).
  *
  * Every response carries COOP/COEP (`crossOriginIsolated` — the engine's jq
@@ -165,7 +165,7 @@ const transport = new WorkerTransport({
   models: { systemTwo: systemTwoEndpointsFromPlan({ openai: {} }) },
   onHello: (frame) => {
     window.__hello = frame.identity
-    window.__space = frame.space
+    window.__umwelt = frame.umwelt
   },
   onTrace: (trace) => { window.__traces.push(trace) },
 })
@@ -226,7 +226,7 @@ controller.connect()
     contentType: 'text/html',
   }))
 
-  // 7. The isolation page: a per-tab composition (explicit space), the real
+  // 7. The isolation page: a per-tab composition (explicit umwelt), the real
   //    WorkerTransport, and a deterministic store trigger the spec fires via
   //    evaluate. Two tabs = two workers — the isolation is structural.
   route('/iso.js', async () => ({
@@ -237,9 +237,9 @@ window.__traces = []
 const worker = new Worker('/composition.worker.js', { type: 'module' })
 const transport = new WorkerTransport({
   worker,
-  space: new URLSearchParams(location.search).get('space'),
+  umwelt: new URLSearchParams(location.search).get('umwelt'),
   onHello: (frame) => {
-    window.__space = frame.space
+    window.__umwelt = frame.umwelt
     window.__hello = frame.identity
   },
   onTrace: (trace) => { window.__traces.push(trace) },

@@ -68,7 +68,7 @@ const spawnProbe = (env?: Record<string, string>) => {
     traces.push(trace)
     if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
     const selected = (trace as SelectionTrace).selected
-    const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
+    const event = { type: selected.type, detail: selected.detail, umwelt: selected.umwelt } as BPEvent
     if (event.type === ACTUATOR_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
       actuator.send(event)
     }
@@ -237,7 +237,7 @@ describe('useActuator — the slimmed spawn-based actuator primitive', () => {
         traces.push(trace)
         if (trace.kind !== TRACE_MESSAGE_KINDS.selection) return
         const selected = (trace as SelectionTrace).selected
-        const event = { type: selected.type, detail: selected.detail, space: selected.space } as BPEvent
+        const event = { type: selected.type, detail: selected.detail, umwelt: selected.umwelt } as BPEvent
         if (event.type === ACTUATOR_MESSAGE_KINDS.shell_request && validateShellRequestEvent(event)) {
           actuator.send(event)
         }

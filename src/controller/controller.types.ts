@@ -183,7 +183,7 @@ export type ErrorMessage = {
 /**
  * Element matching strategies in attribute selectors.
  * - '=':  Exact match
- * - '~=': Space-separated list contains
+ * - '~=': Umwelt-separated list contains
  * - '|=': Exact match or prefix followed by hyphen
  * - '^=': Starts with
  * - '$=': Ends with

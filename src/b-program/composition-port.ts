@@ -1,7 +1,7 @@
 import { TRACE_MESSAGE_KINDS } from '../behavioral/behavioral.constants.ts'
 import type { JsonObject, Trace } from '../behavioral/behavioral.types.ts'
 import type { ClientMessage, ServerMessage } from '../controller/controller.types.ts'
-import { ROOT_SPACE } from '../faculties/faculties.constants.ts'
+import { ROOT_UMWELT } from '../faculties/faculties.constants.ts'
 import type { SystemTwoEndpointConfig } from '../faculties/system-two.types.ts'
 import { keyMirror } from '../utils.ts'
 import type { RuntimeIdentity } from './runtime-identity.ts'
@@ -22,8 +22,8 @@ import type { RuntimeIdentity } from './runtime-identity.ts'
  * raw; a `ServerMessage` leaves wrapped in a `message` frame). Ingress
  * (`ui_*`/trigger semantics) mirrors `dispatchToRuntime`'s raw-ClientMessage
  * shape; egress is the AMENDED observability ruling — ONE full-fidelity
- * redacted trace stream per worker, filterable by kind, space-isolated per
- * attach (root-space traces broadcast; stamped traces deliver to the owning
+ * redacted trace stream per worker, filterable by kind, umwelt-isolated per
+ * attach (root-umwelt traces broadcast; stamped traces deliver to the owning
  * attach only).
  *
  * @public
@@ -44,10 +44,10 @@ export type CompositionPortModels = {
   ui?: { provider?: string; modelId?: string }
 }
 
-/** Page → worker: claim the page's space and (optionally) hand the model identifiers. */
+/** Page → worker: claim the page's umwelt and (optionally) hand the model identifiers. */
 export type CompositionPortAttachFrame = {
   kind: typeof COMPOSITION_PORT_KINDS.attach
-  space?: string
+  umwelt?: string
   models?: CompositionPortModels
 }
 
@@ -104,10 +104,10 @@ export type CompositionPortTraceSubscribeFrame = {
   kinds?: string[]
 }
 
-/** Worker → page: the attach's answer — the engine identity + the page's space. */
+/** Worker → page: the attach's answer — the engine identity + the page's umwelt. */
 export type CompositionPortHelloFrame = {
   kind: typeof COMPOSITION_PORT_KINDS.hello
-  space: string
+  umwelt: string
   identity: RuntimeIdentity
 }
 
@@ -137,7 +137,7 @@ export const CompositionPortAttachFrameSchema = {
   type: 'object',
   properties: {
     kind: { type: 'string', const: COMPOSITION_PORT_KINDS.attach },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
     models: { type: 'object', nullable: true },
   },
   required: ['kind'],
@@ -155,18 +155,18 @@ export const CompositionPortTraceSubscribeFrameSchema = {
 } as const
 
 /**
- * A trace's best-effort space — the same resolution the log sink's path uses:
- * a top-level space, else the selection's/interrupt's, else a thread_added's,
- * else root. Root-space traces broadcast to every attached page; space-stamped
- * traces deliver only to the owning attach (the space-per-tab isolation).
+ * A trace's best-effort umwelt — the same resolution the log sink's path uses:
+ * a top-level umwelt, else the selection's/interrupt's, else a thread_added's,
+ * else root. Root-umwelt traces broadcast to every attached page; umwelt-stamped
+ * traces deliver only to the owning attach (the umwelt-per-tab isolation).
  */
-export const traceSpaceOf = (trace: Trace): string => {
-  const direct = (trace as { space?: unknown }).space
+export const traceUmweltOf = (trace: Trace): string => {
+  const direct = (trace as { umwelt?: unknown }).umwelt
   if (typeof direct === 'string') return direct
   if (trace.kind === TRACE_MESSAGE_KINDS.selection || trace.kind === TRACE_MESSAGE_KINDS.interrupt) {
-    return (trace as { selected?: { space?: string } }).selected?.space ?? ROOT_SPACE
+    return (trace as { selected?: { umwelt?: string } }).selected?.umwelt ?? ROOT_UMWELT
   }
   if (trace.kind === TRACE_MESSAGE_KINDS.thread_added || trace.kind === TRACE_MESSAGE_KINDS.thread_removed)
-    return (trace as { thread?: { space?: string } }).thread?.space ?? ROOT_SPACE
-  return ROOT_SPACE
+    return (trace as { thread?: { umwelt?: string } }).thread?.umwelt ?? ROOT_UMWELT
+  return ROOT_UMWELT
 }

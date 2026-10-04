@@ -15,7 +15,7 @@ const initFrame = (data: JsonObject): InitFrame => ({ kind: INIT_FRAME_KIND, dat
 type FixtureResult = {
   type: string
   detail: Record<string, unknown>
-  space?: string
+  umwelt?: string
 }
 
 type FixtureErrors = string[]
@@ -82,11 +82,11 @@ describe('createWorker — the in-worker bootstrap over a real Bun Worker', () =
     worker.terminate()
   })
 
-  test('the request space echoes on the result', async () => {
+  test('the request umwelt echoes on the result', async () => {
     const { worker, resultFor } = spawnFixture()
-    worker.postMessage({ type: 'fixture_request', detail: { id: 's1', input: { op: 'echo' } }, space: 'space-a' })
+    worker.postMessage({ type: 'fixture_request', detail: { id: 's1', input: { op: 'echo' } }, umwelt: 'umwelt-a' })
     const result = await resultFor('s1')
-    expect(result.space).toBe('space-a')
+    expect(result.umwelt).toBe('umwelt-a')
     worker.terminate()
   })
 

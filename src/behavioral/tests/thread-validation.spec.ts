@@ -375,10 +375,10 @@ describe('validateThread — idiom combinations', () => {
     ).toBe(true)
   })
 
-  // ── space stamping ──────────────────────────────────────────────────────
+  // ── umwelt stamping ──────────────────────────────────────────────────────
 
-  test('threads with space are valid (space stamped at registration)', () => {
-    // space is added by generateRulesFunctions, not by the author
+  test('threads with umwelt are valid (umwelt stamped at registration)', () => {
+    // umwelt is added by generateRulesFunctions, not by the author
     // so the author-facing Thread type doesn't include it
     expect(validateThread({ name: 'x', description: 'Test thread.', rules: [{ request: { type: 'a' } }] })).toBe(true)
   })

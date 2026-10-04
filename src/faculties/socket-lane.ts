@@ -78,12 +78,12 @@ export const socketLane =
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     const queue: string[] = []
 
-    /** Re-enter one event as a once-thread, space preserved (root stays root) — the worker lane's shape. */
+    /** Re-enter one event as a once-thread, umwelt preserved (root stays root) — the worker lane's shape. */
     const reenter = (message: SocketLine): void => {
       const detail = (message.detail ?? {}) as JsonObject
       addThreads([
         {
-          ...(message.space === undefined ? {} : { space: message.space }),
+          ...(message.umwelt === undefined ? {} : { umwelt: message.umwelt }),
           name: `on_${message.type}_${typeof message.detail?.id === 'string' ? message.detail.id : name}`,
           description: `Socket re-entry — once-thread re-emitting the ${message.type} wire event.`,
           once: true,

@@ -16,7 +16,7 @@ import type { PendingBidsTrace, SelectionTrace, Trace, TransformTrace } from '..
  * (the async wire); failures surface as the ok:false result selection —
  * the `transform_error` trace kind retires.
  *
- * These pins are the ENGINE-side contract: the mint, the trace, the space
+ * These pins are the ENGINE-side contract: the mint, the trace, the umwelt
  * carry, and the never-evaluate floor. The evaluation outcomes live with
  * the faculty (src/faculties/tests/transform.faculty.spec.ts); the
  * composition legs live with b-program (b-program.spec.ts).
@@ -117,11 +117,11 @@ describe('transform idiom — the request mint', () => {
     expect(selections(traces).some((s) => s.selected.type === 'ship')).toBe(false)
   })
 
-  test('the request carries the Direction/R space — the re-entry stamp follows the source event', () => {
+  test('the request carries the Direction/R umwelt — the re-entry stamp follows the source event', () => {
     const program = behavioral()
     const { addThread } = program
     addThread({
-      space: 's1',
+      umwelt: 's1',
       name: 'shaper',
       description: 'Test thread.',
       rules: [{ transform: [{ type: 'order', query: '.order', target: 'ship' }] }],
@@ -131,14 +131,14 @@ describe('transform idiom — the request mint', () => {
     program.useTrace((msg) => {
       traces.push(msg)
     })
-    program.trigger({ type: 'order', space: 's1', detail: { order: { id: 'o-9' } } })
+    program.trigger({ type: 'order', umwelt: 's1', detail: { order: { id: 'o-9' } } })
 
     const requests = requestSelections(traces)
     expect(requests).toHaveLength(1)
-    // The minted once-thread re-enters stamped with the source event's space.
-    expect(requests[0]!.selected.space).toBe('s1')
+    // The minted once-thread re-enters stamped with the source event's umwelt.
+    expect(requests[0]!.selected.umwelt).toBe('s1')
     const transformTraces = traces.filter((t): t is TransformTrace => t.kind === TRACE_MESSAGE_KINDS.transform)
-    expect(transformTraces[0]!.transformers[0]!.space).toBe('s1')
+    expect(transformTraces[0]!.transformers[0]!.umwelt).toBe('s1')
   })
 
   test('a detail-less match still mints — the jq input is omitted, the faculty answers no_detail', () => {

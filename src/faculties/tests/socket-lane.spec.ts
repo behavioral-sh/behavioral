@@ -35,7 +35,7 @@ const startEchoServer = async (port = 0) => {
           JSON.stringify({
             type: `${event.type}_result`,
             detail: { id: (event.detail as { id?: string }).id, ok: true, result: event.detail },
-            ...(event.space === undefined ? {} : { space: event.space }),
+            ...(event.umwelt === undefined ? {} : { umwelt: event.umwelt }),
           }),
         )
       },

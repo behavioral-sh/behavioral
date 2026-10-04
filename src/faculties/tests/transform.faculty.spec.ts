@@ -33,13 +33,13 @@ const request = (id: string, query: string, target: string, detail?: JsonObject)
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
 
 describe('the transform faculty — the evaluation round-trip', () => {
-  test('ok: the whole first output rides as value, space echoed', async () => {
+  test('ok: the whole first output rides as value, umwelt echoed', async () => {
     const faculty = spawn()
     try {
       faculty.call(request('t1', '.order', 'ship', { order: { id: 'o-1', total: 42 } }), 's1')
       const result = await faculty.resultFor('t1')
       expect(result.detail).toEqual({ id: 't1', ok: true, value: { id: 'o-1', total: 42 } })
-      expect(result.space).toBe('s1')
+      expect(result.umwelt).toBe('s1')
     } finally {
       faculty.terminate()
     }

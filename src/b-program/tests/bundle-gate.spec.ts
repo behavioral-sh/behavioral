@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
  * wrapper shape a serving side will emit.
  */
 
-type HelloFrame = { kind: string; space?: string; identity?: { instanceId?: string; sessionId?: string } }
+type HelloFrame = { kind: string; umwelt?: string; identity?: { instanceId?: string; sessionId?: string } }
 
 describe('the composition bundle gate — the worker entry builds and boots for the browser', () => {
   test('b-program.worker: the browser artifact boots and answers attach with a hello', async () => {
@@ -59,9 +59,9 @@ describe('the composition bundle gate — the worker entry builds and boots for 
       expect(typeof identity?.instanceId).toBe('string')
       const instanceId = identity?.instanceId ?? ''
       expect(instanceId.startsWith('bp_')).toBe(true)
-      // The minted space: an attach without a space claim mints one.
-      const space = hello?.space ?? ''
-      expect(space.startsWith('tab_')).toBe(true)
+      // The minted umwelt: an attach without a umwelt claim mints one.
+      const umwelt = hello?.umwelt ?? ''
+      expect(umwelt.startsWith('tab_')).toBe(true)
     } finally {
       worker.terminate()
     }

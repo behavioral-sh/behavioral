@@ -4,9 +4,9 @@
  * a crash-torn JSON file poisoning boot — dies with it).
  *
  * @remarks
- * The registry home is ONE root-space store record
+ * The registry home is ONE root-umwelt store record
  * (`plugin-threads/registry`): the whole decision map as one document, get/put
- * only — no new store ops. Keyed (plugin, file, sha256 fileHash, space?): an
+ * only — no new store ops. Keyed (plugin, file, sha256 fileHash, umwelt?): an
  * `admitted` entry carries the validated thread SNAPSHOT stamped with the
  * instance identity (the third hash — removal-addressable mount), a
  * `rejected` entry carries the reason and stays out, visible. `carriedFrom`
@@ -17,7 +17,7 @@
  *
  * TWO HASHES, TWO JOBS (unchanged), PLUS THE THIRD: the key's content hash is
  * the re-adjudication key; the thread's `sourceHash` is plugin-origin
- * provenance; `instanceHash` = djb2(canonical plugin path + space + thread
+ * provenance; `instanceHash` = djb2(canonical plugin path + umwelt + thread
  * NAME) — the removal/mount identity stamped post-sourceHash-stamp, never by
  * the plugin author. Content never enters identity.
  *
@@ -34,7 +34,6 @@
  * @packageDocumentation
  */
 
-import type { JSONSchemaType } from 'ajv'
 import {
   ajv,
   type JsonObject,
@@ -48,61 +47,65 @@ import { ADMISSION_EVENT_TYPES, validateAdmissionVerdict } from '../faculties/sy
 import { hashString } from '../utils/hash-string.ts'
 import { uuid } from '../utils.ts'
 import { RECONCILE_EVENT_TYPES } from './plugin-threads.reconcile.ts'
-import { PLUGIN_THREADS_EVENT_TYPES } from './plugin-threads.threads.ts'
+import { PLUGIN_THREADS_EVENT_TYPES, PLUGIN_THREADS_REGISTRY_VERSION } from './plugin-threads.threads.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
-/** The root-space store collection holding the registry record. */
+/** The root-umwelt store collection holding the registry record. */
 export const PLUGIN_THREADS_REGISTRY_COLLECTION = 'plugin-threads'
 
 /** The store key — one value, the whole registry document. */
 export const PLUGIN_THREADS_REGISTRY_KEY = 'registry'
 
-/** The entry version — an entry stamped with anything else quarantines as data. */
-export const PLUGIN_THREADS_REGISTRY_VERSION = 1
+/**
+ * The entry version — re-exported from the threads vocabulary home (the
+ * reconcile jq derives it; an entry stamped with anything else quarantines
+ * as data).
+ */
+export { PLUGIN_THREADS_REGISTRY_VERSION }
 
 /** Bounded exit-flush grace — a store lane that never answers must not hang the exit. */
 const REGISTRY_FLUSH_TIMEOUT_MS = 10_000
 
 /**
- * The decision key — the tuple (plugin, file, content hash, target space),
+ * The decision key — the tuple (plugin, file, content hash, target umwelt),
  * JSON-encoded (paths contain separators; the encoding is unambiguous).
- * An absent space and a named space are independent keys (Root/D).
+ * An absent umwelt and a named umwelt are independent keys (Root/D).
  */
 export const pluginThreadRegistryKey = ({
   plugin,
   file,
   hash,
-  space,
+  umwelt,
 }: {
   plugin: string
   file: string
   hash: string
-  space?: string
-}): string => JSON.stringify([plugin, file, hash, space ?? null])
+  umwelt?: string
+}): string => JSON.stringify([plugin, file, hash, umwelt ?? null])
 
 /**
  * The THIRD HASH — the instance identity: djb2 over the canonical join
- * `plugin \0 space \0 name`. The canonical form is spec'd HERE (one home, the
+ * `plugin \0 umwelt \0 name`. The canonical form is spec'd HERE (one home, the
  * hashString TSDoc's caller-owns-canonical-input contract): the plugin's
- * canonical path/URI exactly as proposed, the admission's space stamp
+ * canonical path/URI exactly as proposed, the admission's umwelt stamp
  * (absent = root, the empty string), the thread NAME. Within-plugin name
  * uniqueness (the collision pass) makes the triple unique per admission;
  * content NEVER enters — a rewritten thread body keeps its removal address.
  */
 export const pluginThreadInstanceHash = ({
   plugin,
-  space,
+  umwelt,
   name,
 }: {
   plugin: string
-  space?: string
+  umwelt?: string
   name: string
-}): number => hashString(`${plugin}\u0000${space ?? ''}\u0000${name}`)
+}): number => hashString(`${plugin}\u0000${umwelt ?? ''}\u0000${name}`)
 
 // ── The record — the thread leg derives from the engine schema home ─────────
 
-/** One admission decision for one (plugin, file, hash, space) key — versioned. */
+/** One admission decision for one (plugin, file, hash, umwelt) key — versioned. */
 export type PluginThreadRegistryEntry =
   | {
       status: 'admitted'
@@ -171,23 +174,36 @@ const ENTRY_SCHEMA = {
   ],
 } as const
 
-const DOC_SCHEMA = {
+/**
+ * The LENIENT outer gate — the read partition's first pass. One versioned
+ * object per entry is all it asks: the strict shape gate applies ONLY to
+ * current-version entries, so an older binary's entry (a retired shape — the
+ * v bump is exactly this ruling's exercise) rides verbatim into the
+ * quarantine instead of throwing the whole document.
+ */
+const PARTITION_SCHEMA = {
   type: 'object',
-  properties: { entries: { type: 'object', additionalProperties: ENTRY_SCHEMA } },
+  properties: { entries: { type: 'object', additionalProperties: true } },
   required: ['entries'],
   additionalProperties: false,
-} as unknown as JSONSchemaType<PluginThreadRegistryDoc>
+} as const
 
-/** @internal Compiled once — the store record's read boundary. */
-const validateDoc = ajv.compile(DOC_SCHEMA)
+/** @internal Compiled once — the lenient read partition. */
+const validatePartition = ajv.compile(PARTITION_SCHEMA)
+
+/** @internal Compiled once — the current-version entry shape gate. */
+const validateEntry = ajv.compile(ENTRY_SCHEMA)
 
 /**
  * Read-partition the registry document — the trust boundary for anything
  * crossing back from the store. Returns the whole document (writes merge
  * into it — quarantined entries ride verbatim), the CURRENT-VERSION entries
  * as decisions, and the unknown-version keys as the quarantine set.
- * A malformed document throws with the Ajv errors — a corrupt record is
- * never silently rewritten (the file registry's fail-fast posture, kept).
+ *
+ * The partition is BY VERSION FIRST: unknown-version entries skip the strict
+ * shape gate entirely (quarantined-as-data, never a boot crash), while a
+ * CURRENT-version entry failing its shape is a corrupt live record — that
+ * throws with the Ajv errors (the fail-fast posture, kept).
  */
 export const parseRegistryDoc = (
   value: unknown,
@@ -196,15 +212,27 @@ export const parseRegistryDoc = (
   decisions: Map<string, PluginThreadRegistryEntry>
   quarantined: Set<string>
 } => {
-  if (!validateDoc(value)) {
-    throw new Error(`plugin-thread registry record is invalid: ${ajv.errorsText(validateDoc.errors)}`)
+  if (!validatePartition(value)) {
+    throw new Error(`plugin-thread registry record is invalid: ${ajv.errorsText(validatePartition.errors)}`)
   }
   const doc = value as PluginThreadRegistryDoc
   const decisions = new Map<string, PluginThreadRegistryEntry>()
   const quarantined = new Set<string>()
   for (const [key, entry] of Object.entries(doc.entries)) {
-    if (entry.v === PLUGIN_THREADS_REGISTRY_VERSION) decisions.set(key, entry)
-    else quarantined.add(key)
+    const v = (entry as { v?: unknown } | null)?.v
+    if (v === PLUGIN_THREADS_REGISTRY_VERSION) {
+      if (!validateEntry(entry)) {
+        throw new Error(`plugin-thread registry entry ${key} is invalid: ${ajv.errorsText(validateEntry.errors)}`)
+      }
+      decisions.set(key, entry)
+    } else if (typeof v === 'number') {
+      // Unknown-version: quarantined-as-data, kept verbatim (a future
+      // binary's migration input), never a decision, never a crash.
+      quarantined.add(key)
+    } else {
+      // No version stamp at all is malformed, not old — fail fast.
+      throw new Error(`plugin-thread registry entry ${key} carries no version stamp`)
+    }
   }
   return { doc, decisions, quarantined }
 }
@@ -222,7 +250,7 @@ export type RegistryWatchRuntime = {
  * the entry's OWN trace subscription. The join is the candidate→verdict→
  * outcome chain, all visible as selections:
  *
- * - `plugin_threads_candidate` { id, input: { thread, plugin, file, hash, space? } }
+ * - `plugin_threads_candidate` { id, input: { thread, plugin, file, hash, umwelt? } }
  *   registers the proposal (the thread leg validated against the engine's
  *   ThreadSchema home — a non-conforming thread is a null snapshot, never an
  *   admission);
@@ -252,7 +280,7 @@ export const watchPluginThreadRegistry = ({
     plugin: string
     file: string
     hash: string
-    space?: string
+    umwelt?: string
     verdictReason?: string
   }
   const pending = new Map<string, Pending>()
@@ -342,7 +370,7 @@ export const watchPluginThreadRegistry = ({
     // ── The joins — verbatim from the file watcher's shape ──────────────────
     if (candidate.type === PLUGIN_THREADS_EVENT_TYPES.candidate) {
       const input = detail.input as
-        | { thread?: unknown; plugin?: unknown; file?: unknown; hash?: unknown; space?: unknown }
+        | { thread?: unknown; plugin?: unknown; file?: unknown; hash?: unknown; umwelt?: unknown }
         | undefined
       if (
         typeof detail.id !== 'string' ||
@@ -356,7 +384,7 @@ export const watchPluginThreadRegistry = ({
         plugin: input.plugin,
         file: input.file,
         hash: input.hash,
-        ...(typeof input.space === 'string' ? { space: input.space } : {}),
+        ...(typeof input.umwelt === 'string' ? { umwelt: input.umwelt } : {}),
       })
       return
     }
@@ -396,7 +424,7 @@ export const watchPluginThreadRegistry = ({
           // it removal-addressable.
           (() => {
             const thread = rec.thread!
-            const instanceHash = pluginThreadInstanceHash({ plugin: rec.plugin, space: rec.space, name: thread.name })
+            const instanceHash = pluginThreadInstanceHash({ plugin: rec.plugin, umwelt: rec.umwelt, name: thread.name })
             return {
               status: 'admitted' as const,
               thread: { ...thread, instanceHash },
@@ -424,7 +452,7 @@ export const watchPluginThreadRegistry = ({
             plugin?: unknown
             file?: unknown
             hash?: unknown
-            space?: unknown
+            umwelt?: unknown
             status?: unknown
             thread?: unknown
             reason?: unknown
@@ -438,15 +466,15 @@ export const watchPluginThreadRegistry = ({
         (input.status !== 'admitted' && input.status !== 'rejected')
       )
         return
-      const space = typeof input.space === 'string' ? input.space : undefined
+      const umwelt = typeof input.umwelt === 'string' ? input.umwelt : undefined
       const carriedFrom = typeof input.carriedFrom === 'string' ? input.carriedFrom : undefined
-      const key = pluginThreadRegistryKey({ plugin: input.plugin, file: input.file, hash: input.hash, space })
+      const key = pluginThreadRegistryKey({ plugin: input.plugin, file: input.file, hash: input.hash, umwelt })
       if (input.status === 'admitted' && validateThread(input.thread)) {
         const thread = input.thread as Thread
         const instanceHash =
           typeof thread.instanceHash === 'number'
             ? thread.instanceHash
-            : pluginThreadInstanceHash({ plugin: input.plugin, space, name: thread.name })
+            : pluginThreadInstanceHash({ plugin: input.plugin, umwelt, name: thread.name })
         record(key, {
           status: 'admitted',
           thread: { ...thread, instanceHash },
@@ -467,14 +495,14 @@ export const watchPluginThreadRegistry = ({
       return
     }
     if (candidate.type === RECONCILE_EVENT_TYPES.removed) {
-      const input = detail.input as { plugin?: unknown; file?: unknown; hash?: unknown; space?: unknown } | undefined
+      const input = detail.input as { plugin?: unknown; file?: unknown; hash?: unknown; umwelt?: unknown } | undefined
       if (typeof input?.plugin !== 'string' || typeof input.file !== 'string' || typeof input.hash !== 'string') return
       record(
         pluginThreadRegistryKey({
           plugin: input.plugin,
           file: input.file,
           hash: input.hash,
-          ...(typeof input.space === 'string' ? { space: input.space } : {}),
+          ...(typeof input.umwelt === 'string' ? { umwelt: input.umwelt } : {}),
         }),
         { status: 'removed', v: PLUGIN_THREADS_REGISTRY_VERSION },
       )

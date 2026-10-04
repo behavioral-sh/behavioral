@@ -164,7 +164,7 @@ describe('addThread quiescence', () => {
     const thread = {
       name: 'provisioned',
       description: 'Test thread.',
-      space: 'demo',
+      umwelt: 'demo',
       once: true as const,
       rules: [{ request: { type: 'go' } }],
     }

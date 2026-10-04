@@ -38,7 +38,7 @@ const fakeRuntime = (withIdentity = identity) => {
   return { runtime, triggers, emit }
 }
 
-const selectionOf = (selected: { type: string; detail?: JsonObject; space?: string }): SelectionTrace => ({
+const selectionOf = (selected: { type: string; detail?: JsonObject; umwelt?: string }): SelectionTrace => ({
   kind: TRACE_MESSAGE_KINDS.selection,
   timestamp: 0,
   instanceId: 'i',
@@ -392,7 +392,7 @@ describe('createSocketHost', () => {
     }
   })
 
-  test('the trace fan-out is scoped: a composition client receives its space, a driver receives root — disjoint', async () => {
+  test('the trace fan-out is scoped: a composition client receives its umwelt, a driver receives root — disjoint', async () => {
     const home = tempHome()
     const fake = fakeRuntime()
     const { actuatorLaneBuilders } = await import('../serve.ts')
@@ -413,7 +413,7 @@ describe('createSocketHost', () => {
             JSON.stringify({
               jsonrpc: '2.0',
               method: 'attach_scope',
-              params: { scope: 'composition', space: 'tab_a' },
+              params: { scope: 'composition', umwelt: 'tab_a' },
             }),
           ),
       })
@@ -424,7 +424,7 @@ describe('createSocketHost', () => {
       // WS hop is the bridge spec's).
       host.pushTrace({
         kind: 'idle',
-        space: 'tab_a',
+        umwelt: 'tab_a',
         timestamp: 1,
         instanceId: 'i',
         sessionId: 's',
@@ -432,10 +432,10 @@ describe('createSocketHost', () => {
       } as unknown as Trace)
 
       // The composition-scoped client receives the pushed tab_a trace.
-      await composition.waitFor<{ method: string; params: { kind?: string; space?: string } }>(
+      await composition.waitFor<{ method: string; params: { kind?: string; umwelt?: string } }>(
         (frame) =>
           (frame as { method?: string }).method === 'trace' &&
-          (frame as { params?: { space?: string } }).params?.space === 'tab_a',
+          (frame as { params?: { umwelt?: string } }).params?.umwelt === 'tab_a',
         'the pushed tab_a trace',
       )
 
@@ -446,18 +446,18 @@ describe('createSocketHost', () => {
         'the root trace',
       )
 
-      // Disjoint: the driver never saw the composition's space-stamped trace;
+      // Disjoint: the driver never saw the composition's umwelt-stamped trace;
       // the composition client never saw the daemon's root trace.
       await Bun.sleep(150)
       const traceOf_ = (client: { frames: unknown[] }) =>
         client.frames.filter((frame) => (frame as { method?: string }).method === 'trace') as Array<{
-          params?: { kind?: string; space?: string }
+          params?: { kind?: string; umwelt?: string }
         }>
-      expect(traceOf_(driver).some((frame) => frame.params?.space === 'tab_a')).toBe(false)
+      expect(traceOf_(driver).some((frame) => frame.params?.umwelt === 'tab_a')).toBe(false)
       expect(
-        traceOf_(composition).some((frame) => frame.params?.space === undefined || frame.params?.space === 'root'),
+        traceOf_(composition).some((frame) => frame.params?.umwelt === undefined || frame.params?.umwelt === 'root'),
       ).toBe(false)
-      expect(traceOf_(composition).some((frame) => frame.params?.space === 'tab_a')).toBe(true)
+      expect(traceOf_(composition).some((frame) => frame.params?.umwelt === 'tab_a')).toBe(true)
       expect(traceOf_(driver).length).toBeGreaterThan(0)
       composition.close()
       driver.close()
@@ -474,7 +474,7 @@ describe('createSocketHost', () => {
       // No cookie, no bearer — the client declares composition scope anyway.
       const client = await attachClient(host.path)
       client.sendRaw(
-        JSON.stringify({ jsonrpc: '2.0', method: 'attach_scope', params: { scope: 'composition', space: 'tab_x' } }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'attach_scope', params: { scope: 'composition', umwelt: 'tab_x' } }),
       )
       // The refusal is EXPLICIT — the client observes it on the wire.
       const rejection = await client.waitFor<{ method: string; params: { reason?: string } }>(
@@ -483,10 +483,10 @@ describe('createSocketHost', () => {
       )
       expect(rejection.params?.reason).toBe('session_required')
       // The refusal is real: the client keeps the driver scope — no
-      // space-stamped traffic ever arrives.
+      // umwelt-stamped traffic ever arrives.
       host.pushTrace({
         kind: 'idle',
-        space: 'tab_x',
+        umwelt: 'tab_x',
         timestamp: 1,
         instanceId: 'i',
         sessionId: 's',
@@ -497,7 +497,7 @@ describe('createSocketHost', () => {
         client.frames.some(
           (frame) =>
             (frame as { method?: string }).method === 'trace' &&
-            (frame as { params?: { space?: string } }).params?.space === 'tab_x',
+            (frame as { params?: { umwelt?: string } }).params?.umwelt === 'tab_x',
         ),
       ).toBe(false)
       client.close()
@@ -518,7 +518,7 @@ describe('createSocketHost', () => {
       expect(client.frames.some((frame) => (frame as { method?: string }).method === 'attach_scope_rejected')).toBe(
         false,
       )
-      // Driver traffic: the daemon's root-space traces.
+      // Driver traffic: the daemon's root-umwelt traces.
       fake.emit(traceOf(TRACE_MESSAGE_KINDS.idle))
       await client.waitFor<{ method: string }>(
         (frame) => (frame as { method?: string }).method === 'trace',
@@ -543,7 +543,7 @@ describe('createSocketHost', () => {
             JSON.stringify({
               jsonrpc: '2.0',
               method: 'attach_scope',
-              params: { scope: 'composition', space: 'tab_g' },
+              params: { scope: 'composition', umwelt: 'tab_g' },
             }),
           ),
       })
@@ -553,16 +553,16 @@ describe('createSocketHost', () => {
       )
       host.pushTrace({
         kind: 'idle',
-        space: 'tab_g',
+        umwelt: 'tab_g',
         timestamp: 1,
         instanceId: 'i',
         sessionId: 's',
         step: 1,
       } as unknown as Trace)
-      await client.waitFor<{ method: string; params: { space?: string } }>(
+      await client.waitFor<{ method: string; params: { umwelt?: string } }>(
         (frame) =>
           (frame as { method?: string }).method === 'trace' &&
-          (frame as { params?: { space?: string } }).params?.space === 'tab_g',
+          (frame as { params?: { umwelt?: string } }).params?.umwelt === 'tab_g',
         'the composition trace',
       )
       client.close()
@@ -658,7 +658,7 @@ describe('createSocketHost', () => {
       // capability; the trigger NEVER dispatches.
       const stranger = await attachClient(host.path)
       stranger.sendRaw(
-        JSON.stringify({ jsonrpc: '2.0', method: 'attach_scope', params: { scope: 'composition', space: 'tab_x' } }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'attach_scope', params: { scope: 'composition', umwelt: 'tab_x' } }),
       )
       await stranger.waitFor<{ method: string }>(
         (frame) => (frame as { method?: string }).method === 'attach_scope_rejected',

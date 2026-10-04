@@ -1,6 +1,6 @@
 /**
  * The plugin-thread admission registry — the STORE-RESIDENT record (the file
- * registry died): one root-space store record (`plugin-threads/registry`)
+ * registry died): one root-umwelt store record (`plugin-threads/registry`)
  * holding the whole decision map, versioned per entry, written through the
  * composition's routing by the entry-side durable-write watcher (the same
  * joins, the same outcome legs the file watcher had — store puts instead of
@@ -184,7 +184,7 @@ describe('the store-resident plugin-thread registry', () => {
       if (entry?.status !== 'admitted') return
       expect(entry.v).toBe(PLUGIN_THREADS_REGISTRY_VERSION)
       expect(entry.thread.sourceHash).toBe(hashString('/plugins/alpha'))
-      // THE THIRD HASH: instance identity = djb2(canonical plugin path + space + NAME) —
+      // THE THIRD HASH: instance identity = djb2(canonical plugin path + umwelt + NAME) —
       // stamped post-sourceHash-stamp, never by the author; content never enters identity.
       expect(entry.instanceHash).toBe(pluginThreadInstanceHash({ plugin: '/plugins/alpha', name: 'greeter' }))
       expect(entry.thread.instanceHash).toBe(entry.instanceHash)
@@ -273,6 +273,38 @@ describe('the store-resident plugin-thread registry', () => {
       rmSync(d.home, { recursive: true, force: true })
       throw err
     }
+  })
+
+  test('a pre-rename entry (v1, retired-key thread snapshot) quarantines as data — never throws the whole doc', () => {
+    // The retired-key literal below is LOAD-BEARING: it is the dev-era thread
+    // snapshot shape (schema-1 registry, pre-umwelt vocabulary) that the v
+    // bump must quarantine-as-data. A standing exception to the `\bspace\b`
+    // proof, same class as the store migration fixture.
+    const oldThread: Record<string, unknown> = {
+      name: 'greeter',
+      description: 'old snapshot',
+      rules: [],
+      space: 's1',
+      instanceHash: 5,
+    }
+    const doc = {
+      entries: {
+        [pluginThreadRegistryKey({ plugin: '/plugins/old', file: 'old.ts', hash: 'h0' })]: {
+          status: 'admitted',
+          thread: oldThread,
+          instanceHash: 5,
+          v: 1,
+        },
+      },
+    }
+    // The old-shape entry rides verbatim (a future migration's input), never
+    // a decision, never a boot crash — the parse partitions by version
+    // BEFORE the shape gate.
+    const parsed = parseRegistryDoc(doc)
+    const key = pluginThreadRegistryKey({ plugin: '/plugins/old', file: 'old.ts', hash: 'h0' })
+    expect(parsed.decisions.has(key)).toBe(false)
+    expect(parsed.quarantined.has(key)).toBe(true)
+    expect((parsed.doc.entries[key] as { thread?: Record<string, unknown> }).thread).toEqual(oldThread)
   })
 
   test('carried provenance round-trips — a carry record is schema-valid data', () => {

@@ -104,7 +104,7 @@ export type KeychainOAuthProviderOptions = {
   clientId: string
   /** Resolved client_secret, if any (public clients omit it). */
   clientSecret?: string
-  /** Space-separated scopes to request. */
+  /** Umwelt-separated scopes to request. */
   scope?: string
   /** RFC 8707 resource indicator to request. */
   resource?: string

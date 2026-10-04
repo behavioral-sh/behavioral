@@ -19,7 +19,7 @@ import type { JsonObject } from '../../behavioral/behavioral.types.ts'
 export type FacultyResult = {
   id: string
   detail: Record<string, unknown>
-  space?: string
+  umwelt?: string
 }
 
 export const spawnFaculty = ({
@@ -55,12 +55,12 @@ export const spawnFaculty = ({
         const trimmed = line.trim()
         if (trimmed === '') continue
         try {
-          const message = JSON.parse(trimmed) as { type: string; detail: { id: string } & JsonObject; space?: string }
+          const message = JSON.parse(trimmed) as { type: string; detail: { id: string } & JsonObject; umwelt?: string }
           if (message.type === resultType) {
             results.push({
               id: message.detail.id,
               detail: message.detail as Record<string, unknown>,
-              space: message.space,
+              umwelt: message.umwelt,
             })
           }
         } catch {
@@ -71,12 +71,12 @@ export const spawnFaculty = ({
   })()
   void pump
 
-  const write = (event: { type: string; detail: JsonObject; space?: string }): void => {
+  const write = (event: { type: string; detail: JsonObject; umwelt?: string }): void => {
     proc.stdin.write(`${JSON.stringify(event)}\n`)
   }
   return {
-    call: (detail: JsonObject, space?: string): void => {
-      write({ type: requestType, detail, ...(space === undefined ? {} : { space }) })
+    call: (detail: JsonObject, umwelt?: string): void => {
+      write({ type: requestType, detail, ...(umwelt === undefined ? {} : { umwelt }) })
     },
     post: write,
     resultFor: async (id: string): Promise<FacultyResult> => {

@@ -66,11 +66,11 @@ const resultEventSchema = (typeConst: string) =>
     properties: {
       type: { type: 'string', const: typeConst },
       detail: { type: 'object', oneOf: [workerResultOkBranch, workerResultErrorBranch] },
-      space: { type: 'string', nullable: true },
+      umwelt: { type: 'string', nullable: true },
     },
     required: ['type', 'detail'],
     additionalProperties: false,
-  }) as unknown as JSONSchemaType<{ type: string; detail: WorkerResultDetail; space?: string }>
+  }) as unknown as JSONSchemaType<{ type: string; detail: WorkerResultDetail; umwelt?: string }>
 
 // ── Shell ────────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ export const ShellRequestEventSchema: JSONSchemaType<ShellRequestEvent> = {
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -108,7 +108,7 @@ export const ShellCancelEventSchema: JSONSchemaType<ShellCancelEvent> = {
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -133,7 +133,7 @@ export const StoreRequestEventSchema: JSONSchemaType<StoreRequestEvent> = {
       required: ['id', 'op', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -159,7 +159,7 @@ export const SecurityRequestEventSchema: JSONSchemaType<SecurityRequestEvent> = 
       required: ['id', 'input'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -179,7 +179,7 @@ export const SecurityCancelEventSchema: JSONSchemaType<SecurityCancelEvent> = {
       required: ['id'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,
@@ -197,7 +197,7 @@ export const FacultyErrorEventSchema: JSONSchemaType<FacultyErrorEvent> = {
       required: ['faculty', 'message'],
       additionalProperties: false,
     },
-    space: { type: 'string', nullable: true },
+    umwelt: { type: 'string', nullable: true },
   },
   required: ['type', 'detail'],
   additionalProperties: false,

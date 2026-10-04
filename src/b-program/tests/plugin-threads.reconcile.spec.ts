@@ -251,7 +251,7 @@ describe('the boot reconciliation — unchanged mount', () => {
     })
     try {
       await waitForTraces(w.traces, () => threadAdded(w.traces, 'greeter').length > 0)
-      // The mount is stamped exactly as admitted: the snapshot's own space
+      // The mount is stamped exactly as admitted: the snapshot's own umwelt
       // (root here) and the instance identity ride the thread.
       const added = threadAdded(w.traces, 'greeter').at(-1) as { thread?: Thread }
       expect(added.thread?.instanceHash).toBe(pluginThreadInstanceHash({ plugin: w.plugin, name: 'greeter' }))
@@ -506,15 +506,15 @@ describe('the boot reconciliation — the two-tier diff', () => {
     }
   }, 30_000)
 
-  test('a space-stamped record mounts stamped exactly as admitted; unknown versions never reconcile', async () => {
+  test('a umwelt-stamped record mounts stamped exactly as admitted; unknown versions never reconcile', async () => {
     const w = await reconcileWorld({
       threadBody: body('hello'),
       seedEntries: async ({ plugin, threadPath }) => {
         const hash = await fileHash(threadPath)
         return {
-          [pluginThreadRegistryKey({ plugin, file: 't.ts', hash, space: 's1' })]: {
+          [pluginThreadRegistryKey({ plugin, file: 't.ts', hash, umwelt: 's1' })]: {
             status: 'admitted',
-            thread: { ...greeterSnapshot(plugin, 'hello', 123), space: 's1' },
+            thread: { ...greeterSnapshot(plugin, 'hello', 123), umwelt: 's1' },
             instanceHash: 123,
             v: PLUGIN_THREADS_REGISTRY_VERSION,
           },
@@ -532,7 +532,7 @@ describe('the boot reconciliation — the two-tier diff', () => {
       // The mount scope is the ADMISSION's: stamped s1, never the author's —
       // and the stamped thread is removal-addressable.
       const added = threadAdded(w.traces, 'greeter').at(-1) as { thread?: Thread }
-      expect(added.thread?.space).toBe('s1')
+      expect(added.thread?.umwelt).toBe('s1')
       expect(added.thread?.instanceHash).toBe(123)
       // The unknown-version entry never reconciled: no stat ran for it, and
       // its thread never mounted.

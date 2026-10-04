@@ -22,7 +22,7 @@ type WireResult = {
   ok: boolean
   result?: unknown
   error?: Record<string, unknown>
-  space?: string
+  umwelt?: string
 }
 
 /** The frontier WORKER harness — a REAL Bun web Worker on the TS entry, the way the composition wires it. */
@@ -32,12 +32,12 @@ const spawnFrontierWorker = () => {
     requestType: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
     resultType: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
   })
-  const call = (id: string, op: string, input: unknown, space?: string): void => {
-    faculty.call({ id, op, input } as JsonObject, space)
+  const call = (id: string, op: string, input: unknown, umwelt?: string): void => {
+    faculty.call({ id, op, input } as JsonObject, umwelt)
   }
   const resultFor = async (id: string): Promise<WireResult> => {
     const raw = await faculty.resultFor(id)
-    return { ...(raw.detail as Omit<WireResult, 'id' | 'space'>), id: raw.id, space: raw.space }
+    return { ...(raw.detail as Omit<WireResult, 'id' | 'umwelt'>), id: raw.id, umwelt: raw.umwelt }
   }
   return { call, resultFor, terminate: (): void => faculty.terminate() }
 }
@@ -92,12 +92,12 @@ describe('frontier worker — event wire', () => {
     }
   })
 
-  test('a request space is echoed on the result event', async () => {
+  test('a request umwelt is echoed on the result event', async () => {
     const frontier = spawnFrontierWorker()
     try {
       frontier.call('r0', 'replay', { threads }, 's1')
-      const { space } = await frontier.resultFor('r0')
-      expect(space).toBe('s1')
+      const { umwelt } = await frontier.resultFor('r0')
+      expect(umwelt).toBe('s1')
     } finally {
       frontier.terminate()
     }

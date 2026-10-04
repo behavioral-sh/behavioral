@@ -1,13 +1,13 @@
 import { keyMirror } from '../utils.ts'
 
 /**
- * The default space — the root. Part of the wire vocabulary (space stamping
+ * The default umwelt — the root. Part of the wire vocabulary (umwelt stamping
  * rides every event + trace); the daemon's store actuator carries its own
  * byte-identical copy (`src/actuators/store.types.ts`, the two-homes
  * ruling: the daemon layer owns wire copies, this tree owns the browser-side
  * wire home).
  */
-export const ROOT_SPACE = 'root'
+export const ROOT_UMWELT = 'root'
 
 /**
  * Discriminant values for the faculty event wire — every `*_request` /

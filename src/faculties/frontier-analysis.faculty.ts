@@ -8,7 +8,7 @@
  * top-level `createWorker` bootstrap. It speaks the behavioral event wire —
  * `frontier_analysis_request` events in (dispatched by `detail.op`: replay / explore /
  * verify / add_thread), one `frontier_analysis_request_result` out with the request
- * `space` echoed. It needs no cancel event and no timeout: analyses are
+ * `umwelt` echoed. It needs no cancel event and no timeout: analyses are
  * synchronous, nothing is in flight to abort.
  *
  * Self-analysis is safe by construction: the trace a caller passes is a frozen
@@ -83,14 +83,14 @@ const createFrontierTrace = ({
     type: candidate.type,
     ...(candidate.detail === undefined ? {} : { detail: candidate.detail }),
     ...(candidate.ingress === undefined ? {} : { ingress: candidate.ingress }),
-    ...(candidate.space === undefined ? {} : { space: candidate.space }),
+    ...(candidate.umwelt === undefined ? {} : { umwelt: candidate.umwelt }),
   })),
   enabled: frontier.enabled.map((candidate) => ({
     priority: candidate.priority,
     type: candidate.type,
     ...(candidate.detail === undefined ? {} : { detail: candidate.detail }),
     ...(candidate.ingress === undefined ? {} : { ingress: candidate.ingress }),
-    ...(candidate.space === undefined ? {} : { space: candidate.space }),
+    ...(candidate.umwelt === undefined ? {} : { umwelt: candidate.umwelt }),
   })),
 })
 
@@ -130,7 +130,9 @@ const createDeadlockTrace = ({
 })
 
 const matchesSelectedEvent = ({ candidate, selected }: { candidate: CandidateBid; selected: CandidateBid }) =>
-  candidate.type === selected.type && candidate.space === selected.space && deepEqual(candidate.detail, selected.detail)
+  candidate.type === selected.type &&
+  candidate.umwelt === selected.umwelt &&
+  deepEqual(candidate.detail, selected.detail)
 
 /**
  * Mints an ephemeral identity key for a replay-constructed bid — the engine's
@@ -160,7 +162,7 @@ const addSyntheticRequestThread = ({
       request: {
         type: selected.type,
         ...(selected.detail === undefined ? {} : { detail: selected.detail }),
-        ...(selected.space === undefined ? {} : { space: selected.space }),
+        ...(selected.umwelt === undefined ? {} : { umwelt: selected.umwelt }),
       },
     }
   }
@@ -203,17 +205,17 @@ const getSelectedEvents = ({ messages }: { messages: Trace[] }) =>
  * needed by the frontier engine.
  *
  * @param threads - Thread tuples ({ name, description, rules, once? }).
- * @param space - Optional space stamp to pass into {@link generateRulesFunctions}.
+ * @param umwelt - Optional umwelt stamp to pass into {@link generateRulesFunctions}.
  * @returns Compiled entries each with the authored `name` and a started generator.
  */
 const compileThreads = (
   threads: Thread[],
-  space?: string,
+  umwelt?: string,
 ): Array<{ name: string; description?: string; generator: IterableIterator<RegisteredIdioms> }> =>
   threads.map(({ name, description, rules, once }) => ({
     name,
     ...(description === undefined ? {} : { description }),
-    generator: useThread(generateRulesFunctions(rules, space), once)(),
+    generator: useThread(generateRulesFunctions(rules, umwelt), once)(),
   }))
 
 /**
@@ -242,7 +244,7 @@ type DeadlockFinding = {
  * @param args.threads - Thread tuples to replay.
  * @param args.messages - Selection trace to replay. Each selection is
  *   checked for enablement at the corresponding step.
- * @param args.space - Optional space stamp applied to all thread rules.
+ * @param args.umwelt - Optional umwelt stamp applied to all thread rules.
  * @param args.instanceId - Instance id stamped on synthetic interrupt/transform
  *   traces emitted during resumption. Defaults to a minted `bp_` UUIDv7.
  * @param args.sessionId - Host session id stamped on the same traces alongside
@@ -256,13 +258,13 @@ type DeadlockFinding = {
 const replayToFrontierRaw = ({
   threads,
   messages = [],
-  space,
+  umwelt,
   instanceId = uuid('bp_'),
   sessionId,
 }: {
   threads: Thread[]
   messages?: Trace[]
-  space?: string
+  umwelt?: string
   instanceId?: string
   sessionId?: string
 }): ReplayToFrontierResult => {
@@ -270,7 +272,7 @@ const replayToFrontierRaw = ({
   const pending = new Map<string, PendingBid>()
   const running = new Map<string, RunningBid>()
 
-  const entries = compileThreads(threads, space)
+  const entries = compileThreads(threads, umwelt)
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!
     const key = bidKey()
@@ -359,7 +361,7 @@ const triggerChannelMatch = ({ pendingBid, trigger }: { pendingBid: PendingBid; 
     priority: 0,
     type: trigger.type,
     ...(trigger.detail === undefined ? {} : { detail: trigger.detail }),
-    ...(trigger.space === undefined ? {} : { space: trigger.space }),
+    ...(trigger.umwelt === undefined ? {} : { umwelt: trigger.umwelt }),
   }
   const externalCandidate: CandidateBid = { ...base, ingress: true }
   const requestCandidate: CandidateBid = base
@@ -368,7 +370,7 @@ const triggerChannelMatch = ({ pendingBid, trigger }: { pendingBid: PendingBid; 
   const requestMatches =
     pendingBid.request !== undefined &&
     pendingBid.request.type === trigger.type &&
-    pendingBid.request.space === trigger.space &&
+    pendingBid.request.umwelt === trigger.umwelt &&
     deepEqual(pendingBid.request.detail, trigger.detail)
 
   return {
@@ -409,7 +411,7 @@ const getTriggerSuccessors = ({
   threads,
   step,
   triggers,
-  space,
+  umwelt,
   instanceId,
   sessionId,
 }: {
@@ -418,7 +420,7 @@ const getTriggerSuccessors = ({
   threads: Thread[]
   step: number
   triggers: BPEvent[]
-  space?: string
+  umwelt?: string
   instanceId: string
   sessionId: string
 }) => {
@@ -451,7 +453,7 @@ const getTriggerSuccessors = ({
           priority: 0,
           type: trigger.type,
           ...(trigger.detail === undefined ? {} : { detail: trigger.detail }),
-          ...(trigger.space === undefined ? {} : { space: trigger.space }),
+          ...(trigger.umwelt === undefined ? {} : { umwelt: trigger.umwelt }),
           ...(ingress === true ? { ingress: true as const } : {}),
         },
       })
@@ -460,7 +462,7 @@ const getTriggerSuccessors = ({
         replayToFrontierRaw({
           threads,
           messages: [...messages, selection],
-          space,
+          umwelt,
           instanceId,
           sessionId,
         })
@@ -506,7 +508,7 @@ const normalizeListeners = (listener: RegisteredBPListener[] | RegisteredTransfo
  * - Drops instance-identity and non-serializable artifacts: the `generator`
  *   closure and each listener's `detailSchema` (JSON Schema, taken as-is
  *   in its place).
- * - `request` is projected to `{ type, detail, space }`. Bid order and listener
+ * - `request` is projected to `{ type, detail, umwelt }`. Bid order and listener
  *   order are canonicalized by sorting on serialized content, yielding a total
  *   order independent of input order.
  *
@@ -528,11 +530,11 @@ const frontierStateKey = ({ pending }: { pending: Map<string, PendingBid> }): st
       .map(({ waitFor, block, interrupt, request, transform, generator: _gen, key: _key, thread: _thread, ...rest }) =>
         JSON.stringify({
           ...rest,
-          // request is field-picked to { type, detail, space } so non-trace
+          // request is field-picked to { type, detail, umwelt } so non-trace
           // fields never enter the state key (frontier invariant).
           ...(request && {
             request: {
-              space: request.space,
+              umwelt: request.umwelt,
               type: request.type,
               ...(request.detail === undefined ? {} : { detail: request.detail }),
             },
@@ -755,8 +757,8 @@ type ExploreFrontiersArgs = {
   selectionPolicy?: 'all-enabled' | 'scheduler'
   /** Maximum selection depth before truncating exploration. */
   maxDepth?: number
-  /** Space stamp applied to all thread rules. */
-  space?: string
+  /** Umwelt stamp applied to all thread rules. */
+  umwelt?: string
   /** Instance id stamped on synthetic traces. Defaults to a minted `bp_` UUIDv7 — pass the analyzed kernel's id to make joins natural. */
   instanceId?: string
   /** Host session id stamped on synthetic traces alongside `instanceId`. Defaults to the `instanceId` — the faculty never mints one. */
@@ -804,7 +806,7 @@ const exploreFrontiersRaw = ({
   strategy = 'bfs',
   selectionPolicy = 'all-enabled',
   maxDepth,
-  space,
+  umwelt,
   instanceId = uuid('bp_'),
   sessionId,
 }: ExploreFrontiersArgs): ExploreFrontiersResult => {
@@ -826,7 +828,7 @@ const exploreFrontiersRaw = ({
     const { frontier, pending: currentPending } = replayToFrontierRaw({
       threads,
       messages: current.messages,
-      space,
+      umwelt,
       instanceId,
       sessionId: resolvedSessionId,
     })
@@ -870,7 +872,7 @@ const exploreFrontiersRaw = ({
       threads,
       step,
       triggers,
-      space,
+      umwelt,
       instanceId,
       sessionId: resolvedSessionId,
     })
@@ -1006,7 +1008,7 @@ const messagesJsonSchema = {
 export type FrontierReplayInput = {
   threads: Thread[]
   messages?: SelectionTrace[]
-  space?: string
+  umwelt?: string
   instanceId?: string
   sessionId?: string
 }
@@ -1024,7 +1026,7 @@ export const FrontierReplayInputSchema = {
   properties: {
     threads: threadsJsonSchema,
     messages: { ...messagesJsonSchema, nullable: true },
-    space: { type: 'string', nullable: true, description: 'space stamp applied to all thread rules' },
+    umwelt: { type: 'string', nullable: true, description: 'umwelt stamp applied to all thread rules' },
     instanceId: {
       type: 'string',
       nullable: true,
@@ -1087,7 +1089,7 @@ export type FrontierExploreInput = {
   strategy?: 'bfs' | 'dfs'
   selectionPolicy?: 'all-enabled' | 'scheduler'
   maxDepth: number
-  space?: string
+  umwelt?: string
   instanceId?: string
   sessionId?: string
 }
@@ -1133,7 +1135,7 @@ export const FrontierExploreInputSchema = {
       description:
         'Required. Maximum selection depth. Finite-state programs close their state graph and terminate before this; unbounded-state programs (e.g. a counter whose detail grows each loop) never close — maxDepth bounds them and sets report.truncated when it cuts off. Never treat truncated as a pass.',
     },
-    space: { type: 'string', nullable: true, description: 'space stamp applied to all thread rules' },
+    umwelt: { type: 'string', nullable: true, description: 'umwelt stamp applied to all thread rules' },
     instanceId: {
       type: 'string',
       nullable: true,
@@ -1170,7 +1172,7 @@ export type FrontierVerifyInput = {
   selectionPolicy?: 'all-enabled' | 'scheduler'
   maxDepth: number
   progress?: string[]
-  space?: string
+  umwelt?: string
   instanceId?: string
   sessionId?: string
 }
@@ -1223,7 +1225,7 @@ export const FrontierVerifyInputSchema = {
       description:
         'Event types that count as progress. When provided, a reachable cycle that never selects a progress event is a livelock (status "failed"). Omit to skip livelock detection (deadlock-only). An empty array flags every cycle as a livelock.',
     },
-    space: { type: 'string', nullable: true, description: 'space stamp applied to all thread rules' },
+    umwelt: { type: 'string', nullable: true, description: 'umwelt stamp applied to all thread rules' },
     instanceId: {
       type: 'string',
       nullable: true,
@@ -1261,7 +1263,7 @@ export type FrontierAddThreadInput = {
   messages?: SelectionTrace[]
   maxDepth: number
   progress?: string[]
-  space?: string
+  umwelt?: string
   instanceId?: string
   sessionId?: string
 }
@@ -1301,7 +1303,7 @@ export const FrontierAddThreadInputSchema = {
       nullable: true,
       description: 'Event types that count as progress; cycles never selecting one are livelocks (status "failed").',
     },
-    space: { type: 'string', nullable: true, description: 'space stamp applied to all thread rules' },
+    umwelt: { type: 'string', nullable: true, description: 'umwelt stamp applied to all thread rules' },
     instanceId: {
       type: 'string',
       nullable: true,
@@ -1349,9 +1351,9 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
   replay: {
     validate: validateReplayInput,
     errors: () => ajv.errorsText(validateReplayInput.errors),
-    run: ({ threads, messages, space, instanceId, sessionId }: FrontierReplayInput): FrontierReplayOutput => {
+    run: ({ threads, messages, umwelt, instanceId, sessionId }: FrontierReplayInput): FrontierReplayOutput => {
       try {
-        const { pending, frontier } = replayToFrontierRaw({ threads, messages, space, instanceId, sessionId })
+        const { pending, frontier } = replayToFrontierRaw({ threads, messages, umwelt, instanceId, sessionId })
         return { frontier, stateKey: frontierStateKey({ pending }), pendingCount: pending.size }
       } catch (err) {
         return {
@@ -1374,7 +1376,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
       strategy,
       selectionPolicy,
       maxDepth,
-      space,
+      umwelt,
       instanceId,
       sessionId,
     }: FrontierExploreInput): FrontierExploreOutput => {
@@ -1386,7 +1388,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
           strategy,
           selectionPolicy,
           maxDepth,
-          space,
+          umwelt,
           instanceId,
           sessionId,
         })
@@ -1421,7 +1423,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
       selectionPolicy,
       maxDepth,
       progress,
-      space,
+      umwelt,
       instanceId,
       sessionId,
     }: FrontierVerifyInput): FrontierVerifyOutput => {
@@ -1434,7 +1436,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
           selectionPolicy,
           maxDepth,
           progress,
-          space,
+          umwelt,
           instanceId,
           sessionId,
         })
@@ -1467,7 +1469,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
       messages,
       maxDepth,
       progress,
-      space,
+      umwelt,
       instanceId,
       sessionId,
     }: FrontierAddThreadInput): FrontierAddThreadOutput => {
@@ -1477,7 +1479,7 @@ const OP_RUNNERS: Record<string, ToolRunner> = {
           messages,
           maxDepth,
           progress,
-          space,
+          umwelt,
           instanceId,
           sessionId,
         })

@@ -5,7 +5,7 @@
  * @remarks
  * Spawned by URL (never imported) and speaks the behavioral event wire:
  * `shell_request` / `shell_cancel` in, `shell_request_result` out, with any
- * request `space` echoed on the result. `detail.input` is validated against
+ * request `umwelt` echoed on the result. `detail.input` is validated against
  * the op-discriminated boundary (`shell/types.ts`) — `'run'` = a TypeScript
  * script executed bun-direct (`bun run -`, script on stdin), `'shell'` = a
  * Bun Shell command string through the constant wrapper below.
@@ -611,19 +611,19 @@ const runOp = async ({
  * Post the single terminal result event for an execution (the uniform
  * modified-B envelope: `ok` beside the correlation id; the success payload
  * rides `result`, the failure payload rides `error` with the terminal status
- * as `code`), echoing any request space.
+ * as `code`), echoing any request umwelt.
  */
 const postResult = ({
   id,
   payload,
   error,
-  space,
+  umwelt,
   ctx,
 }: {
   id: string
   payload?: ShellSuccess | RpcOpSuccess
   error?: ShellError | RpcOpError
-  space?: string
+  umwelt?: string
   ctx?: JsonObject
 }): void => {
   emit({
@@ -638,7 +638,7 @@ const postResult = ({
           error: error as unknown as JsonObject,
           ...(ctx === undefined ? {} : { ctx }),
         }) as unknown as JsonObject & { id: string },
-    ...(space === undefined ? {} : { space }),
+    ...(umwelt === undefined ? {} : { umwelt }),
   })
 }
 
@@ -679,7 +679,7 @@ const handleInbound = async (message: unknown): Promise<void> => {
   if (!validate(input)) {
     postResult({
       id,
-      space: event.space,
+      umwelt: event.umwelt,
       error: errorInterior({ message: `invalid input: ${ajv.errorsText(validate.errors)}` }),
       ctx,
     })
@@ -695,14 +695,14 @@ const handleInbound = async (message: unknown): Promise<void> => {
     // The clamp report rides whichever branch ran.
     const withClamp = clamped.length === 0 ? interior : { ...interior, clamped }
     if ('code' in interior) {
-      postResult({ id, space: event.space, error: withClamp as ShellError, ctx })
+      postResult({ id, umwelt: event.umwelt, error: withClamp as ShellError, ctx })
     } else {
-      postResult({ id, space: event.space, payload: withClamp as ShellSuccess, ctx })
+      postResult({ id, umwelt: event.umwelt, payload: withClamp as ShellSuccess, ctx })
     }
   } catch (err) {
     postResult({
       id,
-      space: event.space,
+      umwelt: event.umwelt,
       error: errorInterior({ message: err instanceof Error ? err.message : String(err) }),
       ctx,
     })

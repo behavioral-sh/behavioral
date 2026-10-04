@@ -30,19 +30,19 @@ export type ShellRequestEvent = {
   /** `label` is an optional trace annotation (logical names like 'skill-scan') — no routing weight. */
   /** `ctx` is the optional out-of-band join lane (the you.com MCP `_meta` pattern): orchestration state riding beside `input`, echoed verbatim on the result — never a model-facing field. */
   detail: { id: string; label?: string; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type ShellRequestResultEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.shell_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 export type ShellCancelEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.shell_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 /**
@@ -78,10 +78,10 @@ export type WorkerResultDetail = WorkerResultOk | WorkerResultError
 export type FacultyErrorEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.faculty_error
   detail: { faculty: string; message: string }
-  space?: string
+  umwelt?: string
 }
 
-/** Store operations — durable, space-scoped persistence for data that must survive invocations. */
+/** Store operations — durable, umwelt-scoped persistence for data that must survive invocations. */
 export type StoreOp = 'put' | 'get' | 'delete' | 'query'
 
 export type StoreRequestEvent = {
@@ -89,14 +89,14 @@ export type StoreRequestEvent = {
   /** `op` selects the store operation; the backing schema lives inside the worker — schema churn never becomes protocol churn. */
   /** `ctx` is the optional out-of-band join lane (the you.com MCP `_meta` pattern): orchestration state riding beside `input`, echoed verbatim on the result — never a model-facing field. */
   detail: { id: string; op: StoreOp; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 // No store cancel: ops are short-lived (frontier rule).
 export type StoreRequestResultEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.store_request_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 /** Security operations — credential vending for remote servers (broker first, keychain floor second). */
@@ -104,13 +104,13 @@ export type SecurityRequestEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.credential_request
   /** `ctx` is the optional host-supplied binding (e.g. the resolved AS issuer) — out-of-band, never a model-facing input field. */
   detail: { id: string; ctx?: JsonObject; input: JsonObject }
-  space?: string
+  umwelt?: string
 }
 
 export type SecurityRequestResultEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.credential_result
   detail: WorkerResultDetail
-  space?: string
+  umwelt?: string
 }
 
 // A vend is a quick broker/keychain read, but a down broker can hang — the
@@ -118,7 +118,7 @@ export type SecurityRequestResultEvent = {
 export type SecurityCancelEvent = {
   type: typeof ACTUATOR_MESSAGE_KINDS.credential_cancel
   detail: { id: string }
-  space?: string
+  umwelt?: string
 }
 
 /** The spawn wiring's thread-mount signature — the actuator lane's re-entry law. */

@@ -21,19 +21,19 @@ import { ajv } from './behavioral.types.ts'
  * @internal
  * Creates a checker function to determine if a given BPListener matches a CandidateBid.
  *
- * Space matching is ROOT AUTHORITY: an unstamped (root) listener matches
- * candidates in EVERY space — visibility flows UP only — while a
- * space-stamped listener stays confined to its own space, never matching
- * root events or siblings. A thread governing several spaces is admitted
- * (or wired) per space explicitly, each mount stamped.
+ * Umwelt matching is ROOT AUTHORITY: an unstamped (root) listener matches
+ * candidates in EVERY umwelt — visibility flows UP only — while a
+ * umwelt-stamped listener stays confined to its own umwelt, never matching
+ * root events or siblings. A thread governing several umwelts is admitted
+ * (or wired) per umwelt explicitly, each mount stamped.
  */
-export const isListeningFor = ({ type, detail, space, ingress }: CandidateBid) => {
+export const isListeningFor = ({ type, detail, umwelt, ingress }: CandidateBid) => {
   return (listener: RegisteredBPListener | RegisteredTransformListener): boolean => {
-    const spaceMatches = listener.space === undefined ? true : space === listener.space
+    const umweltMatches = listener.umwelt === undefined ? true : umwelt === listener.umwelt
     const schemaMatches = listener.detailSchema ? detailValidators.get(listener)!(detail) : true
     const detailMatches = listener.detailMatch === false ? !schemaMatches : schemaMatches
     const ingressMatches = listener.ingressMatch === undefined || listener.ingressMatch === (ingress === true)
-    return listener.type === type && spaceMatches && detailMatches && ingressMatches
+    return listener.type === type && umweltMatches && detailMatches && ingressMatches
   }
 }
 
@@ -66,13 +66,13 @@ export const computeFrontier = (pending: Map<string, PendingBid>): Frontier => {
   const blocked: RegisteredBPListener[] = []
   const candidates: CandidateBid[] = []
 
-  for (const { request, priority, block, ingress, space } of pending.values()) {
+  for (const { request, priority, block, ingress, umwelt } of pending.values()) {
     block && blocked.push(...block)
     request &&
       candidates.push({
         priority,
         ingress,
-        space,
+        umwelt,
         ...request,
       })
   }
@@ -97,7 +97,7 @@ export const computeFrontier = (pending: Map<string, PendingBid>): Frontier => {
 
 export const advanceRunningToPending = (running: Map<string, RunningBid>, pending: Map<string, PendingBid>) => {
   for (const [key, bid] of running) {
-    const { generator, priority, name, ingress, space, thread } = bid
+    const { generator, priority, name, ingress, umwelt, thread } = bid
     const { value, done } = generator.next()
     if (!done)
       pending.set(key, {
@@ -105,7 +105,7 @@ export const advanceRunningToPending = (running: Map<string, RunningBid>, pendin
         ingress,
         name,
         generator,
-        space,
+        umwelt,
         key,
         ...(thread === undefined ? {} : { thread }),
         ...value,
@@ -116,7 +116,7 @@ export const advanceRunningToPending = (running: Map<string, RunningBid>, pendin
 
 const eventMatchesCandidate = (request: BPEvent, selectedEvent: CandidateBid) => {
   if (selectedEvent.type !== request.type) return false
-  if (selectedEvent.space && selectedEvent.space !== request.space) return false
+  if (selectedEvent.umwelt && selectedEvent.umwelt !== request.umwelt) return false
   return deepEqual(request.detail, selectedEvent.detail)
 }
 
@@ -145,14 +145,14 @@ export const resumePendingThreadsForSelectedEvent = ({
     const isTransform = transform?.flatMap((listener) =>
       isListeningFor(selectedEvent)(listener)
         ? // Direction/R: the target once-thread re-enters stamped with the
-          // SOURCE event's space — the root transformer's output stays in
-          // the space it observed. A stamped listener's space equals the
-          // event's space anyway (stamped confinement).
+          // SOURCE event's umwelt — the root transformer's output stays in
+          // the umwelt it observed. A stamped listener's umwelt equals the
+          // event's umwelt anyway (stamped confinement).
           {
             target: listener.target,
             query: listener.query,
             thread: name,
-            space: listener.space ?? selectedEvent.space,
+            umwelt: listener.umwelt ?? selectedEvent.umwelt,
           }
         : [],
     )
@@ -182,41 +182,41 @@ export const resumePendingThreadsForSelectedEvent = ({
   return transformers
 }
 
-export const generateRulesFunctions = (rules: Idioms[], space?: string): RulesFunction[] => {
+export const generateRulesFunctions = (rules: Idioms[], umwelt?: string): RulesFunction[] => {
   const syncs: RulesFunction[] = []
   for (const { request, waitFor, block, interrupt, transform } of rules) {
     const registeredIdioms: RegisteredIdioms = {}
     if (request) {
       registeredIdioms[IDIOMS.request] = {
         type: request.type,
-        space,
+        umwelt,
         detail: request.detail,
       }
     }
     if (block) {
       registeredIdioms[IDIOMS.block] = block.map((listener) => {
-        const registered = { ...listener, space }
+        const registered = { ...listener, umwelt }
         compileListenerValidator(registered)
         return registered
       })
     }
     if (waitFor) {
       registeredIdioms[IDIOMS.waitFor] = waitFor.map((listener) => {
-        const registered = { ...listener, space }
+        const registered = { ...listener, umwelt }
         compileListenerValidator(registered)
         return registered
       })
     }
     if (interrupt) {
       registeredIdioms[IDIOMS.interrupt] = interrupt.map((listener) => {
-        const registered = { ...listener, space }
+        const registered = { ...listener, umwelt }
         compileListenerValidator(registered)
         return registered
       })
     }
     if (transform) {
       registeredIdioms[IDIOMS.transform] = transform.map((listener) => {
-        const registered = { ...listener, space }
+        const registered = { ...listener, umwelt }
         compileListenerValidator(registered)
         return registered
       })
