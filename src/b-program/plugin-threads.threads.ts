@@ -45,6 +45,11 @@
 
 import type { Thread } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
+import {
+  ADMISSION_MAX_DEPTH_CEILING,
+  ADMISSION_MAX_DEPTH_DEFAULT,
+  ADMISSION_PROGRESS,
+} from '../faculties/frontier-analysis.threads.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
@@ -353,7 +358,7 @@ const PENDING_SCHEMA = {
   },
 } as const
 
-/** A candidate's shape — the dispatch's gate (one thread, keyed by its add_thread id). */
+/** A candidate's shape — the dispatch's gate (one thread, keyed by its add_thread id). The requester's exploration budget rides optionally; the dispatch clamps it. */
 const CANDIDATE_SCHEMA = {
   type: 'object',
   properties: {
@@ -367,6 +372,7 @@ const CANDIDATE_SCHEMA = {
         hash: { type: 'string', minLength: 1 },
         sourceHash: { type: 'integer', minimum: 0 },
         umwelt: { type: 'string', minLength: 1 },
+        maxDepth: { type: 'integer', minimum: 1 },
       },
       required: ['thread', 'plugin', 'file', 'hash', 'sourceHash'],
       additionalProperties: false,
@@ -456,7 +462,16 @@ const pendingIssue: Thread = {
   ],
 }
 
-/** candidate-dispatch — one add_thread frontier proposal per candidate; the admission's umwelt stamp governs the mount, never the author's. */
+/** candidate-dispatch — one add_thread frontier proposal per candidate; the admission's umwelt stamp governs the mount, never the author's.
+ *
+ * The dispatch composes the FULL add_thread request — the admission policy is
+ * thread data (the orchestration ruling): the derived progress vocabulary (an
+ * external consumer observed a result — unspoofable, the requester cannot
+ * launder a livelock past the check) and the clamped exploration budget
+ * (default ${ADMISSION_MAX_DEPTH_DEFAULT}, the requester's override clamped to
+ * ${ADMISSION_MAX_DEPTH_CEILING}). The route seam no longer enriches — what the
+ * mint emits is what analyzes; the op's own validation is the boundary.
+ */
 const candidateDispatch: Thread = {
   name: 'plugin-threads/candidate-dispatch',
   description: 'Dispatches the validated plugin-thread candidate onto the admission lane.',
@@ -465,8 +480,12 @@ const candidateDispatch: Thread = {
       transform: [
         {
           type: PLUGIN_THREADS_EVENT_TYPES.candidate,
-          query:
-            '. as $d | { id: $d.id, op: "add_thread", input: { thread: (($d.input.thread | del(.umwelt)) + ({ sourceHash: $d.input.sourceHash } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end))) } }',
+          query: `. as $d | { id: $d.id, op: "add_thread", input: {
+    thread: (($d.input.thread | del(.umwelt)) + ({ sourceHash: $d.input.sourceHash } + (if $d.input.umwelt != null then { umwelt: $d.input.umwelt } else {} end))),
+    progress: ${JSON.stringify(ADMISSION_PROGRESS)},
+    maxDepth: (($d.input.maxDepth // null) | if type == "number" and floor == . and . >= 1
+      then (if . > ${ADMISSION_MAX_DEPTH_CEILING} then ${ADMISSION_MAX_DEPTH_CEILING} else . end)
+      else ${ADMISSION_MAX_DEPTH_DEFAULT} end) } }`,
           target: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
           detailSchema: CANDIDATE_SCHEMA,
         },

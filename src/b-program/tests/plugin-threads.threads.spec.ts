@@ -14,6 +14,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BPEvent, JsonObject, Thread } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import {
+  ADMISSION_MAX_DEPTH_CEILING,
+  ADMISSION_MAX_DEPTH_DEFAULT,
+  ADMISSION_PROGRESS,
+} from '../../faculties/frontier-analysis.threads.ts'
 import { hashString } from '../../utils.ts'
 import {
   PLUGIN_THREAD_IMPORT_SCRIPT,
@@ -234,6 +239,60 @@ describe('plugin threads — the join and the candidates', () => {
     expect(failed).toBeDefined()
     const input = failed?.detail?.input as { error?: Record<string, unknown> }
     expect(input.error).toMatchObject({ code: 'timeout' })
+  })
+})
+
+describe('plugin threads — the add_thread policy composition', () => {
+  // The admission policy is THREAD DATA (the orchestration ruling): the
+  // dispatch composes the full add_thread request — the derived progress
+  // vocabulary ("progress = an external consumer observed a result") and
+  // the clamped exploration budget — never the requester's claim. The
+  // route seam no longer enriches: what the mint emits is what analyzes.
+  const dispatchedThread: Thread = {
+    name: 'greeter',
+    description: 'Test thread.',
+    once: true,
+    rules: [{ request: { type: 'hello' } }],
+  }
+  const candidateEvent = (input: Record<string, unknown>): BPEvent => ({
+    type: PLUGIN_THREADS_EVENT_TYPES.candidate,
+    // a validated Thread is pure data but not statically JsonValue — the
+    // composition's own candidate emission casts the same way
+    detail: {
+      id: 'c1',
+      input: {
+        thread: dispatchedThread,
+        plugin: '/plugins/alpha',
+        file: 't.ts',
+        hash: 'abc123',
+        sourceHash: 1,
+        ...input,
+      },
+    } as unknown as JsonObject,
+  })
+
+  const dispatched = async (input: Record<string, unknown>): Promise<Record<string, unknown> | undefined> => {
+    const selected = await runProgram([candidateEvent(input)])
+    const add = selected.find((s) => s.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request)
+    return add?.detail?.input as Record<string, unknown> | undefined
+  }
+
+  test('the dispatched request carries the full policy — the derived progress kinds and the default budget', async () => {
+    const input = await dispatched({})
+    expect(input?.thread).toBeDefined()
+    expect(input?.progress).toEqual(ADMISSION_PROGRESS)
+    expect(input?.maxDepth).toBe(ADMISSION_MAX_DEPTH_DEFAULT)
+  })
+
+  test('the requester budget below the ceiling passes through', async () => {
+    const input = await dispatched({ maxDepth: 8 })
+    expect(input?.maxDepth).toBe(8)
+    expect(input?.progress).toEqual(ADMISSION_PROGRESS)
+  })
+
+  test('the requester budget clamps at the composition ceiling — 500000 in, 100000 out', async () => {
+    const input = await dispatched({ maxDepth: 500_000 })
+    expect(input?.maxDepth).toBe(ADMISSION_MAX_DEPTH_CEILING)
   })
 })
 

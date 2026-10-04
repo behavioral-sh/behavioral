@@ -19,7 +19,7 @@ import {
   validateSystemTwoRequestEvent,
   validateTransformRequestEvent,
 } from '../faculties/faculties.types.ts'
-import { admissionAnalysisInput, admissionReviewThreads } from '../faculties/frontier-analysis.threads.ts'
+import { admissionReviewThreads } from '../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
   admissionJudgmentThreads,
@@ -366,15 +366,14 @@ export const bProgram = ({
           detail.id,
           validateThread(detail.input?.thread) ? (detail.input as { thread: Thread }).thread : null,
         )
-        // Livelock detection is part of adding threads (the ruling): the
-        // analysis input rides the composition's policy — the progress spec
-        // and the clamped exploration budget — never the requester's claim.
-        // A self-sustaining loop proposal comes back a failed verdict and
-        // never reaches the write.
-        frontierAnalysis.send({
-          ...event,
-          detail: { ...detail, input: admissionAnalysisInput(detail.input as JsonObject) },
-        })
+        // The add_thread request passes through UNCHANGED — the admission
+        // policy (progress + the clamped budget) is thread data composed at
+        // the mint (the proposal carry's dispatch jq, the orchestration
+        // ruling); the op's own validation is the boundary. Livelock
+        // detection is part of adding threads (the ruling): a self-
+        // sustaining loop proposal comes back a failed verdict and never
+        // reaches the write.
+        frontierAnalysis.send(event)
         return
       }
       frontierAnalysis.send(event)

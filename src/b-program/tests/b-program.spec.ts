@@ -14,6 +14,7 @@ import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { BPEvent, JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ADMISSION_PROGRESS } from '../../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
   SUPERVISION_EVENT_TYPES,
@@ -411,9 +412,18 @@ describe('bProgram — the runtime composition', () => {
   })
 
   describe('add_thread — the admission path', () => {
+    // The admission policy rides the MINT (the orchestration ruling): the
+    // route seam no longer enriches, so a direct trigger carries the derived
+    // progress vocabulary itself (the carry pack composes it on the real
+    // proposal path). The `maxDepth` in the fixtures exercises the requester
+    // override — passed through unchanged below the ceiling.
     const addThreadRequest = (id: string, thread: JsonObject, extra?: JsonObject): BPEvent => ({
       type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
-      detail: { id, op: 'add_thread', input: { thread, maxDepth: 8, ...extra } },
+      detail: {
+        id,
+        op: 'add_thread',
+        input: { thread, progress: ADMISSION_PROGRESS, maxDepth: 8, ...extra },
+      },
     })
 
     const resultDetailFor = (traces: Trace[], id: string) => {
@@ -645,13 +655,15 @@ describe('bProgram — the runtime composition', () => {
       }
     })
 
-    test('a proposal without maxDepth admits via the composition default budget', async () => {
+    test('a proposal without maxDepth fails the op input validation — the budget lives at the mint, never the seam', async () => {
       const { runtime, traces } = startRuntime()
       try {
-        // The op schema requires maxDepth, but the composition owns the budget
-        // (the ruling): a proposal that omits it is enriched with the default
-        // (20k) at the route seam — the analysis runs instead of failing the
-        // op's input validation.
+        // The orchestration ruling: the composition's route-seam budget
+        // default is DELETED — the policy composes at the proposal carry's
+        // dispatch (the carry-path pins hold the 20k default + the clamp).
+        // A direct trigger that omits `maxDepth` passes through unchanged and
+        // the op's own validation rejects it — fail-closed, visible as the
+        // error envelope, never a silent analysis.
         runtime.trigger({
           type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
           detail: {
@@ -675,16 +687,14 @@ describe('bProgram — the runtime composition', () => {
           ),
         )
         const detail = resultDetailFor(traces, 'md1')
-        expect(detail?.result?.ok).toBe(true)
-        // Mint semantics: the provision trails the result — polled, never read
-        // synchronously after the result wait.
-        await waitForTraces(traces, () =>
+        expect(detail?.ok).toBe(false)
+        expect(
           traces.some(
             (t) =>
               t.kind === TRACE_MESSAGE_KINDS.thread_added &&
               (t as { thread?: { name?: string } }).thread?.name === 'deferred-budget',
           ),
-        )
+        ).toBe(false)
       } finally {
         runtime.terminate()
       }

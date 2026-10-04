@@ -1,4 +1,4 @@
-import type { JsonObject, Thread } from '../behavioral/behavioral.types.ts'
+import type { Thread } from '../behavioral/behavioral.types.ts'
 import { ThreadSchema } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
 import { ADMISSION_EVENT_TYPES } from './system-one.threads.ts'
@@ -21,7 +21,13 @@ import { ADMISSION_EVENT_TYPES } from './system-one.threads.ts'
  * `*_result` kinds — "progress = an external consumer observed a result" —
  * so a requester cannot launder a livelock past the check by declaring its
  * own vocabulary. The exploration budget is the same posture: the requester
- * may pass `maxDepth` for an edge case, but the composition clamps it.
+ * may pass `maxDepth` for an edge case, but the composition clamps it. Both
+ * ride as THREAD DATA — the proposal carry's dispatch composes the full
+ * `add_thread` request (the orchestration ruling; the constants below are
+ * the one home the carry's jq interpolates), so the policy lives at the
+ * mint, never at a route seam. A DIRECT host trigger passes through
+ * unchanged — the op's own validation (the required `maxDepth`; a missing
+ * `progress` skips livelock detection) is that path's boundary.
  *
  * The judgment pack (`system-one/threads.ts`) is the semantic layer above
  * this one: with systemOne wired, a structurally-verified candidate still
@@ -47,30 +53,21 @@ export const ADMISSION_PROGRESS: string[] = Object.values(FACULTY_MESSAGE_KINDS)
 
 // ── The exploration budget ──────────────────────────────────────────────────
 
-/** The composition's default exploration depth — the pilot's "20K is a safe max". */
+/**
+ * The composition's default exploration depth — the pilot's "20K is a safe max".
+ * The budget is THREAD DATA: the proposal carry's dispatch jq composes it (the
+ * default when the requester omits or malforms `maxDepth`), and the requester's
+ * override clamps to the ceiling there — the route seam no longer enriches (the
+ * orchestration ruling: what the mint emits is what analyzes; the op's own
+ * validation is the boundary).
+ */
 export const ADMISSION_MAX_DEPTH_DEFAULT = 20_000
 /**
  * The clamp on a requester-supplied `maxDepth` (an edge case may ask for
  * deeper analysis). Bounds the analysis compute a single proposal can spend.
+ * Applied in the proposal carry's dispatch jq — the one clamp home.
  */
 export const ADMISSION_MAX_DEPTH_CEILING = 100_000
-
-/**
- * Enrich an `add_thread` proposal's analysis input with the composition's
- * policy — the progress specification (always overridden; unspoofable) and
- * the clamped exploration budget (default when absent or malformed).
- */
-export const admissionAnalysisInput = (input: JsonObject): JsonObject => {
-  const maxDepth = Number((input as { maxDepth?: unknown }).maxDepth)
-  return {
-    ...input,
-    progress: ADMISSION_PROGRESS,
-    maxDepth:
-      Number.isInteger(maxDepth) && maxDepth >= 1
-        ? Math.min(maxDepth, ADMISSION_MAX_DEPTH_CEILING)
-        : ADMISSION_MAX_DEPTH_DEFAULT,
-  }
-}
 
 // ── The review pack ──────────────────────────────────────────────────────────
 

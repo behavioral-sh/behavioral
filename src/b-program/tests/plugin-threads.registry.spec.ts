@@ -22,6 +22,7 @@ import { useActuator } from '../../actuators/use-actuator.ts'
 import { TRACE_MESSAGE_KINDS } from '../../behavioral/behavioral.constants.ts'
 import type { JsonObject, SelectionTrace, Thread, Trace } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../../faculties/faculties.constants.ts'
+import { ADMISSION_PROGRESS } from '../../faculties/frontier-analysis.threads.ts'
 import { ADMISSION_EVENT_TYPES } from '../../faculties/system-one.threads.ts'
 import { hashString } from '../../utils.ts'
 import { bProgram } from '../b-program.ts'
@@ -115,9 +116,16 @@ const admit = (d: ReturnType<typeof drive>, id: string, thread: Thread): void =>
     type: PLUGIN_THREADS_EVENT_TYPES.candidate,
     detail: { id, input: { plugin: '/plugins/alpha', file: 't.ts', hash: 'hash-1' } },
   })
+  // The policy rides the mint (the orchestration ruling): a direct trigger
+  // carries the progress vocabulary + budget itself — the seam no longer
+  // enriches, and the op requires maxDepth.
   d.runtime.trigger({
     type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
-    detail: { id, op: 'add_thread', input: { thread } } as unknown as JsonObject,
+    detail: {
+      id,
+      op: 'add_thread',
+      input: { thread, progress: ADMISSION_PROGRESS, maxDepth: 8 },
+    } as unknown as JsonObject,
   })
   d.runtime.trigger({
     type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
@@ -133,7 +141,11 @@ const reject = (d: ReturnType<typeof drive>, id: string, thread: Thread, reason:
   })
   d.runtime.trigger({
     type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
-    detail: { id, op: 'add_thread', input: { thread } } as unknown as JsonObject,
+    detail: {
+      id,
+      op: 'add_thread',
+      input: { thread, progress: ADMISSION_PROGRESS, maxDepth: 8 },
+    } as unknown as JsonObject,
   })
   d.runtime.trigger({
     type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
