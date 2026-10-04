@@ -56,7 +56,7 @@
     "check:write": "biome check --write && format-package --write",
     "generate:css-schemas": "bun run scripts/css-schemas/run.ts generate",
     "prepare": "git config core.hooksPath .hooks",
-    "test": "bun test"
+    "test": "BEHAVIORAL_HOME=\"$(mktemp -d)\" bun test"
   },
   "lint-staged": {
     "*.{js,cjs,jsx,tsx,ts}": [
