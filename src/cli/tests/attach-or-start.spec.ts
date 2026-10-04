@@ -21,7 +21,7 @@ const tempHome = (): string => {
   mkdirSync(home, { recursive: true })
   void Bun.write(
     join(home, 'config.ts'),
-    "export default { systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+    "export default { systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' } }",
   )
   return home
 }

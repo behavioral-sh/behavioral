@@ -17,7 +17,7 @@ const withConfig = async (source: string | undefined, run: (path: string) => Pro
 
 // The deployment requirement's shared fixture fragment (the 2026-10-03
 // ruling): a deployment boots with a decision model or fails fast.
-const ONE = "systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' }"
+const ONE = "systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' }"
 
 describe('loadConfig', () => {
   test('a missing config file fails fast — a deployment without a decision model never boots', async () => {
@@ -36,7 +36,7 @@ describe('loadConfig', () => {
       const config = await loadConfig(file)
       expect(config).toEqual({
         actuators: ['shell'],
-        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+        systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' },
       })
     })
   })
@@ -44,15 +44,15 @@ describe('loadConfig', () => {
   test('the model identifiers are DATA — the composition reads them into the init frame', async () => {
     await withConfig(
       `export default {
-        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' },
+        systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13', apiKey: 'k' },
         systemTwo: { openai: { url: 'https://api.openai.com/v1' } },
         ui: { provider: 'openai', modelId: 'gpt-x' },
       }`,
       async (file) => {
         const config = await loadConfig(file)
         expect(config.systemOne).toEqual({
-          url: 'https://api.typesafe.ai/v1/systemone',
-          model: 'jev-latest',
+          url: 'https://openrouter.ai/api/alpha/decisions',
+          model: 'typesafe/jev-1.13',
           apiKey: 'k',
         })
         expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1' } })
@@ -100,7 +100,7 @@ describe('loadConfig', () => {
       const config = await loadConfig()
       expect(config).toEqual({
         actuators: ['store'],
-        systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' },
+        systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' },
       })
     } finally {
       if (previous === undefined) delete process.env.BEHAVIORAL_HOME
@@ -122,7 +122,7 @@ describe('loadConfig', () => {
   })
 
   test('systemOne without a url is rejected', async () => {
-    await withConfig(`export default { systemOne: { model: 'jev-latest' } }`, async (file) => {
+    await withConfig(`export default { systemOne: { model: 'typesafe/jev-1.13' } }`, async (file) => {
       await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"url"/s)
     })
   })
@@ -151,7 +151,7 @@ describe('loadConfig', () => {
     })
 
     test('a rest systemOne without a url is still rejected (the default stays rest)', async () => {
-      await withConfig(`export default { systemOne: { model: 'jev-latest' } }`, async (file) => {
+      await withConfig(`export default { systemOne: { model: 'typesafe/jev-1.13' } }`, async (file) => {
         await expect(loadConfig(file)).rejects.toThrow(/"systemOne".*"url"/s)
       })
     })
@@ -175,10 +175,10 @@ describe('loadConfig', () => {
   describe('inference providers (the proxy allow-list + CSP list)', () => {
     test('a provider origin map loads as data', async () => {
       await withConfig(
-        `export default { ${ONE}, inference: { providers: { typesafe: 'https://api.typesafe.ai' } } }`,
+        `export default { ${ONE}, inference: { providers: { typesafe: 'https://openrouter.ai' } } }`,
         async (file) => {
           const config = await loadConfig(file)
-          expect(config.inference).toEqual({ providers: { typesafe: 'https://api.typesafe.ai' } })
+          expect(config.inference).toEqual({ providers: { typesafe: 'https://openrouter.ai' } })
         },
       )
     })
@@ -220,7 +220,10 @@ describe('loadConfig', () => {
     test('a valid rest endpoint loads — and a webgpu one too', async () => {
       await withConfig(`export default { ${ONE} }`, async (file) => {
         const config = await loadConfig(file)
-        expect(config.systemOne).toEqual({ url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' })
+        expect(config.systemOne).toEqual({
+          url: 'https://openrouter.ai/api/alpha/decisions',
+          model: 'typesafe/jev-1.13',
+        })
       })
       await withConfig(
         `export default { systemOne: { transport: 'webgpu', model: 'clef-flash-ternary' } }`,

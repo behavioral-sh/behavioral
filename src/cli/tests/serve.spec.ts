@@ -159,7 +159,7 @@ describe('serve entry (stdio)', () => {
       // absence at load.
       await Bun.write(
         join(home, 'config.ts'),
-        "export default { actuators: [], systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+        "export default { actuators: [], systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' } }",
       )
       const proc = Bun.spawn(['bun', 'bin/behavioral.ts', 'serve'], {
         cwd: repoRoot,

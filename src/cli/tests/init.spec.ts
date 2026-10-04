@@ -63,9 +63,9 @@ describe('behavioral init — the runner', () => {
     const content = readConfig()
     expect(content).toContain("import { defineConfig } from '@behavioral/sh'")
     expect(content).toContain("actuators: ['shell', 'store', 'security']")
-    expect(content).toContain('https://api.typesafe.ai/v1/systemone')
-    expect(content).toContain("'jev-latest'")
-    expect(content).toContain("apiKey: env('TYPESAFE_API_KEY')")
+    expect(content).toContain('https://openrouter.ai/api/alpha/decisions')
+    expect(content).toContain("'typesafe/jev-1.13'")
+    expect(content).toContain("apiKey: env('OPENROUTER_API_KEY')")
     expect(content).toContain('https://api.openai.com/v1')
     expect(content).toContain("apiKey: env('OPENAI_API_KEY')")
     // No factory overrides and no literal secrets anywhere.
@@ -76,9 +76,9 @@ describe('behavioral init — the runner', () => {
   // The load-test: the generated config must not merely look right — it must
   // LOAD (module resolution from the home) and COMPOSE through the new shape.
   test('init links the package into the home — the generated config loads and composes', async () => {
-    const previousTypesafe = process.env.TYPESAFE_API_KEY
+    const previousOpenrouter = process.env.OPENROUTER_API_KEY
     const previousOpenai = process.env.OPENAI_API_KEY
-    process.env.TYPESAFE_API_KEY = 'test'
+    process.env.OPENROUTER_API_KEY = 'test'
     process.env.OPENAI_API_KEY = 'test'
     try {
       const output = await runInit('{}')
@@ -89,8 +89,8 @@ describe('behavioral init — the runner', () => {
       // The full loop: loadConfig (dynamic import from the home) + compose.
       const config = await loadConfig(configPath())
       expect(config.systemOne).toEqual({
-        url: 'https://api.typesafe.ai/v1/systemone',
-        model: 'jev-latest',
+        url: 'https://openrouter.ai/api/alpha/decisions',
+        model: 'typesafe/jev-1.13',
         apiKey: 'test',
       })
       expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1', apiKey: 'test' } })
@@ -102,8 +102,8 @@ describe('behavioral init — the runner', () => {
       // Restore, never delete: the env is the caller's, not this spec's — a
       // leaked deletion poisons later specs in the same process (the live
       // TypeSafe integration reads the real key at load).
-      if (previousTypesafe === undefined) delete process.env.TYPESAFE_API_KEY
-      else process.env.TYPESAFE_API_KEY = previousTypesafe
+      if (previousOpenrouter === undefined) delete process.env.OPENROUTER_API_KEY
+      else process.env.OPENROUTER_API_KEY = previousOpenrouter
       if (previousOpenai === undefined) delete process.env.OPENAI_API_KEY
       else process.env.OPENAI_API_KEY = previousOpenai
     }
@@ -121,7 +121,7 @@ describe('behavioral init — the runner', () => {
     expect(content).toContain("'my-model'")
     expect(content).toContain("apiKey: env('MY_KEY')")
     expect(content).not.toContain('systemTwo')
-    expect(content).not.toContain('TYPESAFE_API_KEY')
+    expect(content).not.toContain("env('OPENROUTER_API_KEY')")
   })
 
   test('a webgpu systemOne spec renders the transport toggle and NO apiKey leg', async () => {
@@ -170,9 +170,9 @@ describe('behavioral init — the interactive collector', () => {
   test('empty answers keep every default', async () => {
     const input = await collectInitInput(scriptedAsk(['', '', '', '', '', '', '']))
     expect(input.systemOne).toEqual({
-      url: 'https://api.typesafe.ai/v1/systemone',
-      model: 'jev-latest',
-      apiKeyEnv: 'TYPESAFE_API_KEY',
+      url: 'https://openrouter.ai/api/alpha/decisions',
+      model: 'typesafe/jev-1.13',
+      apiKeyEnv: 'OPENROUTER_API_KEY',
     })
     expect(input.systemTwo).toEqual({
       endpoints: { openai: { url: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY' } },
@@ -215,7 +215,7 @@ describe('behavioral init — the real CLI boundary', () => {
     const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()])
     expect(exitCode).toBe(0)
     expect(JSON.parse(stdout)).toMatchObject({ configPath: join(home, 'config.ts') })
-    expect(await readConfig()).toContain("apiKey: env('TYPESAFE_API_KEY')")
+    expect(await readConfig()).toContain("apiKey: env('OPENROUTER_API_KEY')")
   })
 
   // The isTTY branch: behind a real PTY, no input means the prompt tour — the
@@ -260,7 +260,7 @@ describe('behavioral init — the real CLI boundary', () => {
 
     await proc.exited
     expect(proc.exitCode).toBe(0)
-    expect(await readConfig()).toContain("apiKey: env('TYPESAFE_API_KEY')")
+    expect(await readConfig()).toContain("apiKey: env('OPENROUTER_API_KEY')")
     expect(await readConfig()).toContain("apiKey: env('OPENAI_API_KEY')")
   }, 20_000)
 })

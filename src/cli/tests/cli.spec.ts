@@ -70,7 +70,7 @@ describe('Router-level flags (subprocess)', () => {
     const home = path.join('/tmp', `behavioral-cli-default-${Date.now()}`)
     await Bun.write(
       path.join(home, 'config.ts'),
-      "export default { systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest' } }",
+      "export default { systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13' } }",
     )
     const proc = Bun.spawn(['bun', 'bin/behavioral.ts'], {
       stdout: 'pipe',

@@ -68,9 +68,9 @@ export type InitOutput = {
 // ---------------------------------------------------------------------------
 
 const SYSTEM_ONE_DEFAULTS: Required<Omit<SystemOneEndpointInit, 'headers' | 'transport'>> = {
-  url: 'https://api.typesafe.ai/v1/systemone',
-  model: 'jev-latest',
-  apiKeyEnv: 'TYPESAFE_API_KEY',
+  url: 'https://openrouter.ai/api/alpha/decisions',
+  model: 'typesafe/jev-1.13',
+  apiKeyEnv: 'OPENROUTER_API_KEY',
 }
 
 const SYSTEM_TWO_DEFAULT_LABEL = 'openai'

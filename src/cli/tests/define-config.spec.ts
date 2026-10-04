@@ -9,12 +9,16 @@ describe('defineConfig', () => {
   test('preserves the actuators allow-list and the model identifiers (both are data)', () => {
     const config = defineConfig({
       actuators: ['shell', 'store'],
-      systemOne: { url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' },
+      systemOne: { url: 'https://openrouter.ai/api/alpha/decisions', model: 'typesafe/jev-1.13', apiKey: 'k' },
       systemTwo: { openai: { url: 'https://api.openai.com/v1' } },
       ui: { provider: 'openai', modelId: 'gpt-x' },
     })
     expect(config.actuators).toEqual(['shell', 'store'])
-    expect(config.systemOne).toEqual({ url: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', apiKey: 'k' })
+    expect(config.systemOne).toEqual({
+      url: 'https://openrouter.ai/api/alpha/decisions',
+      model: 'typesafe/jev-1.13',
+      apiKey: 'k',
+    })
     expect(config.systemTwo).toEqual({ openai: { url: 'https://api.openai.com/v1' } })
     expect(config.ui).toEqual({ provider: 'openai', modelId: 'gpt-x' })
   })

@@ -66,8 +66,8 @@ describe('bundleBProgramWorker — the serving seam', () => {
 
   test('connectSrcPolicy — the allow-list is config, self always included', () => {
     expect(connectSrcPolicy()).toBe("connect-src 'self'")
-    expect(connectSrcPolicy(['https://api.typesafe.ai', 'wss://daemon.example'])).toBe(
-      "connect-src 'self' https://api.typesafe.ai wss://daemon.example",
+    expect(connectSrcPolicy(['https://openrouter.ai', 'wss://daemon.example'])).toBe(
+      "connect-src 'self' https://openrouter.ai wss://daemon.example",
     )
   })
 })

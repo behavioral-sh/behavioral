@@ -10,7 +10,7 @@ import { providerTokenKey, saveProviderToken, vendProviderToken } from '../provi
  * the pin: the Typesafe resolution never yields the OpenRouter credential.
  */
 
-const TYPESAFE_ORIGIN = 'https://api.typesafe.ai'
+const TYPESAFE_ORIGIN = 'https://openrouter.ai'
 const OPENROUTER_ORIGIN = 'https://api.openrouter.ai'
 
 describe('provider credential custody', () => {

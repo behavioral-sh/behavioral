@@ -323,7 +323,7 @@ describe('createSocketHost', () => {
       runtime: fake.runtime,
       home,
       inferenceProviders: {
-        typesafe: 'https://api.typesafe.ai',
+        typesafe: 'https://openrouter.ai',
         selfhosted: 'https://blackwell.lan/v1',
       },
     })
@@ -331,7 +331,7 @@ describe('createSocketHost', () => {
       const response = await fetch(`http://localhost${CONNECT_BEHAVIORAL_ROUTE}`, { unix: host.path })
       expect(response.status).toBe(200)
       const csp = response.headers.get('content-security-policy')
-      expect(csp).toBe("connect-src 'self' http://localhost https://api.typesafe.ai https://blackwell.lan/v1")
+      expect(csp).toBe("connect-src 'self' http://localhost https://openrouter.ai https://blackwell.lan/v1")
     } finally {
       await host.close()
     }

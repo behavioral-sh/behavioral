@@ -80,7 +80,7 @@ describe('system one output schema — the response envelope', () => {
 describe('system one faculty — the Decisions round-trip', () => {
   test('round-trips a noul/choice/score question set as one result event', async () => {
     const server = await startDecisionsServer()
-    const faculty = spawnSystemOne({ url: server.url, model: 'jev-latest' })
+    const faculty = spawnSystemOne({ url: server.url, model: 'typesafe/jev-1.13' })
     try {
       faculty.call({ id: 'd1', input: { state: 'Help! My payouts failed.', questions } } as JsonObject)
       const { detail } = await faculty.resultFor('d1')
@@ -101,13 +101,13 @@ describe('system one faculty — the Decisions round-trip', () => {
 
   test('the endpoint model is the default; a request model overrides it', async () => {
     const server = await startDecisionsServer()
-    const faculty = spawnSystemOne({ url: server.url, model: 'jev-latest' })
+    const faculty = spawnSystemOne({ url: server.url, model: 'typesafe/jev-1.13' })
     try {
       faculty.call({ id: 'd1', input: { state: 'x', questions } } as JsonObject)
       await faculty.resultFor('d1')
       faculty.call({ id: 'd2', input: { state: 'x', model: '~typesafe/jev-latest', questions } } as JsonObject)
       await faculty.resultFor('d2')
-      expect(server.requests[0]?.body.model).toBe('jev-latest')
+      expect(server.requests[0]?.body.model).toBe('typesafe/jev-1.13')
       expect(server.requests[1]?.body.model).toBe('~typesafe/jev-latest')
     } finally {
       faculty.terminate()
@@ -117,7 +117,7 @@ describe('system one faculty — the Decisions round-trip', () => {
 
   test('forwards the endpoint api key as a bearer token', async () => {
     const server = await startDecisionsServer({ apiKey: 'sk-test' })
-    const faculty = spawnSystemOne({ url: server.url, apiKey: 'sk-test', model: 'jev-latest' })
+    const faculty = spawnSystemOne({ url: server.url, apiKey: 'sk-test', model: 'typesafe/jev-1.13' })
     try {
       faculty.call({ id: 'd1', input: { state: 'x', questions } } as JsonObject)
       const { detail } = await faculty.resultFor('d1')
@@ -131,7 +131,7 @@ describe('system one faculty — the Decisions round-trip', () => {
 
   test('retries a 429 (honoring retry-after) and then succeeds', async () => {
     const server = await startDecisionsServer({ rateLimitFirst: 1 })
-    const faculty = spawnSystemOne({ url: server.url, model: 'jev-latest' })
+    const faculty = spawnSystemOne({ url: server.url, model: 'typesafe/jev-1.13' })
     try {
       faculty.call({ id: 'd1', input: { state: 'x', questions } } as JsonObject)
       const { detail } = await faculty.resultFor('d1')
@@ -145,7 +145,7 @@ describe('system one faculty — the Decisions round-trip', () => {
 
   test('an input failing the boundary is error data, not a crash', async () => {
     const server = await startDecisionsServer()
-    const faculty = spawnSystemOne({ url: server.url, model: 'jev-latest' })
+    const faculty = spawnSystemOne({ url: server.url, model: 'typesafe/jev-1.13' })
     try {
       faculty.call({ id: 'bad', input: { state: 'x' } } as JsonObject)
       const { detail } = await faculty.resultFor('bad')

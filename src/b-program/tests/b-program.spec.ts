@@ -916,7 +916,7 @@ describe('bProgram — the runtime composition', () => {
       test('the judged path: the Decision approves, the block lifts, the candidate admits and goes live', async () => {
         const server = await startDecisionsServer()
         const { runtime, traces } = startRuntime({
-          models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+          models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         })
         try {
           // The admitted thread is `once` — its ping selects and the thread completes.
@@ -976,7 +976,7 @@ describe('bProgram — the runtime composition', () => {
       test('the judged path: a rejection holds the line — the candidate never admits', async () => {
         const server = await startDecisionsServer({ pickChoice: 'reject' })
         const { runtime, traces } = startRuntime({
-          models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+          models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         })
         try {
           // `once` — under the livelock ruling a looping requester is rejected
@@ -1089,7 +1089,7 @@ describe('bProgram — the runtime composition', () => {
       const { scheduled, scheduler } = injectScheduler()
       const { runtime, traces } = startRuntime({
         scheduler,
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
       })
       try {
         runtime.trigger(
@@ -1160,7 +1160,7 @@ describe('bProgram — the runtime composition', () => {
       const { scheduled, scheduler } = injectScheduler()
       const { runtime, traces } = startRuntime({
         scheduler,
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
       })
       try {
         // The FULL plugin path drives the flow: the candidate event
@@ -1262,7 +1262,7 @@ describe('bProgram — the runtime composition', () => {
     test('the counted trip is judged through the real faculty: the lift releases the block, the program continues', async () => {
       const server = await startDecisionsServer()
       const { runtime, traces } = startRuntime({
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         threads: [
           ...supervisionThreads({ watch: [watched], threshold: 4 }),
           ...supervisionJudgmentThreads,
@@ -1307,7 +1307,7 @@ describe('bProgram — the runtime composition', () => {
       // silent continuation, never an invisible halt.
       const server = await startDecisionsServer({ rateLimitFirst: 999 })
       const { runtime, traces } = startRuntime({
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         threads: [
           ...supervisionThreads({ watch: [watched], threshold: 4 }),
           ...supervisionJudgmentThreads,
@@ -1339,7 +1339,7 @@ describe('bProgram — the runtime composition', () => {
       // decision 2's calls succeed. The block lifts; the program continues.
       const server = await startDecisionsServer({ rateLimitFirst: 4 })
       const { runtime, traces } = startRuntime({
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         threads: [
           ...supervisionThreads({ watch: [watched], threshold: 4 }),
           ...supervisionJudgmentThreads,
@@ -1371,7 +1371,7 @@ describe('bProgram — the runtime composition', () => {
       // watched type selects again.
       const server = await startDecisionsServer({ rateLimitFirst: 999 })
       const { runtime, traces } = startRuntime({
-        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+        models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
         threads: [
           ...supervisionThreads({ watch: [watched], threshold: 4 }),
           ...supervisionJudgmentThreads,
@@ -1493,7 +1493,7 @@ describe('bProgram — the runtime composition', () => {
   test('a systemOne override takes the route: the endpoint seeds the process and the result re-enters', async () => {
     const server = await startDecisionsServer()
     const { runtime, traces } = startRuntime({
-      models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+      models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
     })
     try {
       runtime.trigger({
@@ -1529,7 +1529,7 @@ describe('bProgram — the runtime composition', () => {
   test('a malformed system_one_request is blocked by the faculty guard — never selected', async () => {
     const server = await startDecisionsServer()
     const { runtime, traces } = startRuntime({
-      models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+      models: { systemOne: { url: server.url, model: 'typesafe/jev-1.13' } as unknown as JsonObject },
     })
     try {
       runtime.trigger({ type: FACULTY_MESSAGE_KINDS.system_one_request, detail: { id: 'bad' } })

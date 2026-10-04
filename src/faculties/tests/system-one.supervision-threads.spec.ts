@@ -483,14 +483,14 @@ describe('supervision threads — the Decision shapes', () => {
   })
 })
 
-describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_KEY)', () => {
-  const key = process.env.TYPESAFE_API_KEY
+describe('supervision judgment — the live Jev API via OpenRouter (opt-in: OPENROUTER_API_KEY)', () => {
+  const key = process.env.OPENROUTER_API_KEY
   const liveTest = key === undefined ? test.skip : test
 
   liveTest('a real trip judges against the live endpoint — the answer maps through the verdict', async () => {
     // The whole judgment lane against the LIVE endpoint through the REAL
     // composition: the trip issues the request (the threads' own output), the
-    // composition's systemOne faculty speaks api.typesafe.ai, and the real
+    // composition's systemOne faculty speaks OpenRouter's Decisions API, and the real
     // answer maps back through the verdict. Whichever way the model calls it,
     // exactly one of the two outcomes fires with a conforming shape.
     const drive = driveComposition({
@@ -501,9 +501,9 @@ describe('supervision judgment — the live TypeSafe API (opt-in: TYPESAFE_API_K
       ],
       models: {
         systemOne: {
-          url: 'https://api.typesafe.ai/v1/systemone',
+          url: 'https://openrouter.ai/api/alpha/decisions',
           apiKey: key as string,
-          model: 'jev-1.13.0',
+          model: 'typesafe/jev-1.13',
         } as unknown as JsonObject,
       },
     })

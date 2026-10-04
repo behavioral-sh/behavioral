@@ -29,7 +29,7 @@ export type { SystemOneInput, SystemOneOutput }
  */
 export type SystemOneEndpointConfig = {
   transport?: 'rest' | 'webgpu'
-  /** Rest transport only — the FULL request URL (e.g. `https://api.typesafe.ai/v1/systemone`). */
+  /** Rest transport only — the FULL request URL (e.g. `https://openrouter.ai/api/alpha/decisions`). */
   url?: string
   /** Rest transport only — daemon-vended short-lived tokens, never a static vendor key. */
   apiKey?: string
