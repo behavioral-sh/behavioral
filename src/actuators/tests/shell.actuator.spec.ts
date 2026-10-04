@@ -106,7 +106,7 @@ describe('shell worker — event wire', () => {
   test('a request umwelt is echoed on the result event', async () => {
     const shell = spawnShellWorker()
     try {
-      shell.run('w2', 'console.log("spaced")', undefined, 'demo')
+      shell.run('w2', 'console.log("echoed")', undefined, 'demo')
       const { umwelt } = await shell.resultFor('w2')
       expect(umwelt).toBe('demo')
     } finally {
