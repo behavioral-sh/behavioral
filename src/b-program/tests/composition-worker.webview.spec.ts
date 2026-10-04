@@ -133,6 +133,33 @@ describe('composition worker: bProgram boots in a per-tab dedicated worker (the 
     expect(items?.[0]?.type).toBe('message')
   }, 30_000)
 
+  test('the boot reconciliation pack mounts BROWSER-SIDE — the boot completes, not hangs', async () => {
+    // THE NAMED-NEED'S RE-EVALUATION (the transform-faculty ruling): the
+    // thread-persistence landing held the reconcile pack DAEMON-ONLY because
+    // the bundled artifact lacked the nested jq-worker asset (the boot
+    // transforms hung ~30s in Atomics.wait). With the transform faculty
+    // bundled and self-contained, the pack's joins evaluate through the
+    // fixed fourth lane — the registry read resolves and the reconciliation
+    // proceeds within seconds, against the echo store (no registry record →
+    // no mounts, the boot completes).
+    await using view = await open('/composition-reconcile.html')
+    // No worker-level error: the composition (with the pack) booted clean.
+    await waitFor(async () => await view.evaluate<string | undefined>('window.__space'))
+    expect(await view.evaluate<string | undefined>('window.__workerError')).toBeNull()
+    // The reconcile's registry read selected — the pack's join transforms
+    // ran through the bundled transform faculty (the read resolves, the
+    // boot settles; the OLD failure was a ~30s hang before this selection
+    // ever appeared).
+    const read = await waitFor(async () => {
+      const seen = (await selections(view)).find((t) => {
+        const selected = t.selected as { type?: string; detail?: { input?: { collection?: string } } }
+        return selected?.type === 'store_request' && selected.detail?.input?.collection === 'plugin-threads'
+      })
+      return seen
+    }, 15_000)
+    expect(read).toBeDefined()
+  })
+
   test('tab A and tab B are SEPARATE workers (the per-tab ruling): pinned spaces, own traces, no cross-leak', async () => {
     await using viewA = await open('/iso.html?space=tab_a')
     await using viewB = await open('/iso.html?space=tab_b')

@@ -75,13 +75,20 @@ export const startCompositionServer = async (port = 0) => {
     routes.set(path, build)
   }
 
-  // 1. The composition worker — a module script (level 1 may be a module;
-  //    every worker IT spawns is classic, served below).
-  const compositionWorkerEntry = Bun.resolveSync('./composition.worker.ts', FIXTURES_DIR)
-  route('/composition.worker.js', async () => ({
-    body: await bundleBrowser(`import ${JSON.stringify(compositionWorkerEntry)}`),
-    contentType: 'text/javascript',
-  }))
+  // 1. The composition workers — module scripts (level 1 may be a module;
+  //    every worker IT spawns is classic, served below). The second entry
+  //    mounts the BOOT RECONCILIATION PACK — the named-need re-evaluation
+  //    fixture (the transform faculty bundled, the joins evaluate).
+  for (const [path, file] of [
+    ['/composition.worker.js', 'composition.worker.ts'],
+    ['/composition-reconcile.worker.js', 'composition-reconcile.worker.ts'],
+  ] as const) {
+    const entry = Bun.resolveSync(`./${file}`, FIXTURES_DIR)
+    route(path, async () => ({
+      body: await bundleBrowser(`import ${JSON.stringify(entry)}`),
+      contentType: 'text/javascript',
+    }))
+  }
 
   // 2. The fixture actuator worker — classic-safe (no imports).
   const echoWorkerEntry = Bun.resolveSync('./store-echo.worker.ts', FIXTURES_DIR)
@@ -135,15 +142,14 @@ export const startCompositionServer = async (port = 0) => {
   const workerTransportEntry = Bun.resolveSync('./controller/worker-transport.ts', SRC_ROOT)
   const controllerEntry = Bun.resolveSync('./controller/controller.ts', SRC_ROOT)
   const compositionPortEntry = Bun.resolveSync('./b-program/composition-port.ts', SRC_ROOT)
-  route('/composition-page.js', async () => ({
-    body: await bundleBrowser(`
+  const compositionPageScript = (workerUrl: string) => `
 import { WorkerTransport } from ${JSON.stringify(workerTransportEntry)}
 import { Controller } from ${JSON.stringify(controllerEntry)}
 import { systemTwoEndpointsFromPlan } from ${JSON.stringify(compositionPortEntry)}
 
 window.__traces = []
 window.__workerError = null
-const worker = new Worker('/composition.worker.js', { type: 'module' })
+const worker = new Worker('${workerUrl}', { type: 'module' })
 window.__raw = []
 worker.addEventListener('message', (e) => { window.__raw.push(e.data) })
 worker.onerror = (event) => {
@@ -182,22 +188,40 @@ const extensions = new Map([
 const controller = new Controller({ transport, extensions })
 window.__controller = controller
 controller.connect()
-`),
+`
+  route('/composition-page.js', async () => ({
+    body: await bundleBrowser(compositionPageScript('/composition.worker.js')),
+    contentType: 'text/javascript',
+  }))
+  route('/composition-reconcile-page.js', async () => ({
+    body: await bundleBrowser(compositionPageScript('/composition-reconcile.worker.js')),
     contentType: 'text/javascript',
   }))
 
-  route('/composition.html', async () => ({
-    body: `<!doctype html>
+  const compositionHtml = (script: string) => `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <script>window.__traces = []; window.__hello = null;</script>
-    <script type="module" src="/composition-page.js"></script>
+    <script type="module" src="${script}"></script>`
+  route('/composition.html', async () => ({
+    body: `${compositionHtml('/composition-page.js')}
   </head>
   <body>
     <button id="store-btn" b-trigger="click:store_request">store</button>
     <button id="s2-btn" b-trigger="click:system_two_request">system two</button>
   </body>
+</html>`,
+    contentType: 'text/html',
+  }))
+
+  // The reconcile-mount page: the named-need re-evaluation — the boot
+  // reconciliation pack mounted browser-side; the boot must complete, not
+  // hang.
+  route('/composition-reconcile.html', async () => ({
+    body: `${compositionHtml('/composition-reconcile-page.js')}
+  </head>
+  <body></body>
 </html>`,
     contentType: 'text/html',
   }))

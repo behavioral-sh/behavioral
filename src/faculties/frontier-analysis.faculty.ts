@@ -286,6 +286,16 @@ const replayToFrontierRaw = ({
   advanceRunningToPending(running, pending)
 
   for (const [step, selected] of getSelectedEvents({ messages }).entries()) {
+    // The transform faculty's wire traffic — the engine's mint and the
+    // faculty's answer — is NOT engine-candidate vocabulary: the replay's
+    // thread set never consumes it. The LOGGED result carries the evaluated
+    // detail (the id join), and the target re-entry reconstructs through the
+    // request-origin path below — frozen, never re-evaluated.
+    if (
+      selected.type === FACULTY_MESSAGE_KINDS.transform_request ||
+      selected.type === FACULTY_MESSAGE_KINDS.transform_request_result
+    )
+      continue
     if (selected.ingress === true) {
       addSyntheticRequestThread({ pending, selected, ingress: true })
     }
