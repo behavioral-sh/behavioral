@@ -14,6 +14,7 @@ import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
 import { INFERENCE_PROXY_PREFIX } from '../b-program/composition-port.ts'
+import { pluginThreadsReconcileThreads } from '../b-program/plugin-threads.reconcile.ts'
 import { watchPluginThreadRegistry } from '../b-program/plugin-threads.registry.ts'
 import { pluginThreadsThreads } from '../b-program/plugin-threads.threads.ts'
 import { remoteMcpThreads } from '../b-program/remote-mcp.threads.ts'
@@ -309,6 +310,10 @@ export const createRuntime = (config: BehavioralConfig = {}): HostRuntime => {
   const threads: Thread[] = []
   if (enabled.has('shell') && enabled.has('store')) threads.push(...shellThreads)
   if (enabled.has('shell')) threads.push(...pluginThreadsThreads)
+  // The boot reconciliation: shell (stat + the one-moment import) + store
+  // (the record) — the cross-run skip's other half; the reload ingress
+  // re-runs it mid-run.
+  if (enabled.has('shell') && enabled.has('store')) threads.push(...pluginThreadsReconcileThreads)
   if (enabled.has('shell') && enabled.has('security')) threads.push(...rpcAuthThreads)
   if (enabled.has('shell') && enabled.has('security') && enabled.has('store')) threads.push(...remoteMcpThreads)
   // The supervision breaker: a standing floor whenever systemOne can judge —

@@ -22,7 +22,9 @@ import {
   admissionJudgmentThreads,
   validateAdmissionVerdict,
 } from '../faculties/system-one.threads.ts'
-import { uuid } from '../utils.ts'
+import { deepEqual, uuid } from '../utils.ts'
+import { RECONCILE_EVENT_TYPES } from './plugin-threads.reconcile.ts'
+import { pluginThreadInstanceHash } from './plugin-threads.registry.ts'
 import { PLUGIN_THREADS_EVENT_TYPES } from './plugin-threads.threads.ts'
 import { UI_RENDER_TRIGGER_TYPE, uiPipelineThreads } from './ui-threads.ts'
 import { useWorker } from './use-worker.ts'
@@ -99,7 +101,7 @@ export const bProgram = ({
 }) => {
   // ── The engine, in-process ────────────────────────────────────────────────
 
-  const { addThread, step, trigger, useTrace, instanceId } = behavioral()
+  const { addThread, removeThread, step, trigger, useTrace, instanceId } = behavioral()
   /**
    * The identity handoff: the engine's self-minted per-process id, with the
    * resolved session id. The composition supplies no host session id today,
@@ -225,6 +227,13 @@ export const bProgram = ({
   >()
   /** In-run decided keys — the skip leg's within-run half. */
   const decidedKeys = new Map<string, { status: 'admitted' | 'rejected'; reason?: string }>()
+
+  /**
+   * The mounted instance identities — the mount leg's idempotence floor: a
+   * boot/reload reconciliation never double-mounts a live instance (the
+   * engine's duplicate-identity guard stays a fail-visible backstop).
+   */
+  const mountedInstances = new Set<number>()
 
   type FacultyPort = { send: (event: BPEvent) => void; gate: (event: BPEvent) => boolean }
   const lanes: Record<string, FacultyPort> = {}
@@ -378,7 +387,31 @@ export const bProgram = ({
         pendingAdmissions.delete(id)
         const verdictOk =
           candidate.type === ADMISSION_EVENT_TYPES.admitted && validateAdmissionVerdict(candidate.detail)
-        if (thread && verdictOk) addThreads([thread])
+        if (thread && verdictOk) {
+          // The instance identity stamps at the MOUNT (post-sourceHash — the
+          // mount path's job, never the author's): the live thread becomes
+          // removal-addressable, and the recorded snapshot matches it.
+          const pluginMetaForStamp = pluginAdmissions.get(id)
+          const stamped =
+            pluginMetaForStamp === undefined
+              ? thread
+              : {
+                  ...thread,
+                  instanceHash: pluginThreadInstanceHash({
+                    plugin: pluginMetaForStamp.plugin,
+                    space: pluginMetaForStamp.space,
+                    name: thread.name,
+                  }),
+                }
+          if (typeof stamped.instanceHash === 'number') {
+            // The remove-then-remount wave: a live same-identity instance
+            // (the reload's re-adjudication) stages its teardown — the
+            // engine's staged-removal overwrite lets the new mount through.
+            if (mountedInstances.has(stamped.instanceHash)) removeThread({ instanceHash: stamped.instanceHash })
+            mountedInstances.add(stamped.instanceHash)
+          }
+          addThreads([stamped])
+        }
         const pluginMeta = pluginAdmissions.get(id)
         if (pluginMeta !== undefined) {
           pluginAdmissions.delete(id)
@@ -459,6 +492,146 @@ export const bProgram = ({
     // scale-issue request runs in the same wave as the ingress. The switch
     // is the host's ui pack itself: the mint fires iff a `ui/`-labeled pack
     // is among the mounted threads (the ui key dissolved into the array).
+    // ── The reconciliation verdict legs (the HOST-LEG MINT — the ui-dispatcher
+    // precedent): the composition acts on the reconciliation's events; the
+    // record writes ride the entry-side watcher (the carried/removed
+    // selections reach it directly).
+    if (candidate.type === RECONCILE_EVENT_TYPES.mount) {
+      const thread = (candidate.detail as { input?: { thread?: unknown } } | undefined)?.input?.thread
+      if (!validateThread(thread)) return
+      const t = thread as Thread
+      if (typeof t.instanceHash === 'number') {
+        // Mount idempotence: a live same-identity instance never double-mounts
+        // (a reload's unchanged pass is a no-op; the engine's duplicate guard
+        // stays the fail-visible backstop).
+        if (mountedInstances.has(t.instanceHash)) return
+        mountedInstances.add(t.instanceHash)
+      }
+      addThreads([t])
+      return
+    }
+    if (candidate.type === RECONCILE_EVENT_TYPES.removed) {
+      const input = (candidate.detail as { input?: { instanceHash?: unknown } } | undefined)?.input
+      if (typeof input?.instanceHash === 'number') {
+        // LIVE teardown: the removal is the engine's staged teardown, the
+        // next super-step. The identity leaves the mounted set — a later
+        // pass may remount it fresh.
+        mountedInstances.delete(input.instanceHash)
+        removeThread({ instanceHash: input.instanceHash })
+        // The re-entry law: the teardown's pump — the staged removal applies
+        // at the next super-step, which this empty re-entry is.
+        addThreads([])
+      }
+      return
+    }
+    if (candidate.type === RECONCILE_EVENT_TYPES.importDiff) {
+      const input = (
+        candidate.detail as
+          | {
+              input?: {
+                plugin?: string
+                file?: string
+                hash?: string
+                space?: string
+                carriedFrom?: string
+                exports?: Array<{ name?: string } & JsonObject>
+                snapshot?: { status?: string; thread?: Thread; reason?: string }
+              }
+            }
+          | undefined
+      )?.input
+      if (
+        input === undefined ||
+        typeof input.plugin !== 'string' ||
+        typeof input.file !== 'string' ||
+        typeof input.hash !== 'string' ||
+        !Array.isArray(input.exports) ||
+        input.snapshot === undefined
+      )
+        return
+      const snap = input.snapshot
+      const compare = snap.thread
+      // deepEqual vs the snapshot stripped of its engine-stamped identity
+      // fields (instanceHash, sourceHash) — CONTENT is the comparison, never
+      // identity.
+      const stripped =
+        compare === undefined || compare === null
+          ? undefined
+          : (({ instanceHash: _ih, sourceHash: _sh, ...rest }) => rest)(compare)
+      const match = stripped === undefined ? undefined : input.exports.find((e) => e?.name === compare?.name)
+      const carried =
+        stripped !== undefined && match !== undefined && deepEqual(match as JsonObject, stripped as JsonObject)
+      const spaceFields = input.space === undefined ? {} : { space: input.space }
+      if (carried) {
+        // The verdict CARRIES forward — never silent: the watcher writes the
+        // new record under the new file-hash key with carriedFrom provenance;
+        // an admitted carry also mounts the (content-identical) snapshot.
+        const legs: Thread[] = []
+        if (snap.status === 'admitted' && compare !== undefined && compare !== null) {
+          legs.push({
+            name: `plugin-threads-carry-mount:${uuid()}`,
+            description: 'Carries an admitted snapshot across a cosmetic rewrite: mounts it.',
+            once: true,
+            rules: [
+              {
+                request: {
+                  type: RECONCILE_EVENT_TYPES.mount,
+                  detail: { input: { thread: compare as unknown as JsonObject } } as unknown as JsonObject,
+                },
+              },
+            ],
+          })
+        }
+        legs.push({
+          name: `plugin-threads-carry:${uuid()}`,
+          description: 'Carries the reconciliation verdict forward across a cosmetic rewrite.',
+          once: true,
+          rules: [
+            {
+              request: {
+                type: RECONCILE_EVENT_TYPES.carried,
+                detail: {
+                  input: {
+                    plugin: input.plugin,
+                    file: input.file,
+                    hash: input.hash,
+                    ...spaceFields,
+                    status: snap.status === 'admitted' ? 'admitted' : 'rejected',
+                    ...(compare !== undefined && compare !== null ? { thread: compare as unknown as JsonObject } : {}),
+                    ...(snap.reason === undefined ? {} : { reason: snap.reason }),
+                    ...(input.carriedFrom === undefined ? {} : { carriedFrom: input.carriedFrom }),
+                  } as unknown as JsonObject,
+                },
+              },
+            },
+          ],
+        })
+        addThreads(legs)
+      } else {
+        // A semantic change re-adjudicates through the full landed path —
+        // the explicit proposal act, the admission judgment gating every
+        // changed candidate.
+        addThreads([
+          {
+            name: `plugin-threads-re-adjudicate:${uuid()}`,
+            description: 'Re-adjudicates a semantically changed plugin thread through the proposal path.',
+            once: true,
+            rules: [
+              {
+                request: {
+                  type: PLUGIN_THREADS_EVENT_TYPES.proposal,
+                  detail: {
+                    id: `reconcile-${uuid()}`,
+                    input: { plugin: input.plugin, file: input.file, ...spaceFields },
+                  } as unknown as JsonObject,
+                },
+              },
+            ],
+          },
+        ])
+      }
+      return
+    }
     if (
       hostThreads.some((t) => t.name.startsWith('ui/')) &&
       candidate.type === UI_RENDER_TRIGGER_TYPE &&

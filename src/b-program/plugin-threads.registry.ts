@@ -47,6 +47,7 @@ import { FACULTY_MESSAGE_KINDS } from '../faculties/faculties.constants.ts'
 import { ADMISSION_EVENT_TYPES, validateAdmissionVerdict } from '../faculties/system-one.threads.ts'
 import { hashString } from '../utils/hash-string.ts'
 import { uuid } from '../utils.ts'
+import { RECONCILE_EVENT_TYPES } from './plugin-threads.reconcile.ts'
 import { PLUGIN_THREADS_EVENT_TYPES } from './plugin-threads.threads.ts'
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
@@ -114,9 +115,12 @@ export type PluginThreadRegistryEntry =
   | {
       status: 'rejected'
       reason: string
+      /** Where present: the rejected thread snapshot — the carry's deepEqual input (a cosmetic rewrite carries the rejection). */
+      thread?: Thread
       carriedFrom?: string
       v: number
     }
+  | { status: 'removed'; v: number }
 
 /** The registry — a map from decision key to decision. */
 export type PluginThreadRegistry = Record<string, PluginThreadRegistryEntry>
@@ -151,10 +155,17 @@ const ENTRY_SCHEMA = {
       properties: {
         status: { type: 'string', const: 'rejected' },
         reason: { type: 'string', minLength: 1 },
+        thread: ThreadSchema,
         carriedFrom: CARRIED_FROM,
         v: VERSION,
       },
       required: ['status', 'reason', 'v'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: { status: { type: 'string', const: 'removed' }, v: VERSION },
+      required: ['status', 'v'],
       additionalProperties: false,
     },
   ],
@@ -396,9 +407,78 @@ export const watchPluginThreadRegistry = ({
         : {
             status: 'rejected' as const,
             reason: (detail.reason as string | undefined) ?? rec.verdictReason ?? 'admission rejected',
+            // The rejected snapshot rides the record — the carry's deepEqual
+            // input: a cosmetic rewrite carries the rejection forward.
+            ...(rec.thread === null ? {} : { thread: rec.thread }),
             v: PLUGIN_THREADS_REGISTRY_VERSION,
           }
       record(pluginThreadRegistryKey(rec), entry)
+      return
+    }
+
+    // ── The reconciliation's record legs — the carried verdict and the removed
+    // entry write through the SAME single-writer path (whole-doc put).
+    if (candidate.type === RECONCILE_EVENT_TYPES.carried) {
+      const input = detail.input as
+        | {
+            plugin?: unknown
+            file?: unknown
+            hash?: unknown
+            space?: unknown
+            status?: unknown
+            thread?: unknown
+            reason?: unknown
+            carriedFrom?: unknown
+          }
+        | undefined
+      if (
+        typeof input?.plugin !== 'string' ||
+        typeof input.file !== 'string' ||
+        typeof input.hash !== 'string' ||
+        (input.status !== 'admitted' && input.status !== 'rejected')
+      )
+        return
+      const space = typeof input.space === 'string' ? input.space : undefined
+      const carriedFrom = typeof input.carriedFrom === 'string' ? input.carriedFrom : undefined
+      const key = pluginThreadRegistryKey({ plugin: input.plugin, file: input.file, hash: input.hash, space })
+      if (input.status === 'admitted' && validateThread(input.thread)) {
+        const thread = input.thread as Thread
+        const instanceHash =
+          typeof thread.instanceHash === 'number'
+            ? thread.instanceHash
+            : pluginThreadInstanceHash({ plugin: input.plugin, space, name: thread.name })
+        record(key, {
+          status: 'admitted',
+          thread: { ...thread, instanceHash },
+          instanceHash,
+          ...(carriedFrom === undefined ? {} : { carriedFrom }),
+          v: PLUGIN_THREADS_REGISTRY_VERSION,
+        })
+      } else if (input.status === 'rejected') {
+        const thread = validateThread(input.thread) ? (input.thread as Thread) : undefined
+        record(key, {
+          status: 'rejected',
+          reason: typeof input.reason === 'string' ? input.reason : 'admission rejected',
+          ...(thread === undefined ? {} : { thread }),
+          ...(carriedFrom === undefined ? {} : { carriedFrom }),
+          v: PLUGIN_THREADS_REGISTRY_VERSION,
+        })
+      }
+      return
+    }
+    if (candidate.type === RECONCILE_EVENT_TYPES.removed) {
+      const input = detail.input as { plugin?: unknown; file?: unknown; hash?: unknown; space?: unknown } | undefined
+      if (typeof input?.plugin !== 'string' || typeof input.file !== 'string' || typeof input.hash !== 'string') return
+      record(
+        pluginThreadRegistryKey({
+          plugin: input.plugin,
+          file: input.file,
+          hash: input.hash,
+          ...(typeof input.space === 'string' ? { space: input.space } : {}),
+        }),
+        { status: 'removed', v: PLUGIN_THREADS_REGISTRY_VERSION },
+      )
+      return
     }
   })
 

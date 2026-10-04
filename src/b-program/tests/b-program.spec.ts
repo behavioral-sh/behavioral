@@ -25,6 +25,7 @@ import { startDecisionsServer } from '../../faculties/tests/fixtures/decisions-s
 import { ASSISTANT_TEXT, startOpenResponsesServer } from '../../faculties/tests/fixtures/model-server.ts'
 import { hashString } from '../../utils.ts'
 import { bProgram, type LaneBuilder } from '../b-program.ts'
+import { pluginThreadsReconcileThreads } from '../plugin-threads.reconcile.ts'
 import {
   PLUGIN_THREADS_REGISTRY_COLLECTION,
   PLUGIN_THREADS_REGISTRY_KEY,
@@ -146,6 +147,7 @@ const packsFor = (names: Set<string>): Thread[] => {
   const packs: Thread[] = []
   if (names.has('shell') && names.has('store')) packs.push(...shellThreads)
   if (names.has('shell')) packs.push(...pluginThreadsThreads)
+  if (names.has('shell') && names.has('store')) packs.push(...pluginThreadsReconcileThreads)
   if (names.has('shell') && names.has('security')) packs.push(...rpcAuthThreads)
   if (names.has('shell') && names.has('security') && names.has('store')) packs.push(...remoteMcpThreads)
   return packs

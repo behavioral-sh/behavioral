@@ -177,6 +177,10 @@ export const runCompositionWorker = ({ threads = [], actuators }: CompositionWor
    */
   const boot = (models: Parameters<typeof bProgram>[0]['models']): Runtime => {
     if (runtime !== undefined) return runtime
+    // (The boot reconciliation pack does NOT mount here: its joins are jq
+    // transforms, and the jq SAB bridge is unavailable in browser realms —
+    // every transform would dead-letter at boot. The daemon's composition is
+    // the reconciliation's host until the jq-in-browser story lands.)
     const booted = bProgram({ threads, models, actuators: laneBuilders })
     // The registry's durable-write legs — over the default leg's socket-lane
     // store (queue-before-open covers the boot window; a fixture-provided
