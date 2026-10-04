@@ -418,6 +418,94 @@ describe('the boot reconciliation — the two-tier diff', () => {
     }
   }, 30_000)
 
+  test('the reload ingress re-runs the reconciliation MID-RUN: a changed plugin mounts without reboot', async () => {
+    // A STANDING snapshot parks on its waitFor — nothing selects at boot, so
+    // the reload's live evidence is unambiguous.
+    const waiter = (plugin: string, instanceHash: number): Thread => ({
+      name: 'greeter',
+      description: 'Test thread.',
+      rules: [{ waitFor: [{ type: 'go' }] }, { request: { type: 'hello' } }],
+      sourceHash: hashString(plugin),
+      instanceHash,
+    })
+    const w = await reconcileWorld({
+      threadBody: body('hello'),
+      seedEntries: async ({ plugin, threadPath }) => {
+        const hash = await fileHash(threadPath)
+        const instanceHash = pluginThreadInstanceHash({ plugin, name: 'greeter' })
+        return {
+          [pluginThreadRegistryKey({ plugin, file: 't.ts', hash })]: {
+            status: 'admitted',
+            thread: waiter(plugin, instanceHash),
+            instanceHash,
+            v: PLUGIN_THREADS_REGISTRY_VERSION,
+          },
+        }
+      },
+    })
+    try {
+      // Boot mounts the snapshot (the unchanged verdict) — parked, silent.
+      await waitForTraces(w.traces, () => threadAdded(w.traces, 'greeter').length > 0)
+      // THE SEMANTIC CHANGE — mid-run, no reboot.
+      writeFileSync(w.threadPath, body('hello2'))
+      w.runtime.trigger({ type: 'plugin_threads_reload', detail: { id: 'reload-1' } })
+      // The landed proposal path re-adjudicates; the new code goes live.
+      await waitForTraces(w.traces, (s) =>
+        s.some(
+          (t) =>
+            t.selected.type === FACULTY_MESSAGE_KINDS.frontier_analysis_request &&
+            (t.selected.detail as { op?: string } | undefined)?.op === 'add_thread',
+        ),
+      )
+      await waitForTraces(w.traces, (s) => s.some((t) => t.selected.type === 'hello2'))
+      expect(selectionsOf(w.traces).some((t) => t.selected.type === 'hello')).toBe(false)
+    } finally {
+      await w.cleanup()
+    }
+  }, 30_000)
+
+  test('the reload ingress tears a deleted plugin down MID-RUN without reboot', async () => {
+    const waiter = (plugin: string, instanceHash: number): Thread => ({
+      name: 'greeter',
+      description: 'Test thread.',
+      rules: [{ waitFor: [{ type: 'go' }] }, { request: { type: 'hello' } }],
+      sourceHash: hashString(plugin),
+      instanceHash,
+    })
+    const w = await reconcileWorld({
+      threadBody: body('hello'),
+      seedEntries: async ({ plugin, threadPath }) => {
+        const hash = await fileHash(threadPath)
+        const instanceHash = pluginThreadInstanceHash({ plugin, name: 'greeter' })
+        return {
+          [pluginThreadRegistryKey({ plugin, file: 't.ts', hash })]: {
+            status: 'admitted',
+            thread: waiter(plugin, instanceHash),
+            instanceHash,
+            v: PLUGIN_THREADS_REGISTRY_VERSION,
+          },
+        }
+      },
+    })
+    try {
+      await waitForTraces(w.traces, () => threadAdded(w.traces, 'greeter').length > 0)
+      rmSync(w.threadPath)
+      w.runtime.trigger({ type: 'plugin_threads_reload', detail: { id: 'reload-2' } })
+      const deadline = Date.now() + 15_000
+      while (!w.traces.some((x) => x.kind === TRACE_MESSAGE_KINDS.thread_removed)) {
+        if (Date.now() > deadline) throw new Error('thread_removed never fired')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      const removed = w.traces.find((x): x is ThreadRemovedTrace => x.kind === TRACE_MESSAGE_KINDS.thread_removed)
+      expect(removed?.thread.name).toBe('greeter')
+      // The record marks removed.
+      const entries = await readRegistryEntries(w.home)
+      expect(Object.values(entries).some((e) => e?.status === 'removed')).toBe(true)
+    } finally {
+      await w.cleanup()
+    }
+  }, 30_000)
+
   test('a space-stamped record mounts stamped exactly as admitted; unknown versions never reconcile', async () => {
     const w = await reconcileWorld({
       threadBody: body('hello'),

@@ -14,7 +14,11 @@ import { useActuator } from '../actuators/use-actuator.ts'
 import type { LaneBuilder } from '../b-program/b-program.ts'
 import { bProgram } from '../b-program/b-program.ts'
 import { INFERENCE_PROXY_PREFIX } from '../b-program/composition-port.ts'
-import { pluginThreadsReconcileThreads } from '../b-program/plugin-threads.reconcile.ts'
+import {
+  pluginThreadsReconcileThreads,
+  RECONCILE_EVENT_TYPES,
+  validatePluginThreadsReload,
+} from '../b-program/plugin-threads.reconcile.ts'
 import { watchPluginThreadRegistry } from '../b-program/plugin-threads.registry.ts'
 import { pluginThreadsThreads } from '../b-program/plugin-threads.threads.ts'
 import { remoteMcpThreads } from '../b-program/remote-mcp.threads.ts'
@@ -54,6 +58,14 @@ export type HostRuntime = Pick<
  * dispatcher. Every carrier (stdio lane, unix socket, later the controller
  * WebSocket) reuses it: one protocol, one dispatcher, multiple carriers.
  *
+ * The reload ingress (`plugin_threads_reload` — the reconciliation's
+ * mid-run re-run) validates its params against the reload detail schema
+ * here (the supervision-override precedent: the schema's description names
+ * the code-execution ceiling);
+ * the CLIENT-CLASS gate (which clients may ask) lives with the carrier that
+ * knows its clients — the socket host taints an unauthenticated composition
+ * declarer and refuses it the reload.
+ *
  * @public
  */
 export const dispatchToRuntime = (runtime: HostRuntime, message: JsonRpcMessage): unknown => {
@@ -70,6 +82,18 @@ export const dispatchToRuntime = (runtime: HostRuntime, message: JsonRpcMessage)
   if (method.startsWith('ui_')) {
     runtime.trigger({ type: method, detail: params as JsonObject })
     return undefined
+  }
+  if (method === RECONCILE_EVENT_TYPES.reload) {
+    // The ingress boundary: the host validates before triggering (the
+    // supervision-override precedent). The schema's description names the
+    // ceiling — a reload is a CODE-EXECUTION trigger. The client-class gate
+    // (driver / sessioned composition vs a tainted stranger) lives in the
+    // socket host's dispatch, the carrier that knows its clients.
+    if (!validatePluginThreadsReload(params)) {
+      throw new Error(`invalid ${RECONCILE_EVENT_TYPES.reload} params`)
+    }
+    runtime.trigger({ type: RECONCILE_EVENT_TYPES.reload, detail: params as JsonObject })
+    return { accepted: true }
   }
   throw new Error(`unknown method: ${method}`)
 }

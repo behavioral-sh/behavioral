@@ -5,6 +5,7 @@ import { behavioralHome } from '../actuators/behavioral-home.ts'
 import { BunKeychain, type Keychain } from '../actuators/keychain-oauth-provider.ts'
 import { bundleBProgramWorker, connectSrcPolicy } from '../b-program/bundle-worker.ts'
 import { traceSpaceOf } from '../b-program/composition-port.ts'
+import { RECONCILE_EVENT_TYPES } from '../b-program/plugin-threads.reconcile.ts'
 import { createUiCapture, uiCaptureFileSink } from '../b-program/ui-capture.ts'
 import type { Trace } from '../behavioral/behavioral.types.ts'
 import { ajv } from '../behavioral/behavioral.types.ts'
@@ -127,8 +128,13 @@ export const createSocketHost = async ({
     .delete()
     .catch(() => {})
 
-  /** The attach lane's clients, with their R3 scope (composition vs driver). */
-  type ClientScope = { scope: 'composition' | 'driver'; space?: string }
+  /**
+   * The attach lane's clients, with their R3 scope (composition vs driver).
+   * `tainted` marks a client whose composition declaration was REFUSED
+   * (unauthenticated) — it stays driver for ordinary traffic but never
+   * regains privileged capabilities (the reload ingress).
+   */
+  type ClientScope = { scope: 'composition' | 'driver'; space?: string; tainted?: boolean }
   const clients = new Map<ServerWebSocket<unknown>, ClientScope>()
   const frame = (method: string, params: unknown): string => JSON.stringify({ jsonrpc: '2.0', method, params })
 
@@ -230,6 +236,28 @@ export const createSocketHost = async ({
           ws.send(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }))
           return
         }
+        // The privileged-method gate: the reload ingress is a CODE-EXECUTION
+        // trigger (the re-import executes the plugin's top level) — a tainted
+        // client (an unauthenticated composition declarer) never reaches the
+        // engine; a sessioned composition client or a driver does.
+        if (parsed.method === RECONCILE_EVENT_TYPES.reload) {
+          const client = clients.get(ws)
+          if (client === undefined || client.tainted === true) {
+            if (parsed.id !== undefined) {
+              ws.send(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: parsed.id,
+                  error: {
+                    code: -32603,
+                    message: `${RECONCILE_EVENT_TYPES.reload} requires a sessioned client (the reload is a code-execution trigger)`,
+                  },
+                }),
+              )
+            }
+            return
+          }
+        }
         if (parsed.id === undefined) {
           // The R3 scope declaration rides the attach lane as its own
           // notification (first frame, transport-level — never dispatched).
@@ -247,6 +275,10 @@ export const createSocketHost = async ({
             const sessioned = (ws.data as { sessioned?: boolean } | undefined)?.sessioned === true
             if (params?.scope === 'composition' && client !== undefined) {
               if (!sessioned) {
+                // The taint: this client's composition ambition is
+                // unauthenticated — privileged capabilities (the reload
+                // ingress) stay closed to it for the connection's life.
+                clients.set(ws, { scope: 'driver', tainted: true })
                 ws.send(frame('attach_scope_rejected', { reason: 'session_required' }))
                 return
               }

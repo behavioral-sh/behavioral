@@ -627,6 +627,64 @@ describe('createSocketHost', () => {
     await host.close()
   })
 
+  test('the reload ingress: a driver triggers it; an unauthenticated composition client CANNOT', async () => {
+    const home = tempHome()
+    const fake = fakeRuntime()
+    const host = await createSocketHost({ runtime: fake.runtime, home })
+    try {
+      // THE DRIVER: reload dispatches — the trigger lands on the runtime.
+      const driver = await attachClient(host.path)
+      driver.sendRaw(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'r1',
+          method: 'plugin_threads_reload',
+          params: { id: 'driver-reload' },
+        }),
+      )
+      const ack = await driver.waitFor<{ id?: string; result?: { accepted?: boolean } }>(
+        (frame) => (frame as { id?: string }).id === 'r1',
+        'the reload ack',
+      )
+      expect(ack.result?.accepted).toBe(true)
+      expect(
+        fake.triggers.some(
+          (t) => t.type === 'plugin_threads_reload' && (t.detail as { id?: string })?.id === 'driver-reload',
+        ),
+      ).toBe(true)
+
+      // THE UNAUTHENTICATED COMPOSITION CLIENT: the scope declaration is
+      // rejected loud (no session) — the client is TAINTED for the reload
+      // capability; the trigger NEVER dispatches.
+      const stranger = await attachClient(host.path)
+      stranger.sendRaw(
+        JSON.stringify({ jsonrpc: '2.0', method: 'attach_scope', params: { scope: 'composition', space: 'tab_x' } }),
+      )
+      await stranger.waitFor<{ method: string }>(
+        (frame) => (frame as { method?: string }).method === 'attach_scope_rejected',
+        'the scope rejection',
+      )
+      stranger.sendRaw(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'r2',
+          method: 'plugin_threads_reload',
+          params: { id: 'stranger-reload' },
+        }),
+      )
+      const refusal = await stranger.waitFor<{ id?: string; error?: { message?: string } }>(
+        (frame) => (frame as { id?: string }).id === 'r2',
+        'the reload refusal',
+      )
+      expect(refusal.error?.message).toContain('reload')
+      expect(fake.triggers.some((t) => (t.detail as { id?: string } | undefined)?.id === 'stranger-reload')).toBe(false)
+      driver.close()
+      stranger.close()
+    } finally {
+      await host.close()
+    }
+  })
+
   test('the conventional worker route serves the self-booting composition bundle', async () => {
     const home = tempHome()
     const fake = fakeRuntime()

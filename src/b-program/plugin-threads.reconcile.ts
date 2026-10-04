@@ -32,7 +32,7 @@
  * @packageDocumentation
  */
 
-import type { Thread } from '../behavioral/behavioral.types.ts'
+import { ajv, type Thread } from '../behavioral/behavioral.types.ts'
 import {
   PLUGIN_THREAD_IMPORT_SCRIPT,
   PLUGIN_THREADS_DIR,
@@ -45,6 +45,8 @@ import {
 export const RECONCILE_EVENT_TYPES = {
   /** The (re)trigger — the boot once-thread requests it; the reload ingress re-issues it. */
   reconcile: 'plugin_threads_reconcile',
+  /** The reload ingress — the host-validated trigger that re-runs the reconciliation mid-run. */
+  reload: 'plugin_threads_reload',
   /** The per-entry walk's carry event — the queue rides the events. */
   queue: 'plugin_threads_reconcile_queue',
   /** The stat verdict event — the join's single fan-out point (no empty-select noise). */
@@ -123,6 +125,54 @@ const RECONCILE_TRIGGER_SCHEMA = {
   required: ['id'],
   additionalProperties: false,
 } as const
+
+/**
+ * The reload ingress's detail schema — THE TRUST BOUNDARY (the
+ * supervision-override precedent): the listener's gate. NAME THE CEILING:
+ * a reload is a CODE-EXECUTION trigger — re-importing a changed plugin
+ * executes the plugin file's top level (shell_request-class power arriving
+ * over ingress); every changed candidate still passes the admission
+ * judgment, but this event must only ever arrive from a trusted driver or
+ * a sessioned client (the socket host's client-class gate is the other
+ * half of the boundary).
+ */
+export const PLUGIN_THREADS_RELOAD_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      minLength: 1,
+      description: 'The reload pass id — disambiguates concurrent reconciliation passes.',
+    },
+  },
+  required: ['id'],
+  additionalProperties: false,
+} as const
+
+/** The reload detail's boundary — hosts validate ingress before triggering. */
+export const validatePluginThreadsReload = ajv.compile(PLUGIN_THREADS_RELOAD_SCHEMA as never)
+
+/**
+ * reload-issue — the reload ingress re-runs the reconciliation MID-RUN: a
+ * standing transform (any number of reloads), gated by the reload detail
+ * schema — the trust boundary. The pass id derives from the reload's own id.
+ */
+const reloadIssue: Thread = {
+  name: 'plugin-threads/reconcile-reload-issue',
+  description: 'The reload ingress: re-runs the plugin-thread reconciliation mid-run.',
+  rules: [
+    {
+      transform: [
+        {
+          type: RECONCILE_EVENT_TYPES.reload,
+          query: '. as $d | { id: ($d.id + "-pass") }',
+          target: RECONCILE_EVENT_TYPES.reconcile,
+          detailSchema: PLUGIN_THREADS_RELOAD_SCHEMA as never,
+        },
+      ],
+    },
+  ],
+}
 
 /**
  * read-issue — a reconcile trigger reads the registry record; the pass id
@@ -615,6 +665,7 @@ const importJoin: Thread = {
 /** The plugin-threads boot reconciliation threads — mounted by the entry with shell + store on. */
 export const pluginThreadsReconcileThreads: Thread[] = [
   reconcileBoot,
+  reloadIssue,
   readIssue,
   queueIssue,
   entryIssue,
