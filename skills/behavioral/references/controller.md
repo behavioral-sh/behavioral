@@ -100,7 +100,7 @@ What keeps the wire safe across every host:
 ## The ui_* producer threads
 
 Nothing above emits `ui_*` on the agent side by itself — the view-generation
-policy is composition threads: `src/cli/ui-threads.ts`, mounted by `bProgram`
+policy is composition threads: `src/b-program/ui-threads.ts`, mounted by `bProgram`
 when shell + store + systemTwo are all on (absent systemTwo there is no
 generation lane and the threads don't mount). The shape is a dispatcher +
 per-trigger pipelines: a STANDING set (the boot design scan, the tenant +
@@ -108,7 +108,7 @@ artifact compile, the render gate) plus, on each `render` ingress, one MINTED
 pipeline — `uiPipelineThreads({ id, detail })`, six once-threads added by the
 composition's host leg (b-program's pump, the admission-path precedent) — so
 concurrent triggers interleave without dropping and every correlation id is
-per-trigger (`<id>-scale`/`-tenant`/`-gen`/`-render`/`-style`, label
+per-trigger (`<id>-scale`/`-tenant`/`-gen`/`-render`/`-attrs`, label
 `ui/pipeline:<id>/<leg>`). The vertical is the same — ingress `ui_event` →
 scale preflight → generation → `ui_render` — refined by the autoresearch
 loop, not by argument.
@@ -199,7 +199,11 @@ their DESCENDANTS, never the target root. An innerHTML swap PRESERVES the
 target's attributes (`replaceChildren` never touches attributes); the
 outerHTML case replaces the element — the per-trigger re-issue re-applies.
 Emitted BEFORE the `ui_render` when a token-bearing tenant exists; plain (no
-tenant, no tokens) emits nothing. The declarations are jq-deterministic from
+tenant, no tokens) emits nothing. ORDERING: the boot design scan is a
+standing thread — a render that beats the scan styles PLAIN (no tenant yet,
+correct no-lock behavior); the NEXT render styles, once the tenant has
+landed. No lock, no wait — the ordering is the artifact of the standing-scan
+timing, never a gate. The declarations are jq-deterministic from
 validated tenant tokens — no model in the loop, no standing gate (the render
 gate exists for MODEL output). MINIMAL: the `=` selector match only (match
 variants ride a named need); the store artifact remains the durable record
@@ -209,7 +213,7 @@ for other consumers.
 
 The initial thread set is a **first hypothesis refined by measurement, not
 argument**. The capture lane: an in-process RAW `useTrace` consumer
-(`src/cli/ui-capture.ts`, mounted by the socket host — the TUI/start path)
+(`src/b-program/ui-capture.ts`, mounted by the socket host — the TUI/start path)
 writes each ui-pipeline run to `<home>/captures/ui-runs.jsonl` as
 `{ pipeline, startedAt, threads, reentries, messages }`. Runs are LINEAGE-keyed
 — keyed by the minted pipeline id parsed from thread labels, correlation ids,

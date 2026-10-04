@@ -205,6 +205,14 @@ spine), `remote-mcp.threads.ts` (the MCP layering over the rpc op),
 `plugin-threads.threads.ts` (the plugin-thread proposal path — dispatcher,
 import join, candidate carry, add_thread dispatch; the import script's
 ENGINE_SCHEMA_HOME is resolved against this file's location),
+`plugin-threads.registry.ts` (the STORE-RESIDENT admission registry — ONE
+root-space record `plugin-threads`/`registry`, whole-doc get/put, the
+entry-side watcher writing verdicts via trigger-based store puts with lazy
+seed + exit flush; the file registry under `<home>` is DEAD), and
+`plugin-threads.reconcile.ts` (the boot/reload reconciliation pack — the
+two-tier diff: file re-hash unchanged → mount from snapshot, never
+re-import; changed → re-import + deepEqual → carried or re-proposal; the
+live mount/remove legs ride the admission-outcome stamping),
 `ui-threads.ts` (the `ui_*` producer threads — the view-generation policy:
 the standing design.md scan → store tenant + artifact compile + render
 gate, plus the per-trigger pipeline factory `uiPipelineThreads` (six
@@ -236,7 +244,13 @@ lane's ROUND-TRIP PIN (`useWorker` ↔ `createWorker` over a real Bun web
 Worker), the composition's bundle gate + WebView spec, and every moved
 pack's specs.
 **`src/behavioral/`** — the pure language layer: types, constants, utils, the interpreter core
-(`behavioral.ts`), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
+(`behavioral.ts` — the engine surface: `running`/`pending` are identity-keyed MAPS
+(`i:<instanceHash>` for instance-stamped threads, mint-unique `u:<uuid>` keys for
+ephemeral ones); `removeThread({ instanceHash })` stages removal applied at the top of
+the next `step()`, traced `thread_removed` — the addThread re-entry-law mirror; only
+instance-hash-keyed entries are removal-addressable, and THE THIRD HASH's one-line job:
+djb2(canonical plugin path + space + thread name) — content never enters identity, so
+removal addresses survive rewrites), and its internal jq subprocess (`jq.worker.ts` — engine-internal, wire-external;
 nothing outside behavioral/ speaks its wire). The jq SAB bridge is
 browser-shaped: the pool stays down where `SharedArrayBuffer` is absent
 (`jq_unavailable` errors-as-data), `unref` is the optional structural call,
@@ -268,15 +282,20 @@ env-var-name references, never literals. The
 fleet (0 tools); turn/config commands land here as the composition rulings build out. The
 JSON-RPC IPC host lives here too: `serve.ts` (the `serve` entry —
 `createRuntime` spawns the actuator trio per the config allow-list, mints
-the thread packs + models, folds the plugin-thread registry; ingress
+the thread packs + models, mounts the store-resident plugin-thread registry
+watcher (store on) + the reconcile pack (shell + store on); ingress
 messages → triggers, `ui_*` selections → client notifications, redacted
 traces out), `load-config.ts` (`<BEHAVIORAL_HOME>/config.ts` — the actuator
 allow-list plus model identifiers; the shape is closed, legacy keys fail
-fast), `trace-consumer.ts`, and
-`plugin-thread-registry.ts` (the plugin-thread admission registry under `<home>` —
-host-local, keyed (plugin, file, content hash, space): admitted snapshots
-fold into the `threads` array at boot, decided keys never re-adjudicate)
-— the registry is ENTRY-side, never a bProgram concern.
+fast), and `trace-consumer.ts`. The FILE-BASED plugin-thread registry
+(`<home>/plugin-threads.json`, the `plugin-thread-registry.ts` entry) is
+DEAD — the registry record lives in the store (plugin-threads.registry.ts,
+b-program home) and the boot fold is the reconcile pack. The
+`plugin_threads_reload` JSON-RPC method is HOST-AUTHORITY ingress — the
+schema's description names the code-execution ceiling; the socket host
+taint-gates it (unauthenticated composition-scope declarations taint the
+client; tainted or unknown clients get a typed refusal, the trigger never
+dispatches).
 **`src/utils/`** — shared pure utilities.
 **`src/faculties/system-one.threads.ts` + `system-one.faculty.ts`** — the
 admission judgment threads (the BP-native blocking judge over the Decisions

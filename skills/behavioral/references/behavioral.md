@@ -59,6 +59,7 @@ JSON Schema (draft 2020-12), compiled at registration.
 | `addThread(args)` | `(args: Thread) => void` | Register a b-thread (`{ label, rules, once?, space? }`). The thread's optional `space` field stamps all its idioms (applied at registration). Inert — does not start a super-step. |
 | `trigger(event)` | `(event: BPEvent) => void` | Inject an external event (the event carries `space`; absent = root). Triggered candidates carry `ingress: true`, have highest priority (0), and can be blocked. Initiates a super-step. |
 | `useTrace(listener)` | `(listener) => Disconnect` | Observe internal state traces emitted after each event selection. Does not affect execution. |
+| `removeThread(args)` | `(args: { instanceHash?: number }) => void` | Stage a removal for an instance-hash-stamped thread. Inert until the next super-step — removal applies at the top of `step()` (the addThread re-entry-law mirror), tearing down the generator + any pending bid, traced `thread_removed`. Only `i:<instanceHash>`-keyed entries are removal-addressable (ephemeral `u:`-keyed threads are never); content never enters identity, so a removal address survives rewrites. |
 | `step()` | `() => void` | Pump one super-step. The internal re-entry primitive — `addThread` alone is inert, so every re-entry pairs the thread addition with a `step()` pump. |
 | `instanceId` | `string` | The per-process identity the engine self-mints and stamps on every trace. Exposed so a host can hand the identity to its clients without sniffing the trace wire (silent on an idle instance). |
 
@@ -278,6 +279,7 @@ op.
 | `transform_error` | `step`, `transformer`, `reason`, `stderr?`, `exitCode?` | A transform contract failed (jq error, no detail, empty or non-object output); the target never fires |
 | `add_thread_error` | `error` (AJV errors), `space?` | `addThread` rejected invalid args / un-compilable `detailSchema` |
 | `trigger_error` | `error` (AJV errors), `space?` | `trigger` rejected an invalid `BPEvent` |
+| `thread_removed` | `instanceHash`, `thread` | A staged `removeThread` applied at the top of a super-step — the thread's generator + pending bid tore down (traced even when the target was already displaced; replay = `thread_added` minus `thread_removed`) |
 
 The three error kinds are the engine's failure surfaces, and all are
 **traces, not throws** — invalid input is reported as data and the program
