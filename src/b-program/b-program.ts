@@ -19,7 +19,10 @@ import {
   validateSystemTwoRequestEvent,
   validateTransformRequestEvent,
 } from '../faculties/faculties.types.ts'
-import { admissionReviewThreads } from '../faculties/frontier-analysis.threads.ts'
+import {
+  admissionCandidateMintThreads,
+  admissionStructuralOutcomeThreads,
+} from '../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
   admissionJudgmentThreads,
@@ -231,13 +234,19 @@ export const bProgram = ({
   // The host-minted policy packs.
   facultyAddThreads(hostThreads)
 
-  // The admission packs: keyed on the model config (data, not faculty
-  // presence — the systemOne faculty is fixed). With the systemOne payload
-  // the judged path mounts (block-then-judge over the Decisions lane);
-  // otherwise the structural review pack IS the BP-native admission gate —
-  // livelocked proposals reject visibly, as events.
+  // The admission orchestration is COMPOSITION-INTERNAL thread data (the
+  // orchestration ruling; hosts never pass these — the ownership guard pins
+  // it). The candidate mint is ALWAYS-mounted: a both-legs-ok add_thread
+  // verdict mints thread_candidate (the judgment pack's issue waits on it;
+  // the structural outcome maps it). The OUTCOME STAGE is mode-exclusive:
+  // without the systemOne payload the structural outcome IS the BP-native
+  // admission gate — livelocked proposals reject visibly, as events; with
+  // it the judged path mounts (block-then-judge over the Decisions lane).
+  // NEVER stacked — a stacked structural outcome + judgment gate is the
+  // reject-then-admit bug.
+  facultyAddThreads(admissionCandidateMintThreads)
   if (models.systemOne === undefined) {
-    facultyAddThreads(admissionReviewThreads)
+    facultyAddThreads(admissionStructuralOutcomeThreads)
   } else {
     facultyAddThreads(admissionJudgmentThreads)
   }
@@ -498,33 +507,15 @@ export const bProgram = ({
               ? ((detail as { error?: { message?: string } } | undefined)?.error?.message ?? 'invalid proposal')
               : `structural verdict: ${(detail?.result as { status?: string } | undefined)?.status ?? 'failed'}`
         }
-        if (detail?.ok === true && thread && detail.result?.ok === true) {
-          // The verdict is the candidate record — emitted ALWAYS: with the
-          // judgment pack mounted it is the judge's trigger (the block-then-
-          // judge path); with only the structural review pack mounted it
-          // finds no consumer and the review pack's own verdict threads map
-          // THIS selection to thread_admission / thread_admission_rejected —
-          // the outcome legs above own the write. The id stays registered
-          // until the outcome.
-          addThreads([
-            {
-              name: `thread-candidate:${id}`,
-              description: 'Carries one imported plugin thread into the admission lane for judgment.',
-              once: true,
-              rules: [
-                {
-                  request: {
-                    type: ADMISSION_EVENT_TYPES.candidate,
-                    detail: { id, thread: thread as unknown as JsonObject },
-                  },
-                },
-              ],
-            },
-          ])
-        } else {
+        if (!(detail?.ok === true && thread && detail.result?.ok === true)) {
           // The rejection is data — the requester reads the why from the
           // verdict trace. A plugin-threads candidate's in-run decided key
-          // records here (the durable record is the entry's).
+          // records here (the durable record is the entry's). An OK verdict
+          // mints NOTHING here: the candidate is the ALWAYS-mounted
+          // candidate-mint thread's selection (the orchestration ruling:
+          // thread data, not a composition mint) — the composition keeps
+          // only the authorization (the pending id) and the outcome stage's
+          // write legs consume it.
           pendingAdmissions.delete(id)
           if (pluginMeta !== undefined) {
             decidedKeys.set(decidedKey(pluginMeta), {

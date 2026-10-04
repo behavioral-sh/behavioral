@@ -789,6 +789,54 @@ describe('bProgram — the runtime composition', () => {
       }
     })
 
+    test('the candidate mint is thread data: the candidate is thread-minted and the composition mints nothing', async () => {
+      const { runtime, traces } = startRuntime()
+      try {
+        // The orchestration ruling (slice 2): the candidate mint moved OUT of
+        // the composition's pump into an always-mounted root-stamped thread
+        // over the verdict envelope's echoed thread. The structural flow is
+        // proposal → verdict → candidate → admission with ZERO composition
+        // mints: the old pump-minted `thread-candidate:<id>` once-thread name
+        // never appears, while the candidate still selects (the structural
+        // outcome's consumer) and the write leg still admits.
+        runtime.trigger(
+          addThreadRequest('cm1', {
+            name: 'minted-greeter',
+            description: 'Test thread.',
+            once: true,
+            rules: [{ request: { type: 'ping' } }],
+          }),
+        )
+        // The candidate is a real selection — thread-minted (the judgment
+        // pack's issue waits on the same selection in judged mode).
+        await waitForTraces(traces, (s) =>
+          s.some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.candidate &&
+              (t.selected.detail as { id?: string }).id === 'cm1',
+          ),
+        )
+        // ZERO composition mints: the pump's mint thread name is gone.
+        expect(
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              ((t as { thread?: { name?: string } }).thread?.name ?? '').startsWith('thread-candidate:'),
+          ),
+        ).toBe(false)
+        // The flow completes: the outcome stage admits, the write leg mounts.
+        await waitForTraces(traces, () =>
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'minted-greeter',
+          ),
+        )
+      } finally {
+        runtime.terminate()
+      }
+    })
+
     test('the structural rejection is BP-native: a livelocked proposal maps to a thread_admission_rejected selection', async () => {
       const { runtime, traces } = startRuntime()
       try {

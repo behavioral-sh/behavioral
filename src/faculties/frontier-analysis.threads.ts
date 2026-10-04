@@ -1,7 +1,7 @@
 import type { Thread } from '../behavioral/behavioral.types.ts'
 import { ThreadSchema } from '../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from './faculties.constants.ts'
-import { ADMISSION_EVENT_TYPES } from './system-one.threads.ts'
+import { ADMISSION_CANDIDATE_SCHEMA, ADMISSION_EVENT_TYPES } from './system-one.threads.ts'
 
 /**
  * The frontier faculty's admission-review threads and policy — the
@@ -145,24 +145,59 @@ const reviewGate: Thread = {
 }
 
 /**
- * admission-review-verdict — the verdict maps to the outcome; everything but
- * an approving verdict rejects. Both listeners are jq filters over the same
- * result envelope; each emits only on its own select() — the jq is the
- * conditional (the transform idiom's two-outcome pattern, per the judgment
- * pack). Fail-closed: the only road to admission is a conforming verdict.
+ * admission-candidate-mint — the candidate mint as THREAD DATA (the
+ * orchestration ruling): a both-legs-ok `add_thread` verdict mints
+ * `thread_candidate { id, thread }` — the id rides the correlation, the
+ * thread rides the verdict envelope's own echo (`result.thread` — the op
+ * echoes the proposal verbatim, so no composition join is needed). The
+ * detail schema is the scoping gate: only an add_thread verdict echoes a
+ * thread, so replay/explore results pass the gate by. Root-stamped (no
+ * umwelt field): the mint sees every umwelt, and the candidate carries the
+ * proposed thread's own stamp — the outcome stage never assumes root.
+ * ALWAYS-MOUNTED by the composition; never host-passable (the ownership
+ * guard pins it).
  */
-const reviewVerdict: Thread = {
-  name: 'frontier/admission-review-verdict',
-  description: 'Maps the frontier review verdict to admit/reject; only a conforming approving verdict admits.',
+const admissionCandidateMint: Thread = {
+  name: 'frontier/admission-candidate-mint',
+  description: 'Maps a both-legs-ok add_thread verdict to the thread_candidate record for the admission lane.',
   rules: [
     {
       transform: [
         {
           type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
           query:
-            '. as $d | select(($d.ok // false) == true and ($d.result.ok // false) == true) | { id: $d.id, admit: true }',
-          target: ADMISSION_EVENT_TYPES.admitted,
+            '. as $d | select(($d.ok // false) == true and ($d.result.ok // false) == true) | { id: $d.id, thread: $d.result.thread }',
+          target: ADMISSION_EVENT_TYPES.candidate,
           detailSchema: ADD_THREAD_RESULT_SCHEMA,
+        },
+      ],
+    },
+  ],
+}
+
+/**
+ * admission-structural-outcome — the structural mode's outcome stage: the
+ * thread-minted candidate maps to `thread_admission` (the candidate exists
+ * ONLY on a both-legs-ok verdict — the structural analysis already gated
+ * it), and a failed verdict maps to `thread_admission_rejected`. The two
+ * listeners are jq filters over disjoint sources (the candidate vs the
+ * failed result envelope); each emits only on its own select(). Fail-closed:
+ * the only road to a structural admission is a minted candidate — and the
+ * only road to a candidate is a conforming approving verdict. TIGHTEN-only:
+ * a model never overrides a structural reject — the judgment layer reviews
+ * what structural passed, never what it failed.
+ */
+const admissionStructuralOutcome: Thread = {
+  name: 'frontier/admission-structural-outcome',
+  description: 'Maps the structural candidate to admission and the failed verdict to rejection — structural mode only.',
+  rules: [
+    {
+      transform: [
+        {
+          type: ADMISSION_EVENT_TYPES.candidate,
+          query: '. as $d | { id: $d.id, admit: true }',
+          target: ADMISSION_EVENT_TYPES.admitted,
+          detailSchema: ADMISSION_CANDIDATE_SCHEMA,
         },
         {
           type: FACULTY_MESSAGE_KINDS.frontier_analysis_request_result,
@@ -177,10 +212,17 @@ const reviewVerdict: Thread = {
 }
 
 /**
- * The structural admission review threads — the BP-native reviewer the
- * composition mounts WITHOUT judgment (mode-exclusive with the judgment
- * pack: with systemOne, the candidate record routes through the Decision
- * instead). The composition still owns the write: `thread_admission`
- * selections admit via the pending-id map (the authorization).
+ * The candidate mint — ALWAYS-MOUNTED by the composition (mode-independent:
+ * both outcome stages consume its selection — the structural outcome maps
+ * candidate → admission, the judgment pack's issue waits on it).
  */
-export const admissionReviewThreads: Thread[] = [reviewGate, reviewVerdict]
+export const admissionCandidateMintThreads: Thread[] = [admissionCandidateMint]
+
+/**
+ * The structural admission outcome stage — mounts WITHOUT judgment (mode-
+ * exclusive with the judgment pack: with systemOne, the candidate routes
+ * through the Decision instead). The composition still owns the write:
+ * `thread_admission` selections admit via the pending-id map (the
+ * authorization).
+ */
+export const admissionStructuralOutcomeThreads: Thread[] = [reviewGate, admissionStructuralOutcome]
