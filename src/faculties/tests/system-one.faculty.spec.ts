@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { JsonObject } from '../../behavioral/behavioral.types.ts'
 import { FACULTY_MESSAGE_KINDS } from '../faculties.constants.ts'
-import { validateSystemOneInput } from '../system-one.schemas.ts'
+import { validateSystemOneInput, validateSystemOneOutput } from '../system-one.schemas.ts'
 import { spawnFacultyWorker } from './faculty-harness.ts'
 import { DECISIONS_MODEL, startDecisionsServer } from './fixtures/decisions-server.ts'
 
@@ -49,6 +49,31 @@ describe('system one input schema — the question union', () => {
 
   test('rejects an empty question set', () => {
     expect(validateSystemOneInput({ state: 'x', questions: {} })).toBe(false)
+  })
+})
+
+describe('system one output schema — the response envelope', () => {
+  test('accepts the live endpoint envelope — usage may carry a cost field', () => {
+    // The OpenRouter Decisions alpha added `usage.cost` after the faculty
+    // schema was written (jev-iteration-0 Slice 1 capture, 2026-10-03):
+    // additionalProperties: false rejected every real response as error data.
+    expect(
+      validateSystemOneOutput({
+        model: 'typesafe/jev-1.13-20260917',
+        answers: {
+          team: { type: 'choice', choice: 'billing', probabilities: { billing: 0.86, tech: 0.1 }, confidence: 0.79 },
+          urgent: { type: 'noul', noul: 0.71 },
+          mood: {
+            type: 'score',
+            score: 1.05,
+            legend: { '0': 'Calm', '1': 'Angry' },
+            probabilities: { '0': 0, '1': 0.95 },
+            confidence: 0.92,
+          },
+        },
+        usage: { input_tokens: 415, output_tokens: 72, cost: 0.00001743 },
+      }),
+    ).toBe(true)
   })
 })
 

@@ -185,7 +185,7 @@ export const SystemOneOutputSchema = {
     },
     usage: {
       type: 'object',
-      properties: { input_tokens: { type: 'integer' }, output_tokens: { type: 'integer' } },
+      properties: { input_tokens: { type: 'integer' }, output_tokens: { type: 'integer' }, cost: { type: 'number' } },
       additionalProperties: false,
     },
   },
