@@ -4,15 +4,14 @@
   "workspaces": {
     "": {
       "name": "@behavioral/sh",
-      "dependencies": {
-        "ajv": "8.20.0",
-      },
       "devDependencies": {
         "@biomejs/biome": "2.5.12",
         "@commitlint/cli": "21.2.2",
         "@commitlint/config-conventional": "21.2.2",
         "@types/bun": "^1.4.1",
+        "@varlock/1password-plugin": "^2.0.4",
         "@webref/css": "^8.7.4",
+        "ajv": "8.20.0",
         "commitlint": "21.2.2",
         "css-tree": "^3.2.1",
         "cz-conventional-changelog": "3.3.0",
@@ -20,6 +19,7 @@
         "jq-wasm": "^3.0.0-jq-1.8.2",
         "lint-staged": "17.4.1",
         "typescript": "7.0.2",
+        "varlock": "^1.21.1",
         "zod": "4.5.4",
       },
     },
@@ -148,6 +148,16 @@
     "@typescript/typescript-win32-arm64": ["@typescript/typescript-win32-arm64@7.0.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ=="],
 
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
+
+    "@varlock/1password-plugin": ["@varlock/1password-plugin@2.0.4", "", { "peerDependencies": { "varlock": "^1.17.1" } }, "sha512-/+oM5v4NnN6KBxeJAAVCZt9UvHgLq1LxvLEgTM/CnuCjPBXQtvFCaB1qoYU/FgabebsIsHonjLV9HAorKQYLgA=="],
+
+    "@varlock/native-helper-darwin": ["@varlock/native-helper-darwin@1.21.1", "", { "os": "darwin" }, "sha512-hh7lB6cO/qEVJTgPY5ebVicwnbM7ROkIWjOkZ+k6PYWaoyj+UrUTymF5nHkqzg0TaZ+EA5z/eboFoZhrbsOHGw=="],
+
+    "@varlock/native-helper-linux-arm64": ["@varlock/native-helper-linux-arm64@1.21.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-ppN2UIrJKDVALBzZwVXzIokAch8j2eyeABEHZn5LkMS3auXBVdVVkqN9QPIe7/Ii91LIV5mwWMeVJrV1paTI5Q=="],
+
+    "@varlock/native-helper-linux-x64": ["@varlock/native-helper-linux-x64@1.21.1", "", { "os": "linux", "cpu": "x64" }, "sha512-jAbIyjBJ0gyyg4C95P7KXufXtCR/K624Gib/6CUasO6dBnYVJ0SpbK2Ym41jgDYlJuYgkLKJuUHSrGNcAflzcA=="],
+
+    "@varlock/native-helper-win32-x64": ["@varlock/native-helper-win32-x64@1.21.1", "", { "os": [ "linux", "win32", ] }, "sha512-HaEry0HnJPY+opHiNUgQvpQ1yFZMMIVmpLZExTinQXu9Im81aovoR1By6LQsx1H4qFDyeEqcq2glV74WzHCNyA=="],
 
     "@webref/css": ["@webref/css@8.7.5", "", { "peerDependencies": { "css-tree": "^3.2.1" } }, "sha512-VQygoDH6OptDhYib3Uxo2e1uftOv2Tx9yddzUyAXOmsLquyrV46w5VzXla2kPAIK70+Lo56NzzrltKMqiBrrLg=="],
 
@@ -440,6 +450,8 @@
     "universalify": ["universalify@2.0.1", "", {}, "sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw=="],
 
     "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
+
+    "varlock": ["varlock@1.21.1", "", { "optionalDependencies": { "@varlock/native-helper-darwin": "1.21.1", "@varlock/native-helper-linux-arm64": "1.21.1", "@varlock/native-helper-linux-x64": "1.21.1", "@varlock/native-helper-win32-x64": "1.21.1" }, "bin": { "varlock": "bin/cli.js" } }, "sha512-Qfy8/3DBEDlPcfQ8gR/Qs7YA5ERmUT2g0GqMPwz/uL00UqP8/heAAUGrwoBO8H6l4tWjPG35Ews680I78Ci0Aw=="],
 
     "wcwidth": ["wcwidth@1.0.1", "", { "dependencies": { "defaults": "^1.0.3" } }, "sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg=="],
 
