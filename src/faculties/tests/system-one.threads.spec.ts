@@ -125,18 +125,18 @@ describe('system-one admission judgment threads', () => {
     }
   })
 
-  test('a malformed Decision result is error data — fail-closed rejection, no throw', async () => {
-    // The fixture answers junk: the systemOne faculty's OUTPUT SCHEMA rejects
-    // it — the judgment result comes back the typed error and the pack's
-    // fail-closed path rejects the candidate. The old harness fed the junk
-    // past the faculty; through the composition the schema gate is the first
-    // line — the pin's intent (a hostile answer never admits, never throws)
-    // holds at the faculty boundary.
+  test('a malformed Decision result is error data — the outage hold, never a throw', async () => {
+    // RE-PIN (the outage ruling, 2026-10-03): the fixture answers junk — the
+    // systemOne faculty's OUTPUT SCHEMA rejects it and the judgment result
+    // comes back the typed error (ok:false). The typed error is the
+    // judge-UNAVAILABLE shape: the pack maps it to the HOLD-AND-RETRY marker,
+    // never a durable rejection — fail-closed means HELD (the candidate never
+    // admits), and the composition's hosted retries drive from here.
     const { drive, server } = await judgmentDrive({ junkAnswer: true })
     try {
       drive.trigger(candidate('at3', 'sneaky'))
       await drive.waitUntil((sel) =>
-        sel.some((s) => s.type === ADMISSION_EVENT_TYPES.rejected && (s.detail?.id as string) === 'at3'),
+        sel.some((s) => s.type === ADMISSION_EVENT_TYPES.judgeUnavailable && (s.detail?.id as string) === 'at3'),
       )
       expect(
         drive.selected.some((s) => s.type === ADMISSION_EVENT_TYPES.admitted && (s.detail?.id as string) === 'at3'),
@@ -151,17 +151,23 @@ describe('system-one admission judgment threads', () => {
     }
   })
 
-  test('a faculty error result is error data — the candidate rejects, never admits', async () => {
-    // Every decision request rate-limits: the faculty retries (4 attempts)
-    // and fails through to the typed error — the candidate rejects.
+  test('a faculty error result is error data — the outage hold, the candidate never admits', async () => {
+    // RE-PIN (the outage ruling, 2026-10-03): every decision request
+    // rate-limits — the faculty retries (4 attempts) and fails through to
+    // the typed error. The typed error HOLDS (the judge-unavailable marker,
+    // the composition-hosted re-issues bounded at 3) — the candidate never
+    // admits, and no durable rejection ever fires for an outage.
     const { drive, server } = await judgmentDrive({ rateLimitFirst: 99 })
     try {
       drive.trigger(candidate('at4', 'unlucky'))
       await drive.waitUntil((sel) =>
-        sel.some((s) => s.type === ADMISSION_EVENT_TYPES.rejected && (s.detail?.id as string) === 'at4'),
+        sel.some((s) => s.type === ADMISSION_EVENT_TYPES.judgeUnavailable && (s.detail?.id as string) === 'at4'),
       )
       expect(
         drive.selected.some((s) => s.type === ADMISSION_EVENT_TYPES.admitted && (s.detail?.id as string) === 'at4'),
+      ).toBe(false)
+      expect(
+        drive.selected.some((s) => s.type === ADMISSION_EVENT_TYPES.rejected && (s.detail?.id as string) === 'at4'),
       ).toBe(false)
     } finally {
       drive.terminate()

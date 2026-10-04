@@ -25,10 +25,11 @@ import {
 } from '../faculties/frontier-analysis.threads.ts'
 import {
   ADMISSION_EVENT_TYPES,
+  ADMISSION_MAX_JUDGE_RETRIES,
   admissionJudgmentThreads,
   validateAdmissionVerdict,
 } from '../faculties/system-one.threads.ts'
-import { deepEqual, uuid } from '../utils.ts'
+import { deepEqual, jitteredBackoffMs, uuid } from '../utils.ts'
 import { RECONCILE_EVENT_TYPES } from './plugin-threads.reconcile.ts'
 import { pluginThreadInstanceHash } from './plugin-threads.registry.ts'
 import { PLUGIN_THREADS_EVENT_TYPES } from './plugin-threads.threads.ts'
@@ -93,6 +94,7 @@ export const bProgram = ({
   threads: hostThreads = [],
   models = {},
   actuators = [],
+  scheduler: hostSchedulerConfig,
 }: {
   /**
    * The host-minted policy packs: shell threads, rpc-auth, remote-mcp,
@@ -117,7 +119,22 @@ export const bProgram = ({
   }
   /** The pre-built actuator lanes — reachability is construction, never config. */
   actuators?: LaneBuilder[]
+  /**
+   * The OUTAGE SHAPE's timer host (the composition is the engine's FIRST
+   * timer — the engine has no timer event source): schedules the admission
+   * judge re-issues on the capped-exponential full-jitter backoff. Defaults
+   * to the globals; the specs inject a deterministic scheduler and drive the
+   * timers by hand, asserting the jitter bounds.
+   */
+  scheduler?: {
+    setTimeout: (fn: () => void, ms: number) => unknown
+    clearTimeout: (handle: unknown) => void
+  }
 }) => {
+  const hostScheduler = hostSchedulerConfig ?? {
+    setTimeout: (fn: () => void, ms: number): unknown => setTimeout(fn, ms),
+    clearTimeout: (handle: unknown): void => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  }
   // The ownership guard (the orchestration ruling, belt not load-bearing):
   // the admission orchestration packs are composition-internal thread data.
   // A host passing one double-mounts it beside the composition's own mount
@@ -308,6 +325,79 @@ export const bProgram = ({
    * engine's duplicate-identity guard stays a fail-visible backstop).
    */
   const mountedInstances = new Set<number>()
+
+  // ── The OUTAGE SHAPE (the 2026-10-03 ruling) — the composition-hosted
+  // judge re-issue: the engine has no timer event source, so the backoff
+  // schedule lives HERE (the composition's first timer), the algorithm the
+  // websocket-transport `#retry` shape — capped exponential with full
+  // jitter, the one shared home (`jitteredBackoffMs`). A judge-unavailable
+  // outcome (the typed-error result or a systemOne lane death) holds the
+  // candidate's admission — the gate never lifts on the hold event — and
+  // re-issues the SAME Decision, bounded at the pack's retry budget. The
+  // re-issue is the candidate RE-EMISSION: it rides the issue thread's jq
+  // (the Decision-input policy stays in the pack) and re-arms the gate.
+  // NO decided record writes on any outage leg; exhaustion leaves the
+  // candidate UNDECIDED (held, fail-visible — the next boot/reload
+  // re-adjudicates for free), the gate lifts, an explicit judged NO stays
+  // durable.
+  /** The outage bookkeeping: candidate id → the re-issues fired (bounded). */
+  const judgeRetries = new Map<string, number>()
+  /** The live re-issue timers — terminate clears them (the composition owns every lifecycle). */
+  const judgeTimers = new Map<string, unknown>()
+  const judgeUnavailable = (id: string, reason: string): void => {
+    if (!pendingAdmissions.has(id)) return
+    const attempt = (judgeRetries.get(id) ?? 0) + 1
+    judgeRetries.set(id, attempt)
+    if (attempt > ADMISSION_MAX_JUDGE_RETRIES) {
+      judgeRetries.delete(id)
+      // Exhaustion: the candidate stands UNDECIDED — the undecided event
+      // lifts the gate (the lane never wedges), no record writes, the held
+      // admission is visible. The pending id stays (an undecided candidate
+      // is not a decision).
+      addThreads([
+        {
+          name: `system-one/admission-undecided:${id}:${uuid()}`,
+          description: 'Marks the admission candidate UNDECIDED — the judge retry budget is exhausted.',
+          once: true,
+          rules: [
+            {
+              request: {
+                type: ADMISSION_EVENT_TYPES.undecided,
+                detail: { id, attempts: ADMISSION_MAX_JUDGE_RETRIES, reason },
+              },
+            },
+          ],
+        },
+      ])
+      return
+    }
+    judgeTimers.set(
+      id,
+      hostScheduler.setTimeout(
+        () => {
+          judgeTimers.delete(id)
+          const thread = pendingAdmissions.get(id)
+          if (thread === undefined || thread === null) return
+          addThreads([
+            {
+              name: `system-one/admission-reissue:${id}:${uuid()}`,
+              description: 'Re-issues the admission Decision for an outage-held candidate (the same correlation).',
+              once: true,
+              rules: [
+                {
+                  request: {
+                    type: ADMISSION_EVENT_TYPES.candidate,
+                    detail: { id, thread } as unknown as JsonObject,
+                  },
+                },
+              ],
+            },
+          ])
+        },
+        jitteredBackoffMs(attempt - 1),
+      ),
+    )
+  }
 
   type FacultyPort = { send: (event: BPEvent) => void; gate: (event: BPEvent) => boolean }
   const lanes: Record<string, FacultyPort> = {}
@@ -517,6 +607,25 @@ export const bProgram = ({
                     'admission rejected',
                 },
           )
+        }
+      }
+      return
+    }
+    // The OUTAGE legs: the judged hold event drives the composition-hosted
+    // re-issue; a systemOne lane death leaves every in-flight Decision
+    // unanswered — each pending candidate holds and re-issues on the same
+    // budget. Other faculties' errors do not correlate to admissions.
+    if (candidate.type === ADMISSION_EVENT_TYPES.judgeUnavailable) {
+      const detail = candidate.detail as { id?: string; reason?: string } | undefined
+      if (typeof detail?.id === 'string') judgeUnavailable(detail.id, detail.reason ?? 'judge unavailable')
+      return
+    }
+    if (candidate.type === FACULTY_MESSAGE_KINDS.faculty_error) {
+      const detail = candidate.detail as { faculty?: string; message?: string } | undefined
+      if (detail?.faculty === 'systemOne') {
+        for (const [id, thread] of pendingAdmissions) {
+          if (thread === null) continue
+          judgeUnavailable(id, detail.message ?? 'systemOne unavailable')
         }
       }
       return
@@ -782,6 +891,9 @@ export const bProgram = ({
     start,
     identity,
     terminate: (): void => {
+      // The composition-hosted re-issue timers die with the runtime.
+      for (const handle of judgeTimers.values()) hostScheduler.clearTimeout(handle)
+      judgeTimers.clear()
       frontierAnalysis.terminate()
       systemOne.terminate()
       systemTwo.terminate()

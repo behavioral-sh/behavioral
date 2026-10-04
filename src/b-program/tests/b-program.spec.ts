@@ -89,12 +89,28 @@ const waitForTraces = async (
 }
 
 /** Find a selected store_request by op and collection. */
+/** Find a selected store_request by op and collection. */
 const storeRequest = (traces: Trace[], op: string, collection: string): SelectionTrace | undefined =>
   selectionsOf(traces).find((t) => {
     if (t.selected.type !== FACULTY_MESSAGE_KINDS.store_request) return false
     const detail = t.selected.detail as { op?: string; input?: { collection?: string } } | undefined
     return detail?.op === op && detail?.input?.collection === collection
   })
+
+// The admission policy rides the MINT (the orchestration ruling): the route
+// seam no longer enriches, so a direct trigger carries the derived progress
+// vocabulary itself (the carry pack composes it on the real proposal path).
+// The `maxDepth` in the fixtures exercises the requester override — passed
+// through unchanged below the ceiling. Shared by the admission-path and the
+// outage-shape describes.
+const addThreadRequest = (id: string, thread: JsonObject, extra?: JsonObject): BPEvent => ({
+  type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
+  detail: {
+    id,
+    op: 'add_thread',
+    input: { thread, progress: ADMISSION_PROGRESS, maxDepth: 8, ...extra },
+  },
+})
 
 /** A spec lane: the name rides beside the builder (the composition routes by it). */
 type SpecLane = { name: 'shell' | 'store' | 'security'; build: LaneBuilder }
@@ -177,6 +193,8 @@ export const startRuntime = (
     models?: Parameters<typeof bProgram>[0]['models']
     /** Caller-owned home — shared across runs (multi-run choreographies); the caller cleans it. */
     home?: string
+    /** The outage shape's scheduler seam — the tests drive the timers deterministically. */
+    scheduler?: Parameters<typeof bProgram>[0]['scheduler']
   } = {},
 ) => {
   const callerHome = options.home
@@ -189,6 +207,7 @@ export const startRuntime = (
     actuators: lanes.map((lane) => lane.build),
     threads: [...(options.threads ?? []), ...packsFor(names)],
     ...(options.models === undefined ? {} : { models: options.models }),
+    ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
   })
   runtime.useTrace((trace) => {
     traces.push(trace)
@@ -453,20 +472,6 @@ describe('bProgram — the runtime composition', () => {
   })
 
   describe('add_thread — the admission path', () => {
-    // The admission policy rides the MINT (the orchestration ruling): the
-    // route seam no longer enriches, so a direct trigger carries the derived
-    // progress vocabulary itself (the carry pack composes it on the real
-    // proposal path). The `maxDepth` in the fixtures exercises the requester
-    // override — passed through unchanged below the ceiling.
-    const addThreadRequest = (id: string, thread: JsonObject, extra?: JsonObject): BPEvent => ({
-      type: FACULTY_MESSAGE_KINDS.frontier_analysis_request,
-      detail: {
-        id,
-        op: 'add_thread',
-        input: { thread, progress: ADMISSION_PROGRESS, maxDepth: 8, ...extra },
-      },
-    })
-
     const resultDetailFor = (traces: Trace[], id: string) => {
       const sel = selectionsOf(traces).find(
         (t) =>
@@ -1045,6 +1050,209 @@ describe('bProgram — the runtime composition', () => {
           await server.close()
         }
       })
+    })
+  })
+
+  describe('the outage shape — hold-and-retry (ruled 2026-10-03)', () => {
+    // A judge-unavailable verdict (the typed-error / faculty_error shapes)
+    // NEVER maps to a durable thread_admission_rejected: it HOLDS (the
+    // gate's block holds, no decided record) and the same Decision
+    // re-issues on the COMPOSITION-HOSTED backoff — 3 retries, capped
+    // exponential with full jitter (the websocket-transport #retry shape,
+    // the shared home). Exhaustion leaves the candidate UNDECIDED, held,
+    // fail-visible; the next boot/reload re-adjudicates (no record). An
+    // explicit judged NO stays durable. The scheduler is injectable — the
+    // tests drive the timers deterministically and assert the jitter
+    // bounds.
+    const injectScheduler = (): {
+      scheduler: { setTimeout: (fn: () => void, ms: number) => unknown; clearTimeout: (handle: unknown) => void }
+      scheduled: Array<{ fn: () => void; ms: number }>
+    } => {
+      const scheduled: Array<{ fn: () => void; ms: number }> = []
+      return {
+        scheduled,
+        scheduler: {
+          setTimeout: (fn: () => void, ms: number): unknown => {
+            scheduled.push({ fn, ms })
+            return scheduled.length
+          },
+          clearTimeout: (): void => {},
+        },
+      }
+    }
+
+    test('an outage verdict holds and re-issues on the hosted backoff — never a durable reject', async () => {
+      // The first judge attempt hits 429s past the faculty's own retry
+      // budget (MAX_ATTEMPTS=4, retry-after: 0 — the typed-error result
+      // surfaces); the composition's re-issue gets answered and approves.
+      const server = await startDecisionsServer({ rateLimitFirst: 4 })
+      const { scheduled, scheduler } = injectScheduler()
+      const { runtime, traces } = startRuntime({
+        scheduler,
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+      })
+      try {
+        runtime.trigger(
+          addThreadRequest('oj1', {
+            name: 'outage-greeter',
+            description: 'Test thread.',
+            once: true,
+            rules: [{ request: { type: 'ping' } }],
+          }),
+        )
+        // The outage outcome is VISIBLE: the hold event, stamped with the
+        // candidate id — and NEVER a durable rejection.
+        await waitForTraces(traces, (s) =>
+          s.some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.judgeUnavailable &&
+              (t.selected.detail as { id?: string }).id === 'oj1',
+          ),
+        )
+        expect(
+          selectionsOf(traces).some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.rejected && (t.selected.detail as { id?: string }).id === 'oj1',
+          ),
+        ).toBe(false)
+        // The re-issue is scheduled on the composition-hosted backoff:
+        // attempt 1's full-jitter bound is 1000ms.
+        expect(scheduled.length).toBe(1)
+        const first = scheduled[0]!
+        expect(first.ms).toBeGreaterThanOrEqual(0)
+        expect(first.ms).toBeLessThan(1_000)
+        // Fire the timer: the SAME Decision re-issues (the
+        // `<candidate>-judge` correlation holds — the server sees the
+        // second request).
+        first.fn()
+        await waitForTraces(traces, (s) =>
+          s.some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.admitted && (t.selected.detail as { id?: string }).id === 'oj1',
+          ),
+        )
+        // The faculty's internal budget burned four 429s before the typed
+        // error; the re-issued Decision's request carries the same body.
+        expect(server.requests.length).toBe(5)
+        for (const request of server.requests) {
+          expect((request.body.state as { thread?: { name?: string } }).thread?.name).toBe('outage-greeter')
+        }
+        // The retry approved: the write leg mounts.
+        expect(
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'outage-greeter',
+          ),
+        ).toBe(true)
+      } finally {
+        runtime.terminate()
+        await server.close()
+      }
+    })
+
+    test('exhaustion holds the candidate undecided — no durable record, the gate lifts for later candidates', async () => {
+      // Exactly the exhaustion budget 429s: four judge calls (the ask + the
+      // three re-issues, the faculty's internal MAX_ATTEMPTS each) burn
+      // sixteen 429s; the next judge call — the later candidate's — is
+      // answered and approves.
+      const server = await startDecisionsServer({ rateLimitFirst: 16 })
+      const { scheduled, scheduler } = injectScheduler()
+      const { runtime, traces } = startRuntime({
+        scheduler,
+        models: { systemOne: { url: server.url, model: 'jev-latest' } as unknown as JsonObject },
+      })
+      try {
+        // The FULL plugin path drives the flow: the candidate event
+        // registers the plugin key (the durable record would ride the
+        // entry-side watcher) and the carry's dispatch mints the add_thread
+        // request — the outage must NEVER produce a record for it (the
+        // next boot/reload re-adjudicates for free).
+        runtime.trigger({
+          type: PLUGIN_THREADS_EVENT_TYPES.candidate,
+          detail: {
+            id: 'oe1',
+            input: {
+              plugin: '/plugins/alpha',
+              file: 't.ts',
+              hash: 'hash-1',
+              sourceHash: 1,
+              thread: {
+                name: 'exhausted-candidate',
+                description: 'Test thread.',
+                once: true,
+                rules: [{ request: { type: 'ping' } }],
+              },
+            },
+          } as unknown as JsonObject,
+        })
+        // Drive the hosted timers: each outage schedules one retry; fire
+        // the three, and the fourth outage exhausts the budget.
+        for (let fires = 0; fires < 3; fires++) {
+          await waitForTraces(traces, (s) => scheduled.length > fires)
+          scheduled[fires]!.fn()
+        }
+        await waitForTraces(traces, (s) =>
+          s.some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.undecided &&
+              (t.selected.detail as { id?: string }).id === 'oe1',
+          ),
+        )
+        // Every outcome held: no durable rejection, no admission, no
+        // provision.
+        expect(
+          selectionsOf(traces).some(
+            (t) =>
+              (t.selected.type === ADMISSION_EVENT_TYPES.rejected ||
+                t.selected.type === ADMISSION_EVENT_TYPES.admitted) &&
+              (t.selected.detail as { id?: string }).id === 'oe1',
+          ),
+        ).toBe(false)
+        expect(
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'exhausted-candidate',
+          ),
+        ).toBe(false)
+        // NO durable registry write: the watcher never recorded an outage
+        // outcome (or an exhaustion) for the plugin key.
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        expect(
+          selectionsOf(traces).some((t) => {
+            if (t.selected.type !== FACULTY_MESSAGE_KINDS.store_request) return false
+            const detail = t.selected.detail as { op?: string; input?: { collection?: string } }
+            return detail.op === 'put' && detail.input?.collection === PLUGIN_THREADS_REGISTRY_COLLECTION
+          }),
+        ).toBe(false)
+        // The gate lifted on the undecided: a LATER candidate judges and
+        // admits — the lane never wedges on one exhausted candidate.
+        runtime.trigger(
+          addThreadRequest('oe2', {
+            name: 'after-exhaustion',
+            description: 'Test thread.',
+            once: true,
+            rules: [{ request: { type: 'ping' } }],
+          }),
+        )
+        await waitForTraces(traces, (s) =>
+          s.some(
+            (t) =>
+              t.selected.type === ADMISSION_EVENT_TYPES.admitted && (t.selected.detail as { id?: string }).id === 'oe2',
+          ),
+        )
+        expect(
+          traces.some(
+            (t) =>
+              t.kind === TRACE_MESSAGE_KINDS.thread_added &&
+              (t as { thread?: { name?: string } }).thread?.name === 'after-exhaustion',
+          ),
+        ).toBe(true)
+      } finally {
+        runtime.terminate()
+        await server.close()
+      }
     })
   })
 

@@ -62,15 +62,30 @@ import { type ChoiceQuestion, choiceQuestionSchema } from './system-one.schemas.
 
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
-/** Thread-owned event types: the candidate in, the judged outcome out. */
+/** Thread-owned event types: the candidate in, the judged outcome out, the outage hold, the exhaustion marker. */
 export const ADMISSION_EVENT_TYPES = {
   candidate: 'thread_candidate',
   admitted: 'thread_admission',
   rejected: 'thread_admission_rejected',
+  /** A judge-unavailable outcome — HOLD-AND-RETRY (never a durable reject). */
+  judgeUnavailable: 'thread_admission_judge_unavailable',
+  /** The retry budget's exhaustion — the candidate stands UNDECIDED, held, fail-visible. */
+  undecided: 'thread_admission_undecided',
 } as const
 
-/** The judge-request correlation suffix: `<candidate>-judge` ↔ the result's echoed id. */
+/**
+ * The judge-request correlation suffix: `<candidate>-judge` ↔ the result's echoed id.
+ */
 export const ADMISSION_JUDGE_SUFFIX = '-judge'
+
+/**
+ * The judge-retry budget (the outage ruling, 2026-10-03): a judge-unavailable
+ * outcome re-issues the same Decision AT MOST this many times, on the
+ * COMPOSITION-HOSTED backoff (the engine has no timer event source — the
+ * schedule is the websocket-transport `#retry` shape, capped exponential with
+ * full jitter, one shared home). Exhaustion leaves the candidate UNDECIDED.
+ */
+export const ADMISSION_MAX_JUDGE_RETRIES = 3
 
 /** The Decision question the judgment asks (the `admission` choice). */
 export const ADMISSION_QUESTION = 'admission'
@@ -100,6 +115,70 @@ export const ADMISSION_JUDGE_RESULT_SCHEMA = {
   },
   required: ['id', 'ok'],
   additionalProperties: true,
+} as const
+
+/**
+ * The judge-unavailable result — the faculty's typed error branch (a
+ * transport failure, a 429 past the provider budget, a timeout). Maps to the
+ * HOLD-AND-RETRY marker, never a durable rejection (the outage ruling).
+ */
+export const ADMISSION_JUDGE_ERROR_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', pattern: '-judge$' },
+    ok: { type: 'boolean', const: false },
+  },
+  required: ['id', 'ok'],
+  additionalProperties: true,
+} as const
+
+/**
+ * The spoken result — the judge ANSWERED (ok) but the answer is not an
+ * explicit approve: a judged NO (durable, final) or an unparseable answer
+ * (fail-closed, durable — the judge spoke). The outage branch (ok:false) is
+ * excluded — that path holds and retries instead.
+ */
+export const ADMISSION_JUDGE_OK_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', pattern: '-judge$' },
+    ok: { type: 'boolean', const: true },
+  },
+  required: ['id', 'ok'],
+  additionalProperties: true,
+} as const
+
+/**
+ * The judge-unavailable outcome's shape — the outage hold marker: the
+ * candidate id (the correlation, suffix stripped) plus the failure reason.
+ * The composition consumes it (the hosted re-issue); the gate does NOT lift
+ * on it — the block holds through the retry window.
+ */
+export const ADMISSION_JUDGE_UNAVAILABLE_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    reason: { type: 'string' },
+  },
+  required: ['id'],
+  additionalProperties: false,
+} as const
+
+/**
+ * The exhaustion marker's shape — the candidate stands UNDECIDED: the gate
+ * lifts (the lane never wedges on one exhausted candidate), no decided
+ * record exists (the next boot/reload re-adjudicates for free), the held
+ * admission is visible in the traces.
+ */
+export const ADMISSION_UNDECIDED_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    attempts: { type: 'integer', minimum: 1 },
+    reason: { type: 'string' },
+  },
+  required: ['id'],
+  additionalProperties: false,
 } as const
 
 /**
@@ -236,7 +315,12 @@ const admissionIssue: Thread = {
   ],
 }
 
-/** admission-gate — the blocking judge: admission is blocked while the Decision is in flight. */
+/** admission-gate — the blocking judge: admission is blocked while the Decision is in flight.
+ *
+ * The block lifts on an approve-shaped result, the rejection event, or the
+ * UNDECIDED marker — never on the outage hold (the block holds through the
+ * retry window; only exhaustion or a spoken outcome releases it).
+ */
 const admissionGate: Thread = {
   name: 'system-one/admission-gate',
   description: 'Blocking admission gate: add_thread admission is blocked while the admission Decision is in flight.',
@@ -247,15 +331,34 @@ const admissionGate: Thread = {
       waitFor: [
         { type: FACULTY_MESSAGE_KINDS.system_one_request_result, detailSchema: ADMISSION_JUDGE_APPROVAL_SCHEMA },
         { type: ADMISSION_EVENT_TYPES.rejected },
+        { type: ADMISSION_EVENT_TYPES.undecided, detailSchema: ADMISSION_UNDECIDED_SCHEMA },
       ],
     },
   ],
 }
 
-/** admission-verdict — the judge-correlated result maps to the outcome; everything but an explicit approve rejects. */
+/**
+ * admission-verdict — the judge-correlated result maps to the outcome. The
+ * division is TOTAL and mutually exclusive on the listeners' schema gates:
+ *
+ * - **approve** (ok AND the `admit` choice) → `thread_admission` — the write
+ *   leg admits.
+ * - **judge unavailable** (ok:false — the faculty's typed error: a transport
+ *   failure, a 429 past the provider budget, a timeout) →
+ *   `thread_admission_judge_unavailable` — HOLD-AND-RETRY (the outage
+ *   ruling): the composition re-issues the same Decision on its hosted
+ *   backoff, bounded; the candidate is NEVER durably rejected by an outage.
+ * - **a spoken NO** (ok, but not an `admit` choice — a judged reject, or an
+ *   answer the judge produced but the question schema cannot read) →
+ *   `thread_admission_rejected` — durable, final: the judge spoke.
+ *
+ * TIGHTEN-only: a model never overrides a structural reject — the semantic
+ * judgment reviews what the structural analysis passed, never what it
+ * failed (the cycle check is exact; the floors own security).
+ */
 const admissionVerdict: Thread = {
   name: 'system-one/admission-verdict',
-  description: 'Maps the admission-judgment result to admit/reject; everything but an explicit approve rejects.',
+  description: 'Maps the admission-judgment result to admit/reject/hold-and-retry; only an explicit approve admits.',
   rules: [
     {
       transform: [
@@ -269,11 +372,18 @@ const admissionVerdict: Thread = {
         },
         {
           type: FACULTY_MESSAGE_KINDS.system_one_request_result,
+          query: `. as $d | select(($d.id | endswith("${ADMISSION_JUDGE_SUFFIX}")) and (($d.ok // false) != true))
+| { id: ($d.id | sub("${ADMISSION_JUDGE_SUFFIX}$"; "")), reason: ($d.error.message? // "judge unavailable") }`,
+          target: ADMISSION_EVENT_TYPES.judgeUnavailable,
+          detailSchema: ADMISSION_JUDGE_ERROR_SCHEMA,
+        },
+        {
+          type: FACULTY_MESSAGE_KINDS.system_one_request_result,
           query: `. as $d | ${JUDGE_ANSWER}
-| select(($d.id | endswith("${ADMISSION_JUDGE_SUFFIX}")) and ((($d.ok // false) != true) or ($q.type != "choice") or ($q.choice != "admit")))
+| select(($d.id | endswith("${ADMISSION_JUDGE_SUFFIX}")) and (($d.ok // false) == true) and (($q.type != "choice") or ($q.choice != "admit")))
 | { id: ($d.id | sub("${ADMISSION_JUDGE_SUFFIX}$"; "")), admit: false }`,
           target: ADMISSION_EVENT_TYPES.rejected,
-          detailSchema: ADMISSION_JUDGE_RESULT_SCHEMA,
+          detailSchema: ADMISSION_JUDGE_OK_SCHEMA,
         },
       ],
     },

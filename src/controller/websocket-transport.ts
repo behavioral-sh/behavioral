@@ -1,4 +1,5 @@
 import type { Disconnect } from '../behavioral/behavioral.types.ts'
+import { jitteredBackoffMs } from '../utils.ts'
 import { UI_CORE_MAX_RETRIES, UI_CORE_RETRY_STATUS_CODES } from './controller.constants.ts'
 import { WebSocketError, WebSocketMessageError } from './controller.errors.ts'
 import type { ClientMessage, ServerMessage, Transport, TransportEvent } from './controller.types.ts'
@@ -121,8 +122,9 @@ export class WebSocketTransport implements Transport {
   #retry(): void {
     this.#closeSocket(this.#socket)
     if (this.#retryCount >= UI_CORE_MAX_RETRIES) return
-    const maxDelay = Math.min(9_999, 1_000 * 2 ** this.#retryCount)
-    const id = setTimeout(() => this.#connect(), Math.floor(Math.random() * maxDelay))
+    // The capped exponential + full-jitter shape — the ONE shared home (the
+    // admission outage's judge re-issue imports the same algorithm).
+    const id = setTimeout(() => this.#connect(), jitteredBackoffMs(this.#retryCount))
     this.#registerDisconnect(() => clearTimeout(id))
     this.#retryCount++
   }
