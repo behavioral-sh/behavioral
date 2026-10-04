@@ -35,8 +35,19 @@ const bundleBrowser = async (entrySource: string): Promise<string> => {
   return await outputs[0]!.text()
 }
 
-/** The faculty entries + the one request each answers (the level-1 gate's pins). */
-const ENTRIES: Array<{ name: string; request: Record<string, unknown>; resultKind: string }> = [
+/** The faculty entries + the one request each answers (the level-1 gate's pins).
+ *
+ * The transform entry EVALUATES A REAL QUERY in the classic bundle — the
+ * browser-side-reconciliation named-need's closing proof: the wasm rides the
+ * artifact base64-inlined (jq-wasm/inline), no external asset, and the
+ * nested eval worker re-executes the SAME served artifact via selfUrl.
+ */
+const ENTRIES: Array<{
+  name: string
+  request: Record<string, unknown>
+  resultKind: string
+  init?: Record<string, unknown>
+}> = [
   {
     name: 'system-one',
     request: {
@@ -57,6 +68,17 @@ const ENTRIES: Array<{ name: string; request: Record<string, unknown>; resultKin
     name: 'frontier-analysis',
     request: { type: 'frontier_analysis_request', detail: { id: 'l2_3', op: 'replay', input: { threads: [] } } },
     resultKind: 'frontier_analysis_request_result',
+  },
+  {
+    name: 'transform',
+    request: {
+      type: 'transform_request',
+      detail: { id: 'l2_4', query: '.order', target: 'ship', detail: { order: { id: 'o-1', total: 42 } } },
+    },
+    resultKind: 'transform_request_result',
+    // The faculty's own served URL — the nested eval worker re-executes it
+    // (classic workers cannot touch import.meta; the URL is init-frame data).
+    init: { selfUrl: '/faculties/transform.bundle.js' },
   },
 ]
 
@@ -96,7 +118,7 @@ for (const entry of entries) {
   worker.onmessage = (event) => {
     if (event.data && event.data.type === entry.resultKind) window.__results[entry.name] = event.data
   }
-  worker.postMessage({ kind: 'init', data: {} })
+  worker.postMessage({ kind: 'init', data: entry.init ?? {} })
   worker.postMessage(entry.request)
 }
 `),

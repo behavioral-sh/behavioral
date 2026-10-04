@@ -101,4 +101,39 @@ describe('the bundle-clean gate — faculty entries build and boot for the brows
       worker.terminate()
     }
   })
+
+  test('transform: the browser artifact is self-contained (the wasm inlined) and evaluates a real query', async () => {
+    // The named-need's level-1 half: the classic bundle carries jq-wasm's
+    // base64-inlined wasm — NO external asset rides the artifact — and the
+    // nested eval worker re-executes the SAME artifact via the init frame's
+    // selfUrl.
+    const entryUrl = new URL('../transform.faculty.ts', import.meta.url)
+    const built = await Bun.build({ entrypoints: [fileURLToPath(entryUrl)], target: 'browser', format: 'esm' })
+    if (!built.success) throw new AggregateError(built.logs, 'browser build failed')
+    // The self-containment proof: exactly one output, no .wasm asset chunk.
+    expect(built.outputs).toHaveLength(1)
+    const artifact = built.outputs[0]!
+    const path = join(tmpdir(), `transform-faculty-${crypto.randomUUID()}.mjs`)
+    await Bun.write(path, artifact)
+    const worker = new Worker(path)
+    const results: BundledResult[] = []
+    worker.addEventListener('message', (event: MessageEvent) => {
+      results.push(event.data as BundledResult)
+    })
+    worker.addEventListener('error', (event: ErrorEvent) => {
+      results.push({ type: '__worker_error', detail: { message: event.message } })
+    })
+    try {
+      worker.postMessage({ kind: INIT_FRAME_KIND, data: { selfUrl: path } })
+      worker.postMessage({
+        type: 'transform_request',
+        detail: { id: 'b1', query: '.order', target: 'ship', detail: { order: { id: 'o-1', total: 42 } } },
+      })
+      const result = await resultFor(results, 'b1')
+      expect(result.type).toBe('transform_request_result')
+      expect(result.detail).toEqual({ id: 'b1', ok: true, value: { id: 'o-1', total: 42 } })
+    } finally {
+      worker.terminate()
+    }
+  })
 })

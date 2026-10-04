@@ -28,8 +28,12 @@ import type { JsonObject } from '../behavioral/behavioral.types.ts'
  * a long-running request must not head-of-line block its own cancel).
  */
 
-/** True only inside a worker global (Bun web worker or browser worker). */
-const isWorkerScope = (): boolean => {
+/** True only inside a worker global (Bun web worker or browser worker).
+ *
+ * Exported for the faculty entries that wire their own top-level listener
+ * beside the bootstrap (the transform faculty's flat result envelope does
+ * not ride createWorker's uniform WorkerResultDetail). */
+export const isWorkerScope = (): boolean => {
   if (typeof window !== 'undefined') return false
   const bun = (globalThis as { Bun?: { isMainThread?: boolean } }).Bun
   return bun === undefined || bun.isMainThread !== true
@@ -64,7 +68,12 @@ export const INIT_FRAME_KIND = 'init'
 /** The init frame: the composition → faculty construction message. */
 export type InitFrame = { kind: typeof INIT_FRAME_KIND; data: JsonObject }
 
-const isInitFrame = (message: unknown): message is InitFrame =>
+/**
+ * Exported for the faculty entries that wire their own top-level listener
+ * beside the bootstrap (the transform faculty's flat result envelope does
+ * not ride createWorker's uniform WorkerResultDetail).
+ */
+export const isInitFrame = (message: unknown): message is InitFrame =>
   typeof message === 'object' &&
   message !== null &&
   (message as InitFrame).kind === INIT_FRAME_KIND &&

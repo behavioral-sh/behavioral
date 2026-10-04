@@ -54,3 +54,11 @@ export const ACTUATOR_ROUTE: Record<string, string[]> = {
  * fan-out delivers it to scoped clients only.
  */
 export const TRACE_PUSH_KIND = 'trace'
+
+/**
+ * The transform evaluation budget — the re-homed `JQ_EVAL_TIMEOUT_MS` (the
+ * engine's jq pool died with the bridge; the budget is the wire's one home).
+ * A never-terminating query is killed at this budget — the transform
+ * faculty terminates its per-request eval worker and answers `jq_timeout`.
+ */
+export const TRANSFORM_EVAL_TIMEOUT_MS = 1_000

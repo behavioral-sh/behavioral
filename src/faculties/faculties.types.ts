@@ -260,8 +260,8 @@ export const validateTransformEvaluation = ajv.compile(TransformEvaluationSchema
 /** The transform faculty's request — the evaluation ask (the idiom's data, correlated). */
 export type TransformRequestEvent = {
   type: typeof FACULTY_MESSAGE_KINDS.transform_request
-  /** `detail` is the jq INPUT — the selected event's detail; absent means the event carried none (`no_detail`). */
-  detail: { id: string; query: string; target: string; detail?: JsonObject }
+  /** `detail` is the jq INPUT — the selected event's detail; absent means the event carried none (`no_detail`). `ctx` is the optional out-of-band join lane, echoed verbatim on the result. */
+  detail: { id: string; query: string; target: string; ctx?: JsonObject; detail?: JsonObject }
   space?: string
 }
 
@@ -311,6 +311,8 @@ export const TransformRequestEventSchema: JSONSchemaType<TransformRequestEvent> 
         id: { type: 'string', minLength: 1 },
         query: { type: 'string', minLength: 1 },
         target: { type: 'string', minLength: 1 },
+        // The out-of-band join lane — its strict shape is the requesting side's.
+        ctx: { type: 'object', required: [], additionalProperties: true, nullable: true },
         detail: { type: 'object', required: [], additionalProperties: true, nullable: true },
       },
       required: ['id', 'query', 'target'],

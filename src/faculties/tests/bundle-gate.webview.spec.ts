@@ -57,7 +57,7 @@ describe('the bundle gate level 2 — faculty classic bundles boot in the real W
     await using view = await open('/probe.html')
     const results = await waitFor(async () => {
       const state = await view.evaluate<Record<string, unknown> | undefined>(
-        'Object.keys(window.__results).length === 3 ? window.__results : undefined',
+        'Object.keys(window.__results).length === 4 ? window.__results : undefined',
       )
       return state
     })
@@ -75,5 +75,11 @@ describe('the bundle gate level 2 — faculty classic bundles boot in the real W
     // frontier: the analysis answers ok (the replay ran in the bundle).
     const remote = results['frontier-analysis'] as { detail: { ok?: boolean } }
     expect(remote.detail.ok).toBe(true)
+    // transform: THE NAMED-NEED'S CLOSING PROOF — the classic bundle
+    // evaluates a real jq query in the WebView: the wasm rides the artifact
+    // base64-inlined and the nested eval worker re-executed the same served
+    // script. The evaluated value — not a stub — comes back.
+    const transform = results.transform as { detail: { id: string; ok: boolean; value?: Record<string, unknown> } }
+    expect(transform.detail).toEqual({ id: 'l2_4', ok: true, value: { id: 'o-1', total: 42 } })
   }, 30_000)
 })
