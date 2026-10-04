@@ -7,7 +7,6 @@ import {
   TraceBaseSchema,
   validateBPEvent,
   validateThread,
-  validateTransformEvaluation,
 } from '../behavioral.types.ts'
 
 // Derived from TraceBaseSchema — the one home for the trace wire's common
@@ -37,25 +36,9 @@ describe('behavioral schemas', () => {
     expect(validateTransformListenerSafe({ type: 'x', query: '.' })).toBe(false)
   })
 
-  test('TransformEvaluation validator accepts well-formed frames from the jq worker', () => {
-    expect(validateTransformEvaluation({ ok: true, value: { id: 'o-1' } })).toBe(true)
-    expect(validateTransformEvaluation({ ok: false, reason: 'jq_error', stderr: 'syntax error', exitCode: 3 })).toBe(
-      true,
-    )
-    expect(validateTransformEvaluation({ ok: false, reason: 'jq_timeout' })).toBe(true)
-    expect(validateTransformEvaluation({ ok: false, reason: 'output_too_large' })).toBe(true)
-    expect(validateTransformEvaluation({ ok: false, reason: 'no_detail' })).toBe(true)
-  })
-
-  test('TransformEvaluation validator rejects off-shape frames', () => {
-    expect(validateTransformEvaluation({ ok: 'yes' })).toBe(false)
-    expect(validateTransformEvaluation({ ok: true })).toBe(false)
-    expect(validateTransformEvaluation({ ok: false })).toBe(false)
-    expect(validateTransformEvaluation({ ok: false, reason: 'bogus' })).toBe(false)
-    expect(validateTransformEvaluation({ ok: true, value: { id: 1 }, extra: true })).toBe(false)
-    expect(validateTransformEvaluation({ ok: false, reason: 'jq_error', value: {} })).toBe(false)
-    expect(validateTransformEvaluation('ok')).toBe(false)
-  })
+  // The TransformEvaluation validator round-trip pins moved with the types to
+  // the wire home: src/faculties/tests/transform.wire.spec.ts (the
+  // transform-faculty ruling).
 
   test('ThreadSchema properties carry non-empty descriptions (the model-facing contract)', () => {
     for (const schema of Object.values(ThreadSchema.properties)) {

@@ -1,3 +1,7 @@
+// TEMPORARY reverse import on dying code (the transform-faculty ruling): the
+// evaluation types moved to the wire home; this bridge and its import die
+// together at the engine switch (slice 2).
+import { type TransformEvaluation, validateTransformEvaluation } from '../faculties/faculties.types.ts'
 import { deepEqual } from '../utils.ts'
 import { FRONTIER_STATUS, IDIOMS, TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 import type {
@@ -13,11 +17,10 @@ import type {
   RulesFunction,
   RunningBid,
   SendTrace,
-  TransformEvaluation,
   Transformer,
   UseThread,
 } from './behavioral.types.ts'
-import { ajv, validateTransformEvaluation } from './behavioral.types.ts'
+import { ajv } from './behavioral.types.ts'
 
 /**
  * @internal

@@ -172,6 +172,173 @@ export type SecurityCancelEvent = {
 }
 
 /** Union of every event the router can move between ports. @public */
+// ── The transform faculty (the fixed fourth lane) — the evaluation wire ─────
+
+/**
+ * Machine-readable reasons a transform contract failed to produce its target
+ * event. The engine never throws for these — each becomes the failure branch
+ * of a `transform_request_result` and the target never fires.
+ *
+ * MOVED HOME (the transform-faculty ruling): this was
+ * `behavioral.types.ts`'s evaluation vocabulary; evaluation leaves the engine
+ * for the fixed fourth faculty, so the wire home owns it. The retired
+ * SAB-bridge reasons (`jq_unavailable` — the no-SharedArrayBuffer floor,
+ * `output_too_large` — the shared-buffer cap) die with the bridge at the
+ * engine switch.
+ */
+export type TransformFailureReason =
+  /** jq exited non-zero with stderr (`JqError`) — bad query or runtime failure */
+  | 'jq_error'
+  /** the matched event carried no detail to query */
+  | 'no_detail'
+  /** the query produced no output (`first()` returns `undefined`) */
+  | 'empty_output'
+  /** the query output was not an object (scalar, array, or null) */
+  | 'non_object_output'
+  /** the eval was killed at the timeout — a never-terminating query */
+  | 'jq_timeout'
+  /** the evaluated value exceeded the shared-buffer result cap (the bridge's dying reason) */
+  | 'output_too_large'
+  /** the host realm has no SharedArrayBuffer (not crossOriginIsolated) — the bridge stays down (the bridge's dying reason) */
+  | 'jq_unavailable'
+
+/**
+ * The result of a transform evaluation — the whole first output, parsed, or
+ * a machine-readable failure reason. Never thrown; the transform faculty's
+ * result detail is exactly this plus the correlation id and the ctx echo.
+ */
+export type TransformEvaluation =
+  | { ok: true; value: JsonObject }
+  | { ok: false; reason: TransformFailureReason; stderr?: string; exitCode?: number }
+
+/**
+ * Structural schema for the transform evaluation — the wire result's failure
+ * division and the faculty's evaluation contract (one home; moved verbatim
+ * from the engine's `behavioral.types.ts`). Hand-written `oneOf` on the `ok`
+ * discriminant; the `value` branch is the JsonObject floor, mirroring the
+ * worker's own object check. Strict `additionalProperties: false` at every
+ * level; no defaults (the strict-mode oneOf conflict does not apply).
+ */
+export const TransformEvaluationSchema = {
+  type: 'object',
+  oneOf: [
+    {
+      type: 'object',
+      properties: {
+        ok: { type: 'boolean', enum: [true], description: 'True — the transform produced a value.' },
+        value: {
+          type: 'object',
+          required: [],
+          additionalProperties: true,
+          description: 'The parsed query output object.',
+        },
+      },
+      required: ['ok', 'value'],
+      additionalProperties: false,
+    },
+    {
+      type: 'object',
+      properties: {
+        ok: { type: 'boolean', enum: [false], description: 'False — the transform failed; see reason.' },
+        reason: {
+          type: 'string',
+          enum: ['jq_error', 'no_detail', 'empty_output', 'non_object_output', 'jq_timeout', 'output_too_large'],
+          description: 'Machine-readable failure reason; the engine never throws for these.',
+        },
+        stderr: { type: 'string', nullable: true, description: 'jq stderr, present when reason is jq_error.' },
+        exitCode: { type: 'integer', nullable: true, description: 'jq exit code, present when reason is jq_error.' },
+      },
+      required: ['ok', 'reason'],
+      additionalProperties: false,
+    },
+  ],
+} as unknown as JSONSchemaType<TransformEvaluation>
+
+/** @internal Compiled once — the transform result guard. */
+export const validateTransformEvaluation = ajv.compile(TransformEvaluationSchema)
+
+/** The transform faculty's request — the evaluation ask (the idiom's data, correlated). */
+export type TransformRequestEvent = {
+  type: typeof FACULTY_MESSAGE_KINDS.transform_request
+  /** `detail` is the jq INPUT — the selected event's detail; absent means the event carried none (`no_detail`). */
+  detail: { id: string; query: string; target: string; detail?: JsonObject }
+  space?: string
+}
+
+export type TransformRequestResultEvent = {
+  type: typeof FACULTY_MESSAGE_KINDS.transform_request_result
+  /** The evaluation outcome joined to the correlation id — `TransformEvaluation` plus the optional `ctx` echo lane. */
+  detail: { id: string; ctx?: JsonObject } & TransformEvaluation
+  space?: string
+}
+
+const transformResultOkBranch = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    ok: { type: 'boolean', const: true },
+    value: { type: 'object', required: [], additionalProperties: true },
+    ctx: { type: 'object', required: [], additionalProperties: true, nullable: true },
+  },
+  required: ['id', 'ok', 'value'],
+  additionalProperties: false,
+} as const
+
+const transformResultFailureBranch = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', minLength: 1 },
+    ok: { type: 'boolean', const: false },
+    reason: {
+      type: 'string',
+      enum: ['jq_error', 'no_detail', 'empty_output', 'non_object_output', 'jq_timeout'],
+    },
+    stderr: { type: 'string', nullable: true },
+    exitCode: { type: 'integer', nullable: true },
+    ctx: { type: 'object', required: [], additionalProperties: true, nullable: true },
+  },
+  required: ['id', 'ok', 'reason'],
+  additionalProperties: false,
+} as const
+
+export const TransformRequestEventSchema: JSONSchemaType<TransformRequestEvent> = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', const: FACULTY_MESSAGE_KINDS.transform_request },
+    detail: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        query: { type: 'string', minLength: 1 },
+        target: { type: 'string', minLength: 1 },
+        detail: { type: 'object', required: [], additionalProperties: true, nullable: true },
+      },
+      required: ['id', 'query', 'target'],
+      additionalProperties: false,
+    },
+    space: { type: 'string', nullable: true },
+  },
+  required: ['type', 'detail'],
+  additionalProperties: false,
+}
+
+export const TransformRequestResultEventSchema: JSONSchemaType<TransformRequestResultEvent> = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', const: FACULTY_MESSAGE_KINDS.transform_request_result },
+    detail: {
+      type: 'object',
+      oneOf: [transformResultOkBranch, transformResultFailureBranch],
+    },
+    space: { type: 'string', nullable: true },
+  },
+  required: ['type', 'detail'],
+  additionalProperties: false,
+} as unknown as JSONSchemaType<TransformRequestResultEvent>
+
+export const validateTransformRequestEvent = ajv.compile(TransformRequestEventSchema)
+export const validateTransformRequestResultEvent = ajv.compile(TransformRequestResultEventSchema)
+
 export type WorkerEvent =
   | SystemTwoRequestEvent
   | SystemTwoRequestResultEvent
@@ -189,6 +356,8 @@ export type WorkerEvent =
   | FrontierAnalysisRequestResultEvent
   | StoreRequestEvent
   | StoreRequestResultEvent
+  | TransformRequestEvent
+  | TransformRequestResultEvent
   | FacultyErrorEvent
 
 const jsonObjectSchema = { type: 'object', required: [], additionalProperties: true } as const

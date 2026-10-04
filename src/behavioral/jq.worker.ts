@@ -1,6 +1,10 @@
 import { type JqError, loadJq } from 'jq-wasm'
+// TEMPORARY reverse import on dying code (the transform-faculty ruling): the
+// evaluation types moved to the wire home; this worker and its import die
+// together at the engine switch (slice 2).
+import type { TransformEvaluation } from '../faculties/faculties.types.ts'
 import { isTypeOf } from '../utils.ts'
-import type { JsonObject, TransformEvaluation } from './behavioral.types.ts'
+import type { JsonObject } from './behavioral.types.ts'
 
 const encoder = new TextEncoder()
 

@@ -31,6 +31,8 @@ export const FACULTY_MESSAGE_KINDS = keyMirror(
   'frontier_analysis_request_result',
   'store_request',
   'store_request_result',
+  'transform_request',
+  'transform_request_result',
   'faculty_error',
 )
 

@@ -1,5 +1,9 @@
 import type { JSONSchemaType } from 'ajv'
 import Ajv2020 from 'ajv/dist/2020'
+// TEMPORARY reverse TYPE import on dying code (the transform-faculty ruling): the
+// evaluation types moved to the wire home; TransformErrorTrace retires at the
+// engine switch (slice 2) and this import dies with it.
+import type { TransformFailureReason } from '../faculties/faculties.types.ts'
 import { type FRONTIER_STATUS, IDIOMS, type TRACE_MESSAGE_KINDS } from './behavioral.constants.ts'
 
 /**
@@ -600,82 +604,11 @@ export type TransformTrace = TraceBase & {
 }
 
 /**
- * Machine-readable reasons a transform contract failed to produce its target
- * event. The engine never throws for these — each becomes a
- * {@link TransformErrorTrace} and the target never fires.
+ * The transform evaluation types moved to the faculty wire home
+ * (`src/faculties/faculties.types.ts`) — the transform-faculty ruling: the
+ * evaluation vocabulary is the wire's, the engine keeps only the idiom's
+ * listener types. This file keeps nothing of the evaluation shape.
  */
-export type TransformFailureReason =
-  /** jq exited non-zero with stderr (`JqError`) — bad query or runtime failure */
-  | 'jq_error'
-  /** the matched event carried no detail to query */
-  | 'no_detail'
-  /** the host realm has no SharedArrayBuffer (not crossOriginIsolated) — the bridge stays down */
-  | 'jq_unavailable'
-  /** the query produced no output (`first()` returns `undefined`) */
-  | 'empty_output'
-  /** the query output was not an object (scalar, array, or null) */
-  | 'non_object_output'
-  /** the eval worker was killed at the timeout — a never-terminating query */
-  | 'jq_timeout'
-  /** the evaluated value exceeded the shared-buffer result cap */
-  | 'output_too_large'
-
-/**
- * The result of a transform evaluation — the whole first output, parsed, or
- * a machine-readable failure reason. Never thrown; serialized over the
- * worker bridge between `jq.worker.ts` and `evaluateTransform`.
- */
-export type TransformEvaluation =
-  | { ok: true; value: JsonObject }
-  | { ok: false; reason: TransformFailureReason; stderr?: string; exitCode?: number }
-
-/**
- * Structural schema for the SAB frame the jq worker ships back — the
- * trust-boundary validation in the `evaluateTransform` bridge (the
- * two-guards pattern: JSON.parse proves syntax, this proves shape). Hand-written `oneOf` on the `ok` discriminant, cast through
- * `unknown` per the tools-fleet precedent; the `value` branch is the JsonObject
- * floor, mirroring the worker's own object check. Strict
- * `additionalProperties: false` at every level; no defaults (the strict-mode
- * oneOf conflict does not apply).
- */
-export const TransformEvaluationSchema = {
-  type: 'object',
-  oneOf: [
-    {
-      type: 'object',
-      properties: {
-        ok: { type: 'boolean', enum: [true], description: 'True — the transform produced a value.' },
-        value: {
-          type: 'object',
-          required: [],
-          additionalProperties: true,
-          description: 'The parsed query output object.',
-        },
-      },
-      required: ['ok', 'value'],
-      additionalProperties: false,
-    },
-    {
-      type: 'object',
-      properties: {
-        ok: { type: 'boolean', enum: [false], description: 'False — the transform failed; see reason.' },
-        reason: {
-          type: 'string',
-          enum: ['jq_error', 'no_detail', 'empty_output', 'non_object_output', 'jq_timeout', 'output_too_large'],
-          description: 'Machine-readable failure reason; the engine never throws for these.',
-        },
-        stderr: { type: 'string', nullable: true, description: 'jq stderr, present when reason is jq_error.' },
-        exitCode: { type: 'integer', nullable: true, description: 'jq exit code, present when reason is jq_error.' },
-      },
-      required: ['ok', 'reason'],
-      additionalProperties: false,
-    },
-  ],
-} as unknown as JSONSchemaType<TransformEvaluation>
-
-/** @internal Compiled once — the jq-worker frame guard. */
-export const validateTransformEvaluation = ajv.compile(TransformEvaluationSchema)
-
 export type TransformErrorTrace = TraceBase & {
   kind: typeof TRACE_MESSAGE_KINDS.transform_error
   step: number
