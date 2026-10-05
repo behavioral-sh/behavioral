@@ -394,6 +394,29 @@ command supports `--schema <input|output>`, `--dry-run`, `--help`.
 
 **Always use `gh` for GitHub URLs** — `gh api`, `gh pr view`, `gh issue view`. Never WebFetch for GitHub content.
 
+# The Map
+
+**The map is `plan.md` + `.prompts/`** — the working artifacts of the
+pilot/navigator workflow (plan.md is the decision map; `.prompts/` are
+the executable handoffs). They are gitignored in THIS repo
+(never shipped, never reviewed) and **versioned at the private
+`behavioral-sh/behavioral-map`** (the 2026-10-05 map-repo ruling).
+
+- **Sync** — `scripts/map-sync.sh [note]`: rsync → commit → push to
+  the map repo. Run at every landing wrap (when prompts land or
+delete) and after notable map edits. No-op when unchanged.
+- **Lifecycle** — a landed or struck prompt is deleted from the
+  working tree; the deletion is a commit in the map repo, so every
+  prompt stays readable in its history. The Decision Log keeps the
+  why; git keeps the what.
+- **Never commit map content to this repo** — the repo is public; any
+  commit of map content reaching origin publishes the map (no
+  subtree, no map-content branches pushed here). The map repo is
+  standalone, not a submodule.
+- **Remote machines** — clone the map repo beside the working clone
+  (e.g. `~/behavioral-map` on Blackwell); `git pull` before box-side
+  work, push edits through the same script.
+
 # Context Repository
 
 **Source of Truth Hierarchy:**
