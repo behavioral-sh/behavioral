@@ -23,9 +23,9 @@ export type { BenchGroup, BenchProfile, BenchRow, BenchSummary } from './ternary
 export {
   BW_PROBE_WGSL,
   BW2_PROBE_WGSL,
-  MATVEC_V2_WGSL,
-  MATVEC_V3_WGSL,
-  MATVEC_V4_WGSL,
+  MATMUL_V1_B64,
+  MATMUL_V1_N64,
+  MATMUL_V1_WGSL,
   MATVEC_V5_W128,
   MATVEC_V5_W256,
   MATVEC_V5_WGSL,
@@ -51,4 +51,4 @@ export {
   packLut2Group,
   unpackLut2Group,
 } from './ternary/packing.ts'
-export { dequantMatvec, groupsPerRow, type Lut2Weights } from './ternary/reference.ts'
+export { dequantMatmul, dequantMatvec, groupsPerRow, type Lut2Weights } from './ternary/reference.ts'

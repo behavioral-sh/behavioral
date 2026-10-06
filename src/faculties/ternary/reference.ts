@@ -25,6 +25,38 @@ export const groupsPerRow = (cols: number): number => {
   return cols / LUT2_GROUP_WEIGHTS
 }
 
+/**
+ * f32 dequant-matmul (the batch/prefill profile): Y[r·B + b] = Σ_c
+ * trit(W[r,c])·scale(group(r,c))·x[b·cols + c] — token-major x, row-major Y.
+ */
+export const dequantMatmul = (w: Lut2Weights, x: Float32Array, tokens: number): Float32Array => {
+  const gpr = groupsPerRow(w.cols)
+  if (x.length !== tokens * w.cols) throw new Error(`matmul input length ${x.length} ≠ tokens·cols ${tokens * w.cols}`)
+  const y = new Float32Array(w.rows * tokens)
+  for (let r = 0; r < w.rows; r++) {
+    for (let b = 0; b < tokens; b++) {
+      let acc = 0
+      const rowBase = r * gpr * LUT2_GROUP_U32
+      const xBase = b * w.cols
+      for (let g = 0; g < gpr; g++) {
+        const scale = w.scales[r * gpr + g]!
+        const base = rowBase + g * LUT2_GROUP_U32
+        const colBase = g * LUT2_GROUP_WEIGHTS
+        for (let wordIndex = 0; wordIndex < LUT2_GROUP_U32; wordIndex++) {
+          const word = w.data[base + wordIndex]!
+          const col = colBase + wordIndex * 16
+          for (let k = 0; k < 16; k++) {
+            const v = (word >>> (k * 2)) & 0b11
+            acc += (v - 1) * scale * x[xBase + col + k]!
+          }
+        }
+      }
+      y[r * tokens + b] = acc
+    }
+  }
+  return y
+}
+
 /** f32 dequant-matvec: y[r] = Σ_c trit(W[r,c])·scale(group(r,c))·x[c]. */
 export const dequantMatvec = (w: Lut2Weights, x: Float32Array): Float32Array => {
   const gpr = groupsPerRow(w.cols)

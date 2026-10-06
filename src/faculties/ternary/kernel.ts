@@ -14,7 +14,7 @@
  * starting point, not the destination (each refinement is a bench row, not a
  * rewrite from imagination).
  *
- * Bundle-clean: WGSL strings only — no node:, no Bun.
+ * Bundle-clean: WGSL strings only — no node: imports, no host-runtime globals.
  *
  * @packageDocumentation
  */
@@ -338,6 +338,101 @@ ${Array.from(
 export const MATVEC_V7_WGSL = matvecV7(2)
 export const MATVEC_V7_R4 = matvecV7(4)
 
+/**
+ * The batch dequant-matmul (the PREFILL profile — systemOne's logits-readback
+ * scoring): Y[B,N] = X[B,K]·Wᵀ, tiled. Each workgroup computes a (bn rows ×
+ * bm tokens) output tile; the k-reduction walks 128-column chunks (one LUT2
+ * group per row per chunk); the token tile's x chunk stages in workgroup
+ * memory as vec4s (bm × 32 vec4s = 16KB at bm=32 — the device's floor for
+ * maxComputeWorkgroupStorageSize, verified live). The thread map: row slot =
+ * lid/bm·4 … wait — the CONCRETE map: thread's row = row0 + lid/8, its tokens
+ * = 4 (t0 + (lid%8)·4 + j); the row's words decode ONCE per thread and feed
+ * 4 tokens × 4 quads of dots — the decode amortizes over the token tile (the
+ * arithmetic intensity the prefill profile buys).
+ *
+ * v1-batch is the loop's starting point (the naive tiled body), same
+ * discipline as the matvec: measure, then refine by bench rows.
+ */
+export const matmulV1 = (bm: 32 | 64, bn: 32 | 64): string => {
+  const threadsPerRow = bm / 4 // 4 tokens per thread
+  const xwSize = bm * 32 // tokens × (128 cols / 4) vec4s
+  const rowsPerWg = bn
+  return /* wgsl */ `
+enable subgroups;
+struct Params {
+  tokens: u32,
+  rows: u32,
+  cols: u32,
+  dummy: u32,
+}
+@group(0) @binding(0) var<storage, read> data: array<u32>;
+@group(0) @binding(1) var<storage, read> scales: array<f32>;
+@group(0) @binding(2) var<storage, read> x: array<vec4<f32>>;
+@group(0) @binding(3) var<storage, read_write> y: array<f32>;
+@group(0) @binding(4) var<uniform> params: Params;
+
+var<workgroup> xw: array<vec4<f32>, ${xwSize}>;
+
+fn q2q(word: u32, sh: u32) -> vec4<f32> {
+  let v = word >> sh;
+  let codes = (vec4<u32>(v) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u, 3u, 3u, 3u);
+  return bitcast<vec4<f32>>(codes | vec4<u32>(0x4b000000u)) - vec4<f32>(8388609.0, 8388609.0, 8388609.0, 8388609.0);
+}
+
+@compute @workgroup_size(256)
+fn main(@builtin(workgroup_id) wid3: vec3<u32>, @builtin(local_invocation_id) lid3: vec3<u32>) {
+  let row0 = wid3.x * ${rowsPerWg}u;
+  let t0 = wid3.y * ${bm}u;
+  let lid = lid3.x;
+  let row = row0 + lid / ${threadsPerRow}u;
+  let tokBase = t0 + (lid % ${threadsPerRow}u) * 4u;
+  let groupsPerRow = params.cols / 128u;
+  var acc0 = 0.0;
+  var acc1 = 0.0;
+  var acc2 = 0.0;
+  var acc3 = 0.0;
+  for (var g = 0u; g < groupsPerRow; g = g + 1u) {
+    // cooperative x-chunk load: ${xwSize} vec4s, 4 per thread (token-major, 32 vec4s per token)
+    for (var i = lid; i < ${xwSize}; i = i + 256u) {
+      let token = i / 32u;
+      let quad = i % 32u;
+      xw[i] = x[(t0 + token) * (params.cols / 4u) + g * 32u + quad];
+    }
+    workgroupBarrier();
+    let rowClamped = min(row, params.rows - 1u);
+    let wordBase = rowClamped * (params.cols / 16u) + g * 8u;
+    let scale = scales[rowClamped * groupsPerRow + g];
+    let myTokBase = (lid % ${threadsPerRow}u) * 4u; // the thread's token slots in xw
+    for (var w = 0u; w < 8u; w = w + 1u) {
+      let word = data[wordBase + w];
+      for (var q = 0u; q < 4u; q = q + 1u) {
+        let t4 = q2q(word, q * 8u);
+        // the x quad for (word w, quad q) is w·4 + q within the chunk — the
+        // one-hot column sweep caught the missing w·4 (every word's quad q
+        // was reading the first word's quad q: only the first 16 cols ever
+        // contributed)
+        acc0 = acc0 + scale * dot(t4, xw[(myTokBase + 0u) * 32u + w * 4u + q]);
+        acc1 = acc1 + scale * dot(t4, xw[(myTokBase + 1u) * 32u + w * 4u + q]);
+        acc2 = acc2 + scale * dot(t4, xw[(myTokBase + 2u) * 32u + w * 4u + q]);
+        acc3 = acc3 + scale * dot(t4, xw[(myTokBase + 3u) * 32u + w * 4u + q]);
+      }
+    }
+    workgroupBarrier();
+  }
+  if (row < params.rows && tokBase < params.tokens) {
+    y[row * params.tokens + tokBase + 0u] = acc0;
+    y[row * params.tokens + tokBase + 1u] = acc1;
+    y[row * params.tokens + tokBase + 2u] = acc2;
+    y[row * params.tokens + tokBase + 3u] = acc3;
+  }
+}
+`
+}
+
+export const MATMUL_V1_WGSL = matmulV1(32, 32)
+export const MATMUL_V1_B64 = matmulV1(64, 32)
+export const MATMUL_V1_N64 = matmulV1(32, 64)
+
 /** The matvec kernel: y[r] = Σ_c trit(W[r,c])·scale·x[c], one thread per row. */
 export const MATVEC_WGSL = /* wgsl */ `
 struct Params {
@@ -383,135 +478,3 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
  * quad — ~2.5 ALU ops/weight vs v1's ~6 (v1 measured ALU-bound at 33–36 GB/s,
  * 3.5× under the stock decode's effective bandwidth — the loop's first signal).
  */
-export const MATVEC_V2_WGSL = /* wgsl */ `
-struct Params {
-  rows: u32,
-  groupsPerRow: u32,
-  wordsPerRow: u32,
-  dummy: u32,
-}
-@group(0) @binding(0) var<storage, read> data: array<u32>;
-@group(0) @binding(1) var<storage, read> scales: array<f32>;
-@group(0) @binding(2) var<storage, read> x: array<f32>;
-@group(0) @binding(3) var<storage, read_write> y: array<f32>;
-@group(0) @binding(4) var<uniform> params: Params;
-
-var<workgroup> partials: array<f32, 256>;
-
-@compute @workgroup_size(256)
-fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_id) lid3: vec3<u32>) {
-  let row = wid.x;
-  let lid = lid3.x;
-  if (row >= params.rows) { return; }
-  let rowBase = row * params.wordsPerRow;
-  var acc = 0.0;
-  for (var w = lid; w < params.wordsPerRow; w = w + 256u) {
-    let word = data[rowBase + w];
-    let scale = scales[row * params.groupsPerRow + (w >> 3u)];
-    let col = w * 16u;
-    for (var q = 0u; q < 4u; q = q + 1u) {
-      let shifts = vec4<u32>(q * 8u, q * 8u + 2u, q * 8u + 4u, q * 8u + 6u);
-      let v4 = (vec4<u32>(word) >> shifts) & vec4<u32>(3u, 3u, 3u, 3u);
-      let t4 = vec4<f32>(v4) - vec4<f32>(1.0, 1.0, 1.0, 1.0);
-      let x4 = vec4<f32>(x[col + q * 4u], x[col + q * 4u + 1u], x[col + q * 4u + 2u], x[col + q * 4u + 3u]);
-      acc = acc + scale * dot(t4, x4);
-    }
-  }
-  partials[lid] = acc;
-  workgroupBarrier();
-  for (var s = 128u; s > 0u; s = s >> 1u) {
-    if (lid < s) { partials[lid] = partials[lid] + partials[lid + s]; }
-    workgroupBarrier();
-  }
-  if (lid == 0u) { y[row] = partials[0]; }
-}
-`
-
-/**
- * The matvec v4 — v1's mapping with the x binding as `array<vec4<f32>>`
- * (true 16-byte vector loads — the v3 bench row showed the scalar-loaded vec4
- * construction LOSES to v1's scalar loop, 30/21 vs 33–36 GB/s: four separate
- * x loads + register moves per quad ate the ALU win) and the group-major
- * loop (one scale fetch per 128-weight group). The quad decode itself stays:
- * four 2-bit lanes per shift+mask, one vec4 dot per quad.
- * x MUST be 16-byte aligned (cols a multiple of 128 — the format's invariant).
- */
-export const MATVEC_V4_WGSL = /* wgsl */ `
-struct Params {
-  rows: u32,
-  groupsPerRow: u32,
-  wordsPerRow: u32,
-  dummy: u32,
-}
-@group(0) @binding(0) var<storage, read> data: array<u32>;
-@group(0) @binding(1) var<storage, read> scales: array<f32>;
-@group(0) @binding(2) var<storage, read> x: array<vec4<f32>>;
-@group(0) @binding(3) var<storage, read_write> y: array<f32>;
-@group(0) @binding(4) var<uniform> params: Params;
-
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let r = gid.x;
-  if (r >= params.rows) { return; }
-  let rowWordBase = r * params.wordsPerRow;
-  var acc = 0.0;
-  for (var g = 0u; g < params.groupsPerRow; g = g + 1u) {
-    let scale = scales[r * params.groupsPerRow + g];
-    let wBase = rowWordBase + g * 8u;
-    for (var w = 0u; w < 8u; w = w + 1u) {
-      let word = data[wBase + w];
-      let xBase = (g * 8u + w) * 4u;
-      for (var q = 0u; q < 4u; q = q + 1u) {
-        let shifts = vec4<u32>(q * 8u, q * 8u + 2u, q * 8u + 4u, q * 8u + 6u);
-        let v4 = (vec4<u32>(word) >> shifts) & vec4<u32>(3u, 3u, 3u, 3u);
-        let t4 = vec4<f32>(v4) - vec4<f32>(1.0, 1.0, 1.0, 1.0);
-        acc = acc + scale * dot(t4, x[xBase + q]);
-      }
-    }
-  }
-  y[r] = acc;
-}
-`
-
-/**
- * The matvec v3 — v1's mapping (one thread per row, zero barriers) with the
- * vectorized decode: four 2-bit lanes per shift+mask, one vec4 dot per quad.
- * The v2 bench row (18–21 GB/s — slower than v1's 33–36) ruled OUT the
- * parallel-K workgroup shape at these row counts: the fold's 8 barrier steps
- * over ~320-word rows cost more than the ALU they save. v3 keeps the ALU win,
- * drops the barriers.
- */
-export const MATVEC_V3_WGSL = /* wgsl */ `
-struct Params {
-  rows: u32,
-  groupsPerRow: u32,
-  wordsPerRow: u32,
-  dummy: u32,
-}
-@group(0) @binding(0) var<storage, read> data: array<u32>;
-@group(0) @binding(1) var<storage, read> scales: array<f32>;
-@group(0) @binding(2) var<storage, read> x: array<f32>;
-@group(0) @binding(3) var<storage, read_write> y: array<f32>;
-@group(0) @binding(4) var<uniform> params: Params;
-
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let r = gid.x;
-  if (r >= params.rows) { return; }
-  let rowWordBase = r * params.wordsPerRow;
-  var acc = 0.0;
-  for (var w = 0u; w < params.wordsPerRow; w = w + 1u) {
-    let word = data[rowWordBase + w];
-    let scale = scales[r * params.groupsPerRow + (w >> 3u)];
-    let col = w * 16u;
-    for (var q = 0u; q < 4u; q = q + 1u) {
-      let shifts = vec4<u32>(q * 8u, q * 8u + 2u, q * 8u + 4u, q * 8u + 6u);
-      let v4 = (vec4<u32>(word) >> shifts) & vec4<u32>(3u, 3u, 3u, 3u);
-      let t4 = vec4<f32>(v4) - vec4<f32>(1.0, 1.0, 1.0, 1.0);
-      let x4 = vec4<f32>(x[col + q * 4u], x[col + q * 4u + 1u], x[col + q * 4u + 2u], x[col + q * 4u + 3u]);
-      acc = acc + scale * dot(t4, x4);
-    }
-  }
-  y[r] = acc;
-}
-`
