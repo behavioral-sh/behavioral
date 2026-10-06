@@ -34,3 +34,10 @@ export const BENCH_DECODE_REPEATS = 2
 
 /** The stock row's kernel label. */
 export const STOCK_KERNEL = 'stock-engine'
+
+/**
+ * The pinned numerical-agreement tolerance for the kernel rows: max
+ * |y_kernel − y_ref| relative to max |y_ref| over the matrix. The bench row
+ * FAILS visibly above it (the agreement pin, not a soft metric).
+ */
+export const BENCH_AGREEMENT_TOLERANCE = 1e-4

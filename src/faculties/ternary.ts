@@ -7,6 +7,7 @@
  */
 
 export {
+  BENCH_AGREEMENT_TOLERANCE,
   BENCH_DECODE_CONTEXT,
   BENCH_DECODE_REPEATS,
   BENCH_DECODE_TOKENS,
@@ -20,6 +21,25 @@ export { BenchRowSchema, validateBenchRow } from './ternary/bench.schemas.ts'
 export { fixedTokenIds, mulberry32, summarizeBenchRows } from './ternary/bench.ts'
 export type { BenchGroup, BenchProfile, BenchRow, BenchSummary } from './ternary/bench.types.ts'
 export {
+  BW_PROBE_WGSL,
+  BW2_PROBE_WGSL,
+  MATVEC_V2_WGSL,
+  MATVEC_V3_WGSL,
+  MATVEC_V4_WGSL,
+  MATVEC_V5_W128,
+  MATVEC_V5_W256,
+  MATVEC_V5_WGSL,
+  MATVEC_V6_W64_R1,
+  MATVEC_V6_W64_R2,
+  MATVEC_V6_W128_R2,
+  MATVEC_V6_W128_R4,
+  MATVEC_V6_W128_R8,
+  MATVEC_V6_WGSL,
+  MATVEC_V7_R4,
+  MATVEC_V7_WGSL,
+  MATVEC_WGSL,
+} from './ternary/kernel.ts'
+export {
   decodeF16Bits,
   decodePtq10Group,
   encodePtq10Group,
@@ -31,3 +51,4 @@ export {
   packLut2Group,
   unpackLut2Group,
 } from './ternary/packing.ts'
+export { dequantMatvec, groupsPerRow, type Lut2Weights } from './ternary/reference.ts'
