@@ -19,3 +19,15 @@ export {
 export { BenchRowSchema, validateBenchRow } from './ternary/bench.schemas.ts'
 export { fixedTokenIds, mulberry32, summarizeBenchRows } from './ternary/bench.ts'
 export type { BenchGroup, BenchProfile, BenchRow, BenchSummary } from './ternary/bench.types.ts'
+export {
+  decodeF16Bits,
+  decodePtq10Group,
+  encodePtq10Group,
+  LUT2_GROUP_U32,
+  LUT2_GROUP_WEIGHTS,
+  PTQ10_DATA_BYTES,
+  PTQ10_GROUP_BYTES,
+  PTQ10_GROUP_WEIGHTS,
+  packLut2Group,
+  unpackLut2Group,
+} from './ternary/packing.ts'
