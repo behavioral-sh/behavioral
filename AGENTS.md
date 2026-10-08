@@ -1,4 +1,4 @@
-# AGENTS.md
+ # AGENTS.md
 
 ## Rules
 
@@ -465,6 +465,15 @@ delete) and after notable map edits. No-op when unchanged.
 **Coverage:** happy path, edge cases, error paths, real integrations.
 **Run:** choose tests by affected surface. Do not run unrelated areas just to satisfy a blanket rule.
 Expand test coverage when the impact is broad, shared, or uncertain.
+
+**Box test runs are DETACHED, not training runs** — the full suite on Blackwell
+takes long enough that a synchronous SSH call times out. Launch it as a
+background job on the box (`nohup env BEHAVIORAL_HOME="$(mktemp -d)" bun test >
+/tmp/test-smoke.log 2>&1 &`), then poll the log with short SSH calls. This is
+the box-clone smoke (bun + src coherence), NOT the training pipeline — it gets
+the detached-job treatment, not the serve/post-train machinery. Note the box's
+bun lives at `~/.bun/bin` and is NOT on the non-interactive SSH PATH — export it
+every call.
 
 **Spec home isolation (the three-layer standard):** the suite never touches the developer's real
 `~/.behavioral`, and home-state debris never crosses contexts.
